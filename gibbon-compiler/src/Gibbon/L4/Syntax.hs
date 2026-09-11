@@ -11,9 +11,10 @@ module Gibbon.L4.Syntax
     , Alts(..), Prog(..), MainExp(..), Label, SymTable
     , InfoTable, TyConInfo, DataConInfo(..)
     , L3.Scalar(..), mkScalar, scalarToTy
+    , L3.isIntScalar, L3.intScalarWidth, L3.intS64
 
     -- * Utility functions
-    , withTail, fromL3Ty, voidTy, inlineTrivL4, typeOfTriv
+    , withTail, fromL3Ty, voidTy, inlineTrivL4, typeOfTriv, intTrivW64
     ) where
 
 import           Control.DeepSeq
@@ -26,7 +27,7 @@ import           GHC.Generics (Generic)
 import           Prelude hiding (init)
 import           Text.PrettyPrint.GenericPretty (Out (..))
 
-import           Gibbon.Language (Tag, TyCon)
+import           Gibbon.Language (Tag, TyCon, IntWidth(..), intWidthBytes)
 import           Gibbon.Common
 import qualified Gibbon.Language  as L
 import qualified Gibbon.L2.Syntax as L2
@@ -54,7 +55,11 @@ data MainExp
 
 data Triv
     = VarTriv Var
-    | IntTriv Int64
+    | IntTriv IntWidth Int64 -- ^ An integer literal at the given width.  The
+                             -- host payload is always 'Int64' -- every width
+                             -- fits -- the 'IntWidth' says how to emit it in C
+                             -- and what type it has.  Build a compiler-
+                             -- internal (always W64) one with 'intTrivW64'.
     | CharTriv Char
     | FloatTriv Double
     | BoolTriv Bool
@@ -64,16 +69,23 @@ data Triv
     | ProjTriv Int Triv -- ^ Projections
     | IndexCursorArrayTriv Int Triv -- ^ Indexing operation
     | UninitTriv Var Ty Int -- ^ uninitialized values
-    | SizeOf Ty         -- ^ Size of a type
+    | SizeOf Ty         -- ^ Size of a type; always a W64 count, not the width
+                         -- of the type it measures.
   deriving (Show, Ord, Eq, Generic, NFData, Out)
+
+-- | A compiler-generated 64-bit integer trivial: sizes, offsets, tags,
+-- counts.  Source integer trivials are NOT built with this; 'triv' in
+-- "Gibbon.Passes.Lower" carries the L3 literal's own width instead.
+intTrivW64 :: Int64 -> Triv
+intTrivW64 = IntTriv W64
 
 typeOfTriv :: M.Map Var Ty -> Triv -> Ty
 typeOfTriv env trv =
   case trv of
-    SizeOf{} -> IntTy
+    SizeOf{} -> IntTy W64
     UninitTriv _ ty _ -> ty
     VarTriv v   -> env M.! v
-    IntTriv{}   -> IntTy
+    IntTriv w _ -> IntTy w
     CharTriv{}  -> CharTy
     FloatTriv{} -> FloatTy
     BoolTriv{}  -> BoolTy
@@ -204,7 +216,7 @@ data Tail
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data Ty
-    = IntTy        -- ^ 8 byte integers.
+    = IntTy IntWidth -- ^ A machine integer of the given width.
     | CharTy       -- ^ 4 byte characters.
     | FloatTy      -- ^ 8 byte floating point numbers
     | BoolTy       -- ^ 1 byte integers.
@@ -244,19 +256,48 @@ data Ty
     | IntHashTy
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
+-- | Arithmetic/comparison here is split by kind rather than overloaded,
+-- because the width matters: an 'AddP' on 'IntTy W8' operands, one on
+-- 'IntTy W64' operands, and an 'FAddP' on floats are three different C
+-- operations (this used to be one shared, widthless 'AddP', which is exactly
+-- the ambiguity a plain @Maybe IntWidth@ would have reintroduced -- 'Nothing'
+-- would have had to mean "float", which is not what a missing integer width
+-- should mean).
+--
+-- The generated C for AddP/SubP/etc itself does not strictly need the width
+-- at emission time -- 'codegenTy' already renders the correct C type from the
+-- BOUND VARIABLE's own 'Ty', and C's native +/-/*/  operators do the
+-- right thing at whatever width that declares.  The width is carried anyway
+-- so that the node is self-describing: 'Lower.prim' does not have to drop it,
+-- a future L4-level typechecker could validate it against operand types, and
+-- nothing here can be confused with a float or cursor operation by
+-- construction.
 data Prim
-    = AddP | SubP | MulP
-    | DivP | ModP
-    | EqP | LtP | GtP | LtEqP | GtEqP
+    = AddP IntWidth | SubP IntWidth | MulP IntWidth
+    | DivP IntWidth | ModP IntWidth
+    | EqP IntWidth | LtP IntWidth | GtP IntWidth | LtEqP IntWidth | GtEqP IntWidth
+    | FAddP | FSubP | FMulP | FDivP
+    | FEqP | FLtP | FGtP | FLtEqP | FGtEqP
+    | CEqP -- ^ Character equality; not integer-width-sensitive.
     | EqSymP
     | EqBenchProgP String
-    | ExpP
+    | ExpP IntWidth
+    | FExpP
     | RandP
     | FRandP
     | FSqrtP
     | FTanP
     | FloatToIntP
-    | IntToFloatP
+    -- | Integer -> float, carrying the operand's exact SOURCE width.  C's
+    -- ordinary numeric conversion handles every signed source type correctly,
+    -- so the width is not strictly needed at emission time; it is carried so
+    -- the node stays self-describing and codegen can validate rather than
+    -- assume.
+    | IntToFloatP IntWidth
+    -- | @IntConvertP src dst@: deterministic truncating two's-complement
+    -- conversion.  BOTH widths are carried: codegen picks the RTS helper from
+    -- the destination and needs the source to widen the operand safely first.
+    | IntConvertP IntWidth IntWidth
     | SizeParam
     | OrP | AndP
     | DictInsertP Ty -- ^ takes k,v,dict
@@ -359,7 +400,13 @@ data Prim
     | ReadScalar L3.Scalar
     | WriteScalar L3.Scalar
     | ScalarCountFooterBegin
-    | ScalarCountBump
+    | ScalarCountBump [Int]
+      -- ^ The Ints are the deferred-count slots of the footers passed as
+      -- arguments, positionally.  Which of the two schemes is emitted is a
+      -- Codegen decision driven by --defer-scalar-counts.
+    | ScalarCountBind Int Int
+      -- ^ Bind deferred-count slots [base, base+len) -- base then len.
+    | ScalarCountFinalize Int Int
     | ScalarCountSet
     | ScalarCountCopyAll Int
     | ScalarCountFooterEnd String
@@ -380,7 +427,8 @@ data Prim
       -- ^ Divide two vector registers lane-wise, where supported.
     | VecMod L3.Scalar Int
       -- ^ Modulo two vector registers lane-wise, where supported.
-    | VecEq L3.Scalar Int
+    -- | Packed comparison; the mask keeps the operand vector shape.
+    | VecCmp L3.Scalar Int L3.VecCmpOp
       -- ^ Equality mask over two vector registers lane-wise, where supported.
     | VecSelect L3.Scalar Int
       -- ^ Lane-wise select: mask, then-value, else-value.
@@ -410,9 +458,9 @@ data Prim
     | SizeOfScalar
     -- ^ Takes in a variable, and returns an int, sizeof(var)
 
-    | GetFirstWord -- ^ takes a PtrTy, returns IntTy containing the (first) word pointed to.
+    | GetFirstWord -- ^ takes a PtrTy, returns an IntTy W64 containing the (first) word pointed to.
 
-    | PrintInt    -- ^ Print an integer to stdout.
+    | PrintInt IntWidth -- ^ Print a signed integer of the given width to stdout.
     | PrintChar   -- ^ Print a character to stdout.
     | PrintFloat  -- ^ Print a floating point number to stdout.
     | PrintBool   -- ^ Print a boolean to stdout.
@@ -455,14 +503,24 @@ data FunDecl = FunDecl
 voidTy :: Ty
 voidTy = ProdTy []
 
+-- | 'mkScalar' and 'scalarToTy': exact width-preserving conversions between
+-- L3's scalar descriptor and L4's integer type.
+--
+-- L4's 'Ty', 'Triv' and integer 'Prim's all carry their exact width, so these
+-- are true inverses on every width, not just W64: no narrow scalar is erased
+-- or silently misread/miswritten (e.g. reading 8 bytes for an Int8 field,
+-- when 'sizeOfTy' says it is 1 byte).  A malformed L3 scalar that names a
+-- non-integer type still fails loudly via the pattern match below, rather
+-- than being coerced.
+
 mkScalar :: Ty -> L3.Scalar
-mkScalar IntTy  = L3.IntS
+mkScalar (IntTy w) = L3.IntS w
 mkScalar SymTy  = L3.SymS
 mkScalar BoolTy = L3.BoolS
 mkScalar ty = error $ "mkScalar: Not a scalar type: " ++ sdoc ty
 
 scalarToTy :: L3.Scalar -> Ty
-scalarToTy L3.IntS  = IntTy
+scalarToTy (L3.IntS w) = IntTy w
 scalarToTy L3.CharS = CharTy
 scalarToTy L3.SymS  = SymTy
 scalarToTy L3.BoolS = BoolTy
@@ -513,7 +571,10 @@ withTail (tl0,retty) fn =
 fromL3Ty :: L3.Ty3 -> Ty
 fromL3Ty ty =
   case ty of
-    L.IntTy   -> IntTy
+    -- The integer's width survives L3 -> L4 unchanged; whether generated C
+    -- correctly acts on a narrow width is a separate question, answered by
+    -- 'Gibbon.Passes.Codegen'.
+    L.IntTy w -> IntTy w
     L.CharTy  -> CharTy
     L.FloatTy -> FloatTy
     L.SymTy   -> SymTy
@@ -528,7 +589,7 @@ fromL3Ty ty =
     L.SimdTy el_ty lanes -> SimdTy (fromL3Ty el_ty) lanes
     -- L.PackedTy{} -> error "fromL3Ty: Cannot convert PackedTy"
     L.VectorTy el_ty  -> VectorTy (fromL3Ty el_ty)
-    _ -> IntTy -- [2019.06.10]: CSK, Why do we need this?
+    _ -> IntTy W64 -- [2019.06.10]: CSK, Why do we need this?  (Pre-existing fallback, unrelated to widths; kept as W64 to preserve its old behavior.)
 
 
 inlineTrivL4 :: Prog -> Prog

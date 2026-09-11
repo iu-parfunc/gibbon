@@ -1,9 +1,6 @@
--- Probe for the acknowledged remaining hole in `countGuaranteedTyCons`:
--- compiler-generated packed helpers (`_copy_*`) are excluded from `userFuns`,
--- and `writtenDataCons` of a *caller* of such a helper does not see the tags
--- the helper writes.  If a fresh List value can reach a loopified traversal via
--- a generated copy, its footer counts are never established and the loop reads
--- 0.  Using the same value twice is the usual way to force `_copy_List`.
+-- VerifyN2CopyProducer: List (Factored).
+-- Functions: mkList, add1, sumList.
+-- Annotated: MayVectorize on add1; StoreScalarCounts on mkList.
 data List = Cons Int List | Nil
 {-# ANN type List "Factored" #-}
 
@@ -14,7 +11,7 @@ mkList n = if n <= 0
            else let rst = mkList (n - 1)
                  in Cons n rst
 
-{-# ANN add1 "OPT:CanVectorize" #-}
+{-# ANN add1 "OPT:MayVectorize" #-}
 add1 :: List -> List
 add1 lst = case lst of
              Nil -> Nil

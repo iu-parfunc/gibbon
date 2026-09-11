@@ -9,7 +9,7 @@ mkList len =
   else let rst = mkList (len - 1)
        in Cons len 1.0 rst
 
-{-# ANN add1KeepFloat "OPT:CanVectorize" #-}
+{-# ANN add1KeepFloat "OPT:MayVectorize" #-}
 add1KeepFloat :: List -> List
 add1KeepFloat xs =
   case xs of

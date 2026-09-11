@@ -1,19 +1,23 @@
--- @BENCH adt_fields=15
+-- DBQuery: Query (Factored).
+-- Functions: absI, maxI, wrappingMul, mixSeed, buildQuery, sumCost, sumRows,
+-- countJoins. ...
+-- Annotated: MayVectorize on scaleCosts, clearQueryFlags; StoreScalarCounts on
+-- buildQuery.
 data Query
-  = Join Int  -- join type (0=nested-loop,1=hash,2=merge)
-         Int  -- estimated output rows
-         Int  -- total cost
-         Int  -- memory grant
+  = Join Int64  -- join type (0=nested-loop,1=hash,2=merge)
+         Int64  -- estimated output rows
+         Int64  -- total cost
+         Int64  -- memory grant
          Query Query
-  | Filter Int  -- predicate id
-           Int  -- selectivity (permille)
-           Int  -- cpu cost
-           Int  -- flags
+  | Filter Int64  -- predicate id
+           Int64  -- selectivity (permille)
+           Int64  -- cpu cost
+           Int64  -- flags
            Query
-  | Scan Int  -- table id
-         Int  -- base rows
-         Int  -- scan cost
-         Int  -- row width
+  | Scan Int64  -- table id
+         Int64  -- base rows
+         Int64  -- scan cost
+         Int64  -- row width
   | QEmpty
 
 {-# ANN type Query "Factored" #-}
@@ -71,7 +75,9 @@ buildQuery d seed =
              flags = mod (absI (mixSeed seed 41)) 8
          in Filter predId sel cpu flags s
 
--- Reduction 1: total optimizer cost across the plan tree.
+-- Reduction 1: total optimizer cost across the plan tree. Native Int64;
+-- also feeds `mapCost1`/`mapCost2` at the bottom of gibbon_main (`sumCost`
+-- after `scaleCosts 10`).
 sumCost :: Query -> Int
 sumCost q =
   case q of
@@ -80,14 +86,16 @@ sumCost q =
     Scan _ _ c _ -> c
     QEmpty -> 0
 
--- Reduction 2: sum of estimated rows emitted by operators.
+-- Reduction 2: sum of estimated rows emitted by operators. Native Int64;
+-- `childRows * sel` (childRows is a large accumulated sum by depth 75)
+-- does not wrap at 32 bits before the division.
 sumRows :: Query -> Int
 sumRows q =
   case q of
     Join _ r _ _ l s -> r + sumRows l + sumRows s
     Filter _ sel _ _ s ->
       let childRows = sumRows s
-          outRows = maxI 1 ((wrappingMul childRows sel) / 1000)
+          outRows = maxI 1 ((childRows * sel) / 1000)
       in outRows + childRows
     Scan _ r _ _ -> r
     QEmpty -> 0
@@ -130,8 +138,10 @@ filterSelectivitySkew q =
     Scan _ _ _ _ -> 0
     QEmpty -> 0
 
--- Map 1: scale planner costs for cost-model retuning.
-{-# ANN scaleCosts "OPT:CanVectorize" #-}
+-- Map 1: scale planner costs for cost-model retuning. `k` is Int64,
+-- matching the field it multiplies, so this MayVectorize loop needs no
+-- width-changing conversion in its body.
+{-# ANN scaleCosts "OPT:MayVectorize" #-}
 scaleCosts :: Query -> Int -> Query
 scaleCosts q k =
   case q of
@@ -145,7 +155,7 @@ scaleCosts q k =
       QEmpty
 
 -- Map 2: clear transient filter flags after rewrite.
-{-# ANN clearQueryFlags "OPT:CanVectorize" #-}
+{-# ANN clearQueryFlags "OPT:MayVectorize" #-}
 clearQueryFlags :: Query -> Query
 clearQueryFlags q =
   case q of
@@ -160,7 +170,7 @@ clearQueryFlags q =
 
 
 gibbon_main =
-            let _ = printsym (quote "Running Data base Query Pass: ")
+            let _ = printsym (quote "Running program Data base Query: ")
                 _ = printsym (quote "NEWLINE")
                 queryTree = buildQuery (sizeParam + 75) 17
 
@@ -194,12 +204,12 @@ gibbon_main =
                 selSkew = iterate (filterSelectivitySkew queryTree)
                 _ = printsym (quote "End")
                 _ = printsym (quote "NEWLINE")
-                _ = printsym (quote "Running pass scaleCosts (map, uses=15): ")
+                _ = printsym (quote "Running pass scaleCosts (map, uses=15, shared=9): ")
                 _ = printsym (quote "NEWLINE")
                 queryTree' = iterate (scaleCosts queryTree 10)
                 _ = printsym (quote "End")
                 _ = printsym (quote "NEWLINE")
-                _ = printsym (quote "Running pass clearQueryFlags (map, uses=14): ")
+                _ = printsym (quote "Running pass clearQueryFlags (map, uses=14, shared=11): ")
                 _ = printsym (quote "NEWLINE")
                 queryTree'' = iterate (clearQueryFlags queryTree')
                 _  = printsym (quote "End")

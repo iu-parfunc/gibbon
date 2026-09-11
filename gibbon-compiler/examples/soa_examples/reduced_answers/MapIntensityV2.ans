@@ -1,0 +1,58 @@
+Running program MapIntensityV2: 
+Running pass mapSer1 (map, uses=1, ilp=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapSer2 (map, uses=1, ilp=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapSer4 (map, uses=1, ilp=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapSer8 (map, uses=1, ilp=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapSer16 (map, uses=1, ilp=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapChain1 (map, uses=1, ilp=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapChain2 (map, uses=1, ilp=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapChain4 (map, uses=1, ilp=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapChain8 (map, uses=1, ilp=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapPar1 (map, uses=1, ilp=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapPar2 (map, uses=1, ilp=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapPar4 (map, uses=1, ilp=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapPar8 (map, uses=1, ilp=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapPar16 (map, uses=1, ilp=1): 
+ITERS: 1
+SIZE: 1
+End
+'#(10464 52640 1318816 824374688 322021484374432 108659520 2732626112 1711916669760 668829267207505472 10720 22080 46720 103680 248320 64)

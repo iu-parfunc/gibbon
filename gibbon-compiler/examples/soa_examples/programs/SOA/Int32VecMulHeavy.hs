@@ -1,4 +1,4 @@
--- Audit probe (int32 vectorizer): a multiply-dominated CanVectorize map, used
+-- Audit probe (int32 vectorizer): a multiply-dominated MayVectorize map, used
 -- to measure the cost of the scalarized `gib_vec_mul_int32x4` helper against a
 -- hand-patched `_mm_mullo_epi32` (SSE4.1) version of the same generated C.
 data ML = MCons Int Int ML | MNil
@@ -12,7 +12,7 @@ mkML n =
   else let rst = mkML (n - 1)
        in MCons n (n + 1) rst
 
-{-# ANN mapMul "OPT:CanVectorize" #-}
+{-# ANN mapMul "OPT:MayVectorize" #-}
 mapMul :: ML -> Int -> ML
 mapMul xs k =
   case xs of

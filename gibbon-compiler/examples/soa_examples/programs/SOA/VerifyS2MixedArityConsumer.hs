@@ -1,8 +1,6 @@
--- VARIANT of the S2 defect: a consumer of the selectively shared value that
--- takes two packed SoA inputs of DIFFERENT types, hence four cursor arrays of
--- UNEQUAL lengths (2 and 3).  The old positional pattern paired arg0 with arg3
--- and required equal lengths, so it produced NO pairs at all
--- (the `_ -> []` hole), leaving the wrapper un-normalized.
+-- VerifyS2MixedArityConsumer: L (Factored), T (Factored).
+-- Functions: mkL, mkT, bumpL, mixed.
+-- Annotated: MayVectorize on bumpL; StoreScalarCounts on mkL, mkT.
 data L = C Int L | N
 {-# ANN type L "Factored" #-}
 
@@ -17,7 +15,7 @@ mkL n = if n <= 0 then N else let r = mkL (n - 1) in C n r
 mkT :: Int -> T
 mkT n = if n <= 0 then TN else let r = mkT (n - 1) in TC n 2.0 r
 
-{-# ANN bumpL "OPT:CanVectorize" #-}
+{-# ANN bumpL "OPT:MayVectorize" #-}
 bumpL :: L -> L
 bumpL xs = case xs of
              N -> N

@@ -58,10 +58,13 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
                 Nothing -> pure Nothing
                 Just (e,gvn_main_ty) -> do
                   let tc = do
-                              (s1, drvd_main_ty, e_tc) <-
-                                tcExp ddefs emptySubst M.empty fenv [] True e
+                              -- The main expression's annotation is a directly
+                              -- typed position.
+                              (s1, drvd_main_ty, e_tc0) <-
+                                tcExpChecked ddefs emptySubst M.empty fenv [] True gvn_main_ty e
                               s2 <- unify e gvn_main_ty drvd_main_ty
                               -- let e_tc' = fixTyApps s1 e_tc
+                              e_tc <- defaultLitWidthsExp e_tc0
                               pure (s1 <> s2, zonkTy s2 drvd_main_ty, e_tc)
                   res <- runTcM tc
                   case res of
@@ -70,17 +73,87 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   pure prg { fundefs = fundefs'
            , mainExp = mainExp' }
 
+--------------------------------------------------------------------------------
+-- Literal width defaulting
+--------------------------------------------------------------------------------
+
+-- | The single defaulting point for integer literals.
+--
+-- Contextual typing ('tcExpChecked') has already fixed the width of every
+-- literal that appeared in a directly typed position.  Whatever is still
+-- 'LitUnresolved' once a function body (or the main expression) has been fully
+-- inferred was genuinely unconstrained, so it defaults to 'W64' here, and
+-- nowhere else.  Its range is checked at the same time, against the width it
+-- just acquired.
+--
+-- This deliberately lives outside 'zonkExp': 'zonkExp' runs many times on
+-- partially solved subterms during inference, and defaulting there would pin a
+-- width before an enclosing constructor, call or annotation could constrain
+-- it.
+defaultLitWidthsExp :: Exp0 -> TcM Exp0
+defaultLitWidthsExp ex =
+  case ex of
+    LitE LitUnresolved n -> do checkLitFits ex W64 n
+                               pure (LitE (LitWidth W64) n)
+    LitE{}    -> pure ex
+    VarE{}    -> pure ex
+    CharE{}   -> pure ex
+    FloatE{}  -> pure ex
+    LitSymE{} -> pure ex
+    AppE f cty tyapps args -> AppE f cty tyapps <$> mapM go args
+    PrimAppE pr args       -> PrimAppE pr <$> mapM go args
+    LetE (v,tyapps,ty,rhs) bod -> do rhs' <- go rhs
+                                     bod' <- go bod
+                                     pure $ LetE (v, tyapps, ty, rhs') bod'
+    IfE a b c  -> IfE <$> go a <*> go b <*> go c
+    MkProdE ls -> MkProdE <$> mapM go ls
+    ProjE i e  -> ProjE i <$> go e
+    CaseE scrt brs -> do scrt' <- go scrt
+                         brs'  <- mapM (\(dcon,vtys,rhs) -> (dcon,vtys,) <$> go rhs) brs
+                         pure $ CaseE scrt' brs'
+    DataConE tyapps dcon args -> DataConE tyapps dcon <$> mapM go args
+    TimeIt e ty b  -> (\e' -> TimeIt e' ty b) <$> go e
+    WithArenaE v e -> WithArenaE v <$> go e
+    SpawnE fn tyapps args -> SpawnE fn tyapps <$> mapM go args
+    SyncE     -> pure SyncE
+    MapE (v,ty,e1) e2 -> do e1' <- go e1
+                            e2' <- go e2
+                            pure $ MapE (v,ty,e1') e2'
+    FoldE (v1,t1,e1) (v2,t2,e2) e3 -> do e1' <- go e1
+                                         e2' <- go e2
+                                         e3' <- go e3
+                                         pure $ FoldE (v1,t1,e1') (v2,t2,e2') e3'
+    Ext (LambdaE args bod)    -> Ext . LambdaE args <$> go bod
+    Ext (PolyAppE rator rand) -> (\a b -> Ext (PolyAppE a b)) <$> go rator <*> go rand
+    Ext (FunRefE{})           -> pure ex
+    Ext (BenchE fn tyapps args b) -> (\as -> Ext (BenchE fn tyapps as b)) <$> mapM go args
+    Ext (ParE0 ls)            -> Ext . ParE0 <$> mapM go ls
+    Ext (L0.L p e)            -> Ext . L0.L p <$> go e
+    Ext (PrintPacked ty arg)  -> Ext . PrintPacked ty <$> go arg
+    Ext (CopyPacked ty arg)   -> Ext . CopyPacked ty <$> go arg
+    Ext (TravPacked ty arg)   -> Ext . TravPacked ty <$> go arg
+    Ext (LinearExt lx) -> Ext . LinearExt <$>
+      case lx of
+        ReverseAppE a b -> ReverseAppE <$> go a <*> go b
+        LseqE a b       -> LseqE <$> go a <*> go b
+        AliasE a        -> AliasE <$> go a
+        ToLinearE a     -> ToLinearE <$> go a
+  where
+    go = defaultLitWidthsExp
+
 tcFun :: DDefs0 -> Gamma -> FunDef0 -> PassM FunDef0
 tcFun ddefs fenv fn@FunDef{funArgs,funTy,funBody, funName} = do
   res <- runTcM $ do
     let (ForAll tyvars (ArrowTy gvn_arg_tys gvn_retty)) = funTy
         init_venv = M.fromList $ zip funArgs $ map (ForAll []) gvn_arg_tys
         init_s = emptySubst
+    -- A function's declared result type is a directly typed position.
     (s1, drvd_funBody_ty, funBody_tc) <-
-      tcExp ddefs init_s init_venv fenv tyvars False funBody
+      tcExpChecked ddefs init_s init_venv fenv tyvars False gvn_retty funBody
     s2 <- unify funBody drvd_funBody_ty gvn_retty
+    funBody' <- defaultLitWidthsExp (zonkExp (s1 <> s2) funBody_tc)
     pure $ fn { funTy   = zonkTyScheme (s1 <> s2) funTy
-              , funBody = zonkExp (s1 <> s2) funBody_tc }
+              , funBody = funBody' }
   case res of
     Left er   -> error $ render er ++ " in " ++ show funName
     Right fn1 -> pure fn1
@@ -92,6 +165,131 @@ tcExps ddefs sbst venv fenv bound_tyvars ls = do
   pure (foldl (<>) sbst sbsts, tys, exps)
   where
     go (is_main, e) = tcExp ddefs sbst venv fenv bound_tyvars is_main e
+
+--------------------------------------------------------------------------------
+-- Contextual typing of integer literals
+--------------------------------------------------------------------------------
+
+-- | Check an expression against a type that the surrounding context already
+-- knows.
+--
+-- This is deliberately NOT a general bidirectional checking judgement, and it
+-- is deliberately not a general implicit integer conversion.  The only thing
+-- it adds over ordinary synthesis is:
+--
+--   * a *syntactic* integer literal whose width is still unresolved, checked
+--     against a *syntactic* integer type, acquires that width; and
+--
+--   * a syntactic tuple checked against a known product type passes the
+--     expectation down to its components, so that literals nested directly in
+--     a tuple are reached.
+--
+-- Everything else is handed straight to 'tcExp'.  In particular an already
+-- typed integer expression is never re-widened, and a literal checked against
+-- a non-integer type falls through to synthesis so that ordinary unification
+-- produces the usual type error.
+tcExpChecked :: DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
+             -> Bool -> Ty0 -> Exp0 -> TcM (Subst, Ty0, Exp0)
+tcExpChecked ddefs sbst venv fenv bound_tyvars is_main expected ex =
+  case ex of
+    LitE LitUnresolved n ->
+      case zonkTy sbst expected of
+        IntTy w -> do checkLitFits ex w n
+                      pure (sbst, IntTy w, LitE (LitWidth w) n)
+        _       -> synth
+    MkProdE es
+      | ProdTy tys <- zonkTy sbst expected
+      , length tys == length es -> do
+          (s1, es_tys, es_tc) <- tcExpsChecked ddefs sbst venv fenv bound_tyvars is_main (zip tys es)
+          pure (s1, ProdTy es_tys, MkProdE es_tc)
+    -- A conditional's type is its branches' type, so an expected type applies
+    -- to each arm.  This is what lets a literal arm take the width of the
+    -- other arm (or of the declared result type).
+    IfE a b c -> do
+      (s1, t1, a_tc) <- tcExp ddefs sbst venv fenv bound_tyvars is_main a
+      (s2, t2, b_tc) <- tcExpChecked ddefs s1 venv fenv bound_tyvars is_main expected b
+      (s3, t3, c_tc) <- tcExpChecked ddefs s2 venv fenv bound_tyvars is_main expected c
+      s4 <- unify a t1 BoolTy
+      s5 <- unify ex t2 t3
+      let s6 = s3 <> s4 <> s5
+      pure (s6, zonkTy s6 t2,
+            IfE (zonkExp s6 a_tc) (zonkExp s6 b_tc) (zonkExp s6 c_tc))
+
+    -- Likewise for a case: every branch is checked against the expected type,
+    -- so a literal base case agrees with a recursive branch's width.
+    CaseE scrt brs -> do
+      (s1, scrt_ty, scrt_tc) <- tcExp ddefs sbst venv fenv bound_tyvars is_main scrt
+      case zonkTy s1 scrt_ty of
+        PackedTy tycon drvd_tyargs -> do
+          ddf  <- pure (lookupDDef ddefs tycon)
+          ddf' <- substTyVarDDef ddf drvd_tyargs
+          brs' <- expandDefaultBranches ddf' brs
+          (s2, t2, brs_tc) <-
+            tcCases ddefs s1 venv fenv bound_tyvars ddf' brs' is_main (Just expected) ex
+          pure (s2, t2, CaseE (zonkExp s2 scrt_tc) brs_tc)
+        _ -> synth
+
+    -- Integer arithmetic checked against a known integer type: the expected
+    -- width is the operation's width, so push it into both operands.  This is
+    -- what makes `1 + 2 :: Int8` work, and it recurses through nested
+    -- arithmetic because each operand is checked with 'tcExpChecked' again.
+    --
+    -- Only arithmetic: a comparison returns Bool, so an expected type can
+    -- never select its operand width.
+    PrimAppE pr [a1, a2]
+      | isIntArithPrim pr
+      , IntTy w <- zonkTy sbst expected -> do
+          (s1, tys, args_tc) <-
+            tcExpsChecked ddefs sbst venv fenv bound_tyvars is_main [(IntTy w, a1), (IntTy w, a2)]
+          -- An operand that already has a concrete width must match exactly:
+          -- no widening.  An operand that is still a metavariable (or any
+          -- other shape) is unified with IntTy w, which solves it and reports
+          -- a genuinely wrong type the ordinary way.
+          subs <- sequence
+                    [ case t of
+                        IntTy w' | w' == w -> pure emptySubst
+                                 | otherwise ->
+                            err $ (text "Integer widths do not match in" <+> doc pr
+                                     <+> text ":" <+> text (intTyName w)
+                                     <+> text "vs" <+> text (intTyName w')
+                                     <+> text "(argument" <+> doc (i::Int) <+> text ").")
+                                  $$ text "Gibbon does not implicitly convert between integer widths."
+                                  $$ nest 2 (doc ex)
+                        _ -> unify a (IntTy w) t
+                    | (i, t, a) <- zip3 [1..] tys [a1, a2] ]
+          pure (foldl (<>) s1 subs, IntTy w, PrimAppE (setIntPrimWidth w pr) args_tc)
+    _ -> synth
+  where
+    synth = tcExp ddefs sbst venv fenv bound_tyvars is_main ex
+
+-- | 'tcExps' with a known expected type for each expression.
+tcExpsChecked :: DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
+              -> Bool -> [(Ty0, Exp0)] -> TcM (Subst, [Ty0], [Exp0])
+tcExpsChecked ddefs sbst venv fenv bound_tyvars is_main ls = do
+  (sbsts,tys,exps) <- unzip3 <$> mapM go ls
+  pure (foldl (<>) sbst sbsts, tys, exps)
+  where
+    go (t, e) = tcExpChecked ddefs sbst venv fenv bound_tyvars is_main t e
+
+-- | Reject a source literal that does not fit the width it was given.
+
+checkLitFits :: Exp0 -> IntWidth -> Integer -> TcM ()
+checkLitFits ctx w n
+  | intWidthFits w n = pure ()
+  | otherwise =
+      let (lo,hi) = intWidthRange w
+      in err $ (text "Integer literal" <+> text (show n)
+                  <+> text "is out of range for" <+> text (intTyName w) <+> text ".")
+               $$ (text "The valid range for" <+> text (intTyName w) <+> text "is"
+                  <+> text (show lo) <+> text ".." <+> text (show hi) <+> text ".")
+               $$ (text "In:" <+> doc ctx)
+
+-- | The surface spelling of an integer type, for diagnostics.
+intTyName :: IntWidth -> String
+intTyName W8  = "Int8"
+intTyName W16 = "Int16"
+intTyName W32 = "Int32"
+intTyName W64 = "Int64"
 
 --
 tcExp :: DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
@@ -108,7 +306,15 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
       then pure (sbst, ty, Ext $ FunRefE metas x)
       else pure (sbst, ty, VarE x)
 
-    LitE{}    -> pure (sbst, IntTy, ex)
+    -- A literal reached here (plain synthesis, not 'tcExpChecked') because
+    -- nothing in scope constrains its width yet -- e.g. it is the whole of an
+    -- unannotated `gibbon_main`.  Its synthesized type must already be the
+    -- SAME width 'defaultLitWidthsExp' will assign it later, or a metavariable
+    -- unified against this synthesis (like `gibbon_main`'s inferred type)
+    -- would freeze at one width while the literal itself ends up at another.
+    -- An already-resolved literal just reports its own width.
+    LitE LitUnresolved _ -> pure (sbst, IntTy W64, ex)
+    LitE (LitWidth w) _  -> pure (sbst, IntTy w, ex)
     CharE{}   -> pure (sbst, CharTy, ex)
     FloatE{}  -> pure (sbst, FloatTy, ex)
     LitSymE{} -> pure (sbst, SymTy0, ex)
@@ -126,7 +332,14 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
         (s1, e_ty, e'') <- tcExp ddefs sbst venv fenv bound_tyvars is_main e'
         pure (s1, e_ty, e'')
       else do
-        (s2, arg_tys, args_tc) <- tcExps ddefs sbst venv fenv bound_tyvars (zip (repeat is_main) args)
+        -- Function arguments are a directly typed position.
+        let expected_arg_tys = case fn_ty_inst of
+                                 ArrowTy its _ -> its
+                                 _             -> []
+        (s2, arg_tys, args_tc) <-
+          if length expected_arg_tys == length args
+          then tcExpsChecked ddefs sbst venv fenv bound_tyvars is_main (zip expected_arg_tys args)
+          else tcExps ddefs sbst venv fenv bound_tyvars (zip (repeat is_main) args)
         -- let fn_ty_inst' = zonkTy s2 fn_ty_inst
         let fn_ty_inst' = fn_ty_inst
         s3 <- unifyl ex (arrIns' fn_ty_inst') arg_tys
@@ -165,17 +378,78 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
             s3 <- unify (args !! 1) BoolTy (arg_tys' !! 1)
             pure (s1 <> s2 <> s3, BoolTy, PrimAppE pr args_tc)
 
-          int_ops = do
-            len2
-            s2 <- unify (args !! 0) IntTy (arg_tys' !! 0)
-            s3 <- unify (args !! 1) IntTy (arg_tys' !! 1)
-            pure (s1 <> s2 <> s3, IntTy, PrimAppE pr args_tc)
+          -- Width inference for the width-sensitive integer primitives.
+          --
+          -- The arguments have already been synthesized by 'tcExps' above.
+          -- Each one falls into exactly one of three buckets:
+          --
+          --   * an unresolved source literal, whose synthesized W64 type is
+          --     only a placeholder and which will take whatever width is
+          --     chosen (range-checked at that width);
+          --   * an operand whose type is already a concrete 'IntTy w'.  That
+          --     width is final: it constrains the operation and must agree
+          --     with every other concrete operand;
+          --   * anything else -- most importantly a still-unsolved
+          --     metavariable, as in @\\a -> a + 1@, where the lambda's
+          --     parameter type is not known until this very constraint is
+          --     solved.  These do not constrain the width; they are unified
+          --     with the chosen integer type, which both solves the
+          --     metavariable and produces the ordinary type error for a
+          --     genuinely non-integer operand.
+          --
+          -- The width is then: the expected width if the context supplied one
+          -- (via 'tcExpChecked'), else the common width of the concrete
+          -- operands, else W64.  Nothing is ever widened or narrowed.
+          intPrimApp = intPrimAppWith Nothing
 
-          int_cmps = do
+          intPrimAppWith mb_expected_w = do
             len2
-            s2 <- unify (args !! 0) IntTy (arg_tys' !! 0)
-            s3 <- unify (args !! 1) IntTy (arg_tys' !! 1)
-            pure (s1 <> s2 <> s3, BoolTy, PrimAppE pr args_tc)
+            w <- resolveIntPrimWidth mb_expected_w
+            results <- mapM (fixIntOperand w) (zip3 [(0::Int)..] args_tc arg_tys')
+            let (subs, args_w) = unzip results
+                pr' = setIntPrimWidth w pr
+                res = if isIntCmpPrim pr then BoolTy else IntTy w
+            pure (foldl (<>) s1 subs, res, PrimAppE pr' args_w)
+
+          -- Is this elaborated argument still an unresolved source literal?
+          isFlexibleLit e = case e of { LitE LitUnresolved _ -> True ; _ -> False }
+
+          -- Operands whose width is already concrete.  A flexible literal is
+          -- excluded (its W64 is a placeholder); so is anything that is not
+          -- yet an IntTy, which cannot constrain the width.
+          rigidWidths = [ (i, w) | (i, e, t) <- zip3 [(0::Int)..] args_tc arg_tys'
+                                 , not (isFlexibleLit e)
+                                 , IntTy w <- [t] ]
+
+          resolveIntPrimWidth mb_expected_w =
+            case (mb_expected_w, rigidWidths) of
+              (Just w, rs) -> do mapM_ (checkAgainst w) rs ; pure w
+              (Nothing, []) -> pure W64   -- only literals and/or metavariables
+              (Nothing, ((_,w):rs)) -> do mapM_ (checkAgainst w) rs ; pure w
+
+          checkAgainst w (i, w') =
+            if w == w' then pure ()
+            else err $ (text "Integer widths do not match in" <+> doc pr <+> text ":"
+                          <+> text (intTyName w) <+> text "vs" <+> text (intTyName w')
+                          <+> text "(argument" <+> doc (i+1) <+> text ").")
+                       $$ text "Gibbon does not implicitly convert between integer widths."
+                       $$ exp_doc
+
+          -- Give a flexible literal the chosen width (range-checked).  An
+          -- operand that already has the chosen width needs nothing.  Anything
+          -- else -- an unsolved metavariable, or a genuinely wrong type -- is
+          -- unified with the chosen integer type, which solves the former and
+          -- reports the latter.
+          fixIntOperand w (i, e, t) =
+            case e of
+              LitE LitUnresolved n -> do checkLitFits e w n
+                                         pure (emptySubst, LitE (LitWidth w) n)
+              _ | IntTy w' <- t, w' == w -> pure (emptySubst, e)
+                | otherwise -> do s <- unify (args !! i) (IntTy w) t
+                                  pure (s, e)
+
+          int_ops = intPrimApp
+          int_cmps = intPrimApp
 
           float_ops = do
             len2
@@ -195,25 +469,70 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
             s3 <- unify (args !! 1) CharTy (arg_tys' !! 1)
             pure (s1 <> s2 <> s3, BoolTy, PrimAppE pr args_tc)
 
+          convName w = "toInt" ++ show (8 * intWidthBytes w)
+
+          -- Resolve the SOURCE width of a one-operand width-sensitive
+          -- primitive (an explicit conversion, or intToFloat) from the operand
+          -- alone.  The three buckets mirror 'intPrimApp':
+          --
+          --   * an unresolved source literal defaults to W64 and is
+          --     range-checked THERE, before conversion.  This is what makes
+          --     @toInt8 300@ a conversion of the Int64 literal 300 rather than
+          --     a spurious Int8 literal-overflow error;
+          --   * an operand whose type is already a concrete @IntTy w@ supplies
+          --     that width unchanged;
+          --   * anything else -- most importantly a still-unsolved
+          --     metavariable, as in @\\x -> toInt8 x@ -- does not constrain the
+          --     width.  It is unified with the default integer type, which
+          --     solves the metavariable and reports a genuinely non-integer
+          --     operand (Bool, Float, packed, cursor, product, ...) the
+          --     ordinary way.
+          --
+          -- Note the asymmetry with arithmetic: no expected type is consulted,
+          -- because for these primitives the result context describes the
+          -- DESTINATION (or Float), never the source.
+          resolveIntSourceOperand nm = do
+            let e0 = args_tc !! 0
+                t0 = arg_tys' !! 0
+            case (e0, t0) of
+              (LitE LitUnresolved n, _) -> do
+                checkLitFits e0 W64 n
+                pure (emptySubst, W64, LitE (LitWidth W64) n)
+              (_, IntTy w) -> pure (emptySubst, w, e0)
+              _ -> do
+                s <- unifyIntSource nm e0 t0
+                pure (s, W64, e0)
+
+          -- An operand that is not yet known to be an integer.  Unifying with
+          -- the default integer type solves a metavariable; for a rigid
+          -- non-integer it produces a typed diagnostic naming the primitive.
+          unifyIntSource nm e0 t0 =
+            case zonkTy sbst t0 of
+              MetaTv{} -> unify e0 (IntTy W64) t0
+              t0' -> err $ (text nm <+> text "expects an integer operand, got"
+                              <+> doc t0' <+> text "instead.")
+                           $$ text "Gibbon does not implicitly convert between types."
+                           $$ exp_doc
+
       case pr of
         MkTrue  -> mk_bools
         MkFalse -> mk_bools
-        AddP    -> int_ops
-        SubP    -> int_ops
-        MulP    -> int_ops
-        DivP    -> int_ops
-        ModP    -> int_ops
-        ExpP    -> int_ops
+        AddP{}    -> int_ops
+        SubP{}    -> int_ops
+        MulP{}    -> int_ops
+        DivP{}    -> int_ops
+        ModP{}    -> int_ops
+        ExpP{}    -> int_ops
         FAddP   -> float_ops
         FSubP   -> float_ops
         FMulP   -> float_ops
         FDivP   -> float_ops
         FExpP   -> float_ops
-        EqIntP  -> int_cmps
-        LtP     -> int_cmps
-        GtP     -> int_cmps
-        LtEqP   -> int_cmps
-        GtEqP   -> int_cmps
+        EqIntP{}  -> int_cmps
+        LtP{}     -> int_cmps
+        GtP{}     -> int_cmps
+        LtEqP{}   -> int_cmps
+        GtEqP{}   -> int_cmps
         EqFloatP -> float_cmps
         EqCharP  -> char_cmps
         FLtP     -> float_cmps
@@ -235,7 +554,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
           len0
           pure (s1, BoolTy, PrimAppE pr args_tc)
 
-        RandP -> pure (s1, IntTy, PrimAppE pr args_tc)
+        RandP -> pure (s1, (IntTy W64), PrimAppE pr args_tc)
         FRandP-> pure (s1, FloatTy, PrimAppE pr args_tc)
         FSqrtP -> do
           len1
@@ -250,17 +569,43 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
         FloatToIntP -> do
           len1
           s2 <- unify (args !! 0) FloatTy (arg_tys' !! 0)
-          pure (s1 <> s2, IntTy, PrimAppE pr args_tc)
+          pure (s1 <> s2, (IntTy W64), PrimAppE pr args_tc)
 
-        IntToFloatP -> do
+        -- intToFloat accepts every integer width.  Its result is Float, so
+        -- there is no result context that could select the source; the width
+        -- comes from the operand exactly as for an explicit conversion.
+        IntToFloatP{} -> do
           len1
-          s2 <- unify (args !! 0) IntTy (arg_tys' !! 0)
-          pure (s1 <> s2, FloatTy, PrimAppE pr args_tc)
+          (s2, w, e0') <- resolveIntSourceOperand "intToFloat"
+          pure (s1 <> s2, FloatTy, PrimAppE (setIntPrimWidth w pr) [e0'])
 
-        PrintInt -> do
+        -- Explicit width conversion.  The destination is already fixed by the
+        -- surface name; only the SOURCE is inferred, and it is inferred from
+        -- the operand alone.  Note in particular that we do NOT check the
+        -- operand against the destination width: @toInt8 300@ must mean
+        -- "convert the Int64 literal 300", so 300 is range-checked at its own
+        -- source width (W64), not at W8.
+        IntConvertP _ dst -> do
           len1
-          s2 <- unify (args !! 0) IntTy (arg_tys' !! 0)
-          pure (s1 <> s2, ProdTy [], PrimAppE pr args_tc)
+          (s2, w, e0') <- resolveIntSourceOperand (convName dst)
+          pure (s1 <> s2, IntTy dst, PrimAppE (setIntPrimWidth w pr) [e0'])
+
+        -- PrintInt accepts any integer width.  There is no result context to
+        -- select one, so it comes from the operand: its own width if rigid,
+        -- the compatibility default if it is an unconstrained literal.
+        PrintInt{} -> do
+          len1
+          let e0 = args_tc !! 0
+              t0 = arg_tys' !! 0
+          w <- case (e0, t0) of
+                 (LitE LitUnresolved _, _) -> pure W64
+                 (_, IntTy w')             -> pure w'
+                 _ -> err $ text "printint expects an integer, got" <+> doc t0 $$ exp_doc
+          e0' <- case e0 of
+                   LitE LitUnresolved n -> do checkLitFits e0 w n
+                                              pure (LitE (LitWidth w) n)
+                   _ -> pure e0
+          pure (s1, ProdTy [], PrimAppE (setIntPrimWidth w pr) [e0'])
 
         PrintChar -> do
           len1
@@ -284,7 +629,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
 
         ReadInt -> do
           len0
-          pure (s1, IntTy, PrimAppE pr args_tc)
+          pure (s1, (IntTy W64), PrimAppE pr args_tc)
 
         SymSetEmpty -> do
           len0
@@ -376,19 +721,19 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
           len3
           s2 <- unify (args !! 0) IntHashTy (arg_tys' !! 0)
           s3 <- unify (args !! 1) SymTy0 (arg_tys' !! 1)
-          s4 <- unify (args !! 2) IntTy (arg_tys' !! 2)
+          s4 <- unify (args !! 2) (IntTy W64) (arg_tys' !! 2)
           pure (s1 <> s2 <> s3 <> s4, IntHashTy, PrimAppE pr args_tc)
 
         IntHashLookup -> do
           len2
           s2 <- unify (args !! 0) IntHashTy (arg_tys' !! 0)
           s3 <- unify (args !! 1) SymTy0 (arg_tys' !! 1)
-          pure (s1 <> s2 <> s3, IntTy, PrimAppE pr args_tc)
+          pure (s1 <> s2 <> s3, (IntTy W64), PrimAppE pr args_tc)
 
         VAllocP elty -> do
           len1
           let [i] = arg_tys'
-          s2 <- unify (args !! 0) IntTy i
+          s2 <- unify (args !! 0) (IntTy W64) i
           pure (s1 <> s2, VectorTy elty, PrimAppE pr args_tc)
 
         VFreeP elty -> do
@@ -407,28 +752,28 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
           len1
           let [ls] = arg_tys'
           s2 <- unify (args !! 0) (VectorTy elty) ls
-          pure (s1 <> s2, IntTy, PrimAppE pr args_tc)
+          pure (s1 <> s2, (IntTy W64), PrimAppE pr args_tc)
 
         VNthP elty -> do
           len2
           let [ls,i] = arg_tys'
           s2 <- unify (args !! 0) (VectorTy elty) ls
-          s3 <- unify (args !! 1) IntTy i
+          s3 <- unify (args !! 1) (IntTy W64) i
           pure (s1 <> s2 <> s3, elty, PrimAppE pr args_tc)
 
         VSliceP elty -> do
           len3
           let [from,to,ls] = arg_tys'
-          s2 <- unify (args !! 0) IntTy from
-          s3 <- unify (args !! 1) IntTy to
+          s2 <- unify (args !! 0) (IntTy W64) from
+          s3 <- unify (args !! 1) (IntTy W64) to
           s4 <- unify (args !! 2) (VectorTy elty) ls
-          pure (s1 <> s2 <> s3 <> s3 <> s4, VectorTy elty, PrimAppE pr args_tc)
+          pure (s1 <> s2 <> s3 <> s4, VectorTy elty, PrimAppE pr args_tc)
 
         InplaceVUpdateP elty -> do
           len3
           let [ls,i,val] = arg_tys'
           s2 <- unify (args !! 0) (VectorTy elty) ls
-          s3 <- unify (args !! 1) IntTy i
+          s3 <- unify (args !! 1) (IntTy W64) i
           s4 <- unify (args !! 2) elty val
           pure (s1 <> s2 <> s3 <> s4, VectorTy elty, PrimAppE pr args_tc)
 
@@ -447,7 +792,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
           len2
           let [ls,fp] = arg_tys'
           s2 <- unify (args !! 0) (VectorTy elty) ls
-          s3 <- unify (args !! 1) (ArrowTy [elty, elty] IntTy) fp
+          s3 <- unify (args !! 1) (ArrowTy [elty, elty] (IntTy W64)) fp
           pure (s1 <> s2 <> s3, VectorTy elty, PrimAppE pr args_tc)
 
         InplaceVSortP elty -> do
@@ -552,7 +897,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
 
         GetNumProcessors -> do
           len0
-          pure (s1, IntTy, PrimAppE pr args_tc)
+          pure (s1, (IntTy W64), PrimAppE pr args_tc)
 
         ErrorP _str ty -> do
           len0
@@ -560,13 +905,13 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
 
         SizeParam -> do
           len0
-          pure (s1, IntTy, PrimAppE pr args_tc)
+          pure (s1, (IntTy W64), PrimAppE pr args_tc)
 
         IsBig -> do
           len2
           let [ity, _ety] = arg_tys'
           -- s1 <- unify (args !! 0) (PackedTy)
-          s2 <- unify (args !! 0) IntTy ity
+          s2 <- unify (args !! 0) (IntTy W64) ity
           pure (s1 <> s2, BoolTy, PrimAppE pr args_tc)
 
         ReadPackedFile _fp _tycon _reg ty -> do
@@ -589,7 +934,11 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
 
 
     LetE (v, [], gvn_rhs_ty, rhs) bod -> do
-      (s1, drvd_rhs_ty, rhs_tc) <- go rhs
+      -- An annotated let binding is a directly typed position.  When the
+      -- binding is unannotated 'gvn_rhs_ty' is a metavariable and
+      -- 'tcExpChecked' degrades to plain synthesis.
+      (s1, drvd_rhs_ty, rhs_tc) <-
+        tcExpChecked ddefs sbst venv fenv bound_tyvars is_main gvn_rhs_ty rhs
       s2 <- unify rhs gvn_rhs_ty drvd_rhs_ty
       let s3         = s1 <> s2
           venv'      = zonkTyEnv s3 venv
@@ -632,19 +981,12 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
         (PackedTy tycon drvd_tyargs) -> do
           let ddf = lookupDDef ddefs tycon
           ddf' <- substTyVarDDef ddf drvd_tyargs
-          brs' <- L.nubBy ((==) `on` fst3) . concat <$> traverse (\x@(a,_,c) -> 
-              if a == "_default" 
-                then traverse (\(a', args) -> do
-                        args' <- traverse (bitraverse (\_ -> gensym "wildcard") pure) args
-                        pure (a', args', c) 
-                      ) (dataCons ddf)
-                else pure [x]
-            ) brs :: TcM [(DataCon, [(Var, Ty0)], Exp0)]
+          brs' <- expandDefaultBranches ddf brs
           let tycons_brs = map (getTyOfDataCon ddefs . fst3) brs'
           case L.nub tycons_brs of
             [one] -> if one == tycon
                      then do
-                       (s2,t2,brs_tc) <- tcCases ddefs s1 venv fenv bound_tyvars ddf' brs' is_main ex
+                       (s2,t2,brs_tc) <- tcCases ddefs s1 venv fenv bound_tyvars ddf' brs' is_main Nothing ex
                        pure (s2, t2, CaseE scrt_tc brs_tc)
                      else err $ text "Couldn't match" <+> doc one
                                 <+> "with:" <+> doc scrt_ty'
@@ -658,7 +1000,12 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
 
     DataConE _tyapps dcon args -> do
       (metas, arg_tys_inst, ret_ty_inst) <- instDataConTy ddefs dcon
-      (s1, arg_tys, args_tc) <- tcExps ddefs sbst venv fenv bound_tyvars (zip (repeat is_main) args)
+      -- Constructor fields are a directly typed position: pass the field type
+      -- down so that literal arguments pick up its width.
+      (s1, arg_tys, args_tc) <-
+        if length arg_tys_inst == length args
+        then tcExpsChecked ddefs sbst venv fenv bound_tyvars is_main (zip arg_tys_inst args)
+        else tcExps ddefs sbst venv fenv bound_tyvars (zip (repeat is_main) args)
       s2 <- unifyl ex arg_tys_inst arg_tys
       let s3 = s1 <> s2
           tyapps = ProdTy (map (zonkTy s3) metas)
@@ -755,10 +1102,29 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
     exp_doc = "In the expression: " <+> doc ex
 
 
+-- | The 'Maybe Ty0' is the type the surrounding context expects the case to
+-- have, when it knows one.  Every branch is *checked* against it rather than
+-- synthesized, so a literal base case takes the same width as the recursive
+-- branch.  Without this, @sumChain8 :: Chain -> Int8@ whose base case is @0@
+-- fails: the literal defaults to W64 and then disagrees with the Int8 branch.
+-- | Expand a @_default@ branch into one branch per data constructor.
+expandDefaultBranches :: DDef0 -> [(DataCon, [(Var, Ty0)], Exp0)]
+                      -> TcM [(DataCon, [(Var, Ty0)], Exp0)]
+expandDefaultBranches ddf brs =
+  L.nubBy ((==) `on` fst3) . concat <$> traverse
+    (\x@(a,_,c) ->
+       if a == "_default"
+       then traverse (\(a', args) -> do
+                        args' <- traverse (bitraverse (\_ -> gensym "wildcard") pure) args
+                        pure (a', args', c))
+                     (dataCons ddf)
+       else pure [x])
+    brs
+
 tcCases :: DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
-        -> DDef0 -> [(DataCon, [(Var, Ty0)], Exp0)] -> Bool -> Exp0
+        -> DDef0 -> [(DataCon, [(Var, Ty0)], Exp0)] -> Bool -> Maybe Ty0 -> Exp0
         -> TcM (Subst, Ty0, [(DataCon, [(Var, Ty0)], Exp0)])
-tcCases ddefs sbst venv fenv bound_tyvars ddf brs is_main ex = do
+tcCases ddefs sbst venv fenv bound_tyvars ddf brs is_main mb_expected ex = do
   (s1,tys,exps) <-
     foldlM
       (\(s,acc,ex_acc) (con,vtys,rhs) -> do
@@ -767,7 +1133,10 @@ tcCases ddefs sbst venv fenv bound_tyvars ddf brs is_main ex = do
             tys_gen = map (ForAll (tyArgs ddf L.\\ bound_tyvars)) tys
             venv' = venv <> (M.fromList $ zip vars tys_gen)
             vtys' = zip vars tys
-        (s', rhs_ty, rhs_tc) <- tcExp ddefs s venv' fenv bound_tyvars is_main rhs
+        (s', rhs_ty, rhs_tc) <-
+          case mb_expected of
+            Just expected -> tcExpChecked ddefs s venv' fenv bound_tyvars is_main expected rhs
+            Nothing       -> tcExp ddefs s venv' fenv bound_tyvars is_main rhs
         let rhs_ty' = zonkTy s' rhs_ty
             rhs_tc' = zonkExp s' rhs_tc
         pure (s', acc ++ [rhs_ty'], ex_acc ++ [(con,vtys',rhs_tc')]))
@@ -893,7 +1262,7 @@ emptySubst = Subst (M.empty)
 zonkTy :: Subst -> Ty0 -> Ty0
 zonkTy s@(Subst mp) ty =
   case ty of
-    IntTy   -> ty
+    IntTy{}   -> ty
     CharTy  -> ty
     FloatTy -> ty
     SymTy0  -> ty
@@ -962,6 +1331,7 @@ zonkExp s ex =
                   LLCopyP ty -> LLCopyP (zonkTy s ty)
                   InplaceVSortP ty -> InplaceVSortP (zonkTy s ty)
                   ReadArrayFile fp ty -> ReadArrayFile fp (zonkTy s ty)
+                  ErrorP msg ty -> ErrorP msg (zonkTy s ty)
                   _ -> pr
       in PrimAppE pr' (map go args)
     -- Let doesn't store any tyapps.
@@ -1114,7 +1484,7 @@ tyVarToMetaTy = go M.empty
     go :: M.Map TyVar Ty0 -> Ty0 -> TcM (M.Map TyVar Ty0, Ty0)
     go env ty =
      case ty of
-       IntTy    -> pure (env, ty)
+       IntTy{}    -> pure (env, ty)
        CharTy   -> pure (env, ty)
        FloatTy  -> pure (env, ty)
        SymTy0   -> pure (env, ty)
@@ -1161,7 +1531,11 @@ unify ex ty1 ty2
                  pure emptySubst
   | otherwise  = -- dbgTraceIt (sdoc ty1 ++ "/" ++ sdoc ty2) $
       case (ty1,ty2) of
-        (IntTy, IntTy)     -> pure emptySubst
+        -- Integer widths are part of the type: Int8 and Int32 are as
+        -- unrelated as Bool and Float.  Gibbon has no implicit integer
+        -- conversion, so unifying different widths must fail.  (The equal-width
+        -- case is already handled by the ty1 == ty2 guard above.)
+        (IntTy{}, IntTy{})     -> fail_
         (FloatTy,FloatTy)  -> pure emptySubst
         (BoolTy, BoolTy)   -> pure emptySubst
         (TyVar _, TyVar _) -> fail_

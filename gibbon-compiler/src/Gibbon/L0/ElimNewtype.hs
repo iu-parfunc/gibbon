@@ -57,7 +57,7 @@ elimE cns tns dds e0 = case e0 of
     | S.member s cns -> f e
   DataConE _ty0 s es -> DataConE _ty0 s (f <$> es)
   VarE _ -> e0
-  LitE _ -> e0
+  LitE{} -> e0
   CharE _ -> e0
   FloatE _ -> e0
   LitSymE _ -> e0

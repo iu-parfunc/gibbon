@@ -1,7 +1,8 @@
--- @BENCH adt_fields=3
--- @BENCH adt_type=List
-data ListA = ConsA Int ListA | NilA
-data List = Cons Int ListA List | Nil
+-- reduceNestedList: ListA (Linear), List (Factored).
+-- Functions: mkListA, mkList, reduce.
+-- Annotated: StoreScalarCounts on mkListA, mkList.
+data ListA = ConsA Int64 ListA | NilA
+data List = Cons Int64 ListA List | Nil
 
 {-# ANN type ListA "Linear" #-}
 {-# ANN type List "Factored" #-}

@@ -237,7 +237,7 @@ newTyVar :: MonadState Int m => m TyVar
 newTyVar = BoundTv <$> genLetter
 
 data Ty0
- = IntTy
+ = IntTy IntWidth
  | CharTy
  | FloatTy
  | SymTy0
@@ -272,7 +272,7 @@ instance Renamable TyVar where
 instance Renamable Ty0 where
   gRename env ty =
     case ty of
-      IntTy  -> IntTy
+      IntTy w  -> IntTy w
       CharTy -> CharTy
       FloatTy-> FloatTy
       SymTy0 -> SymTy0
@@ -353,7 +353,7 @@ tyVarsInTys tys = foldr (go []) [] tys
     go :: [TyVar] -> Ty0 -> [TyVar] -> [TyVar]
     go bound ty acc =
       case ty of
-        IntTy  -> acc
+        IntTy{}  -> acc
         CharTy -> acc
         FloatTy-> acc
         SymTy0 -> acc
@@ -388,7 +388,7 @@ metaTvsInTys tys = foldr go [] tys
         MetaTv tv -> if tv `elem` acc
                      then acc
                      else tv : acc
-        IntTy   -> acc
+        IntTy{}   -> acc
         CharTy  -> acc
         FloatTy -> acc
         SymTy0  -> acc
@@ -423,7 +423,7 @@ arrowTysInTy = go []
   where
     go acc ty =
       case ty of
-        IntTy    -> acc
+        IntTy{}    -> acc
         CharTy   -> acc
         FloatTy  -> acc
         SymTy0   -> acc
@@ -447,7 +447,7 @@ arrowTysInTy = go []
 substTyVar :: M.Map TyVar Ty0 -> Ty0 -> Ty0
 substTyVar mp ty =
   case ty of
-    IntTy    -> ty
+    IntTy{}    -> ty
     CharTy   -> ty
     FloatTy  -> ty
     SymTy0   -> ty
@@ -469,7 +469,7 @@ substTyVar mp ty =
     go = substTyVar mp
 
 isScalarTy0 :: Ty0 -> Bool
-isScalarTy0 IntTy  = True
+isScalarTy0 IntTy{}  = True
 isScalarTy0 CharTy = True
 isScalarTy0 SymTy0 = True
 isScalarTy0 BoolTy = True
@@ -502,10 +502,12 @@ recoverType :: DDefs0 -> Env2 Var Ty0 -> Exp0 -> Ty0
 recoverType ddfs env2 ex =
   case ex of
     VarE v       -> M.findWithDefault (error $ "recoverType: Unbound variable " ++ show v) v (vEnv env2)
-    LitE _       -> IntTy
+    -- L0 is the one IR where a literal may still be unresolved; report the
+    -- width it would default to rather than erroring.
+    LitE ann _   -> IntTy (litWidthL0 ann)
     CharE _      -> CharTy
     FloatE{}     -> FloatTy
-    LitSymE _    -> IntTy
+    LitSymE _    -> IntTy W64
     AppE v _ tyapps _ -> let (ForAll tyvars (ArrowTy _ retty)) = fEnv env2 # v
                        in substTyVar (M.fromList (fragileZip tyvars tyapps)) retty
     -- PrimAppE (DictInsertP ty) ((L _ (VarE v)):_) -> SymDictTy (Just v) ty
@@ -561,16 +563,24 @@ recoverType ddfs env2 ex =
         L _ e    -> recoverType ddfs env2 e
   where
     -- Return type for a primitive operation.
+    -- L0 is the one IR where a width-sensitive primitive may still be
+    -- unresolved (before inference runs).  Report the width it would default
+    -- to rather than erroring; every later IR uses 'intPrimWidth', which does
+    -- not guess.
+    intPrimWidthL0 :: IntPrimAnn -> IntWidth
+    intPrimWidthL0 IntPrimUnresolved = W64
+    intPrimWidthL0 (IntPrimWidth w)  = w
+
     primRetTy1 :: Prim Ty0 -> Ty0
     primRetTy1 p =
       case p of
-        AddP -> IntTy
-        SubP -> IntTy
-        MulP -> IntTy
-        DivP -> IntTy
-        ModP -> IntTy
-        ExpP -> IntTy
-        RandP-> IntTy
+        AddP a -> IntTy (intPrimWidthL0 a)
+        SubP a -> IntTy (intPrimWidthL0 a)
+        MulP a -> IntTy (intPrimWidthL0 a)
+        DivP a -> IntTy (intPrimWidthL0 a)
+        ModP a -> IntTy (intPrimWidthL0 a)
+        ExpP a -> IntTy (intPrimWidthL0 a)
+        RandP-> IntTy W64
         FAddP -> FloatTy
         FSubP -> FloatTy
         FMulP -> FloatTy
@@ -579,18 +589,19 @@ recoverType ddfs env2 ex =
         FSqrtP-> FloatTy
         FRandP-> FloatTy
         FTanP -> FloatTy
-        FloatToIntP -> IntTy
-        IntToFloatP -> FloatTy
+        FloatToIntP -> IntTy W64
+        IntToFloatP{} -> FloatTy
+        IntConvertP _ dst -> IntTy dst
         EqSymP  -> BoolTy
         EqBenchProgP _ -> BoolTy
-        EqIntP  -> BoolTy
+        EqIntP{}  -> BoolTy
         EqFloatP-> BoolTy
         EqCharP -> BoolTy
-        LtP  -> BoolTy
-        GtP  -> BoolTy
+        LtP{}  -> BoolTy
+        GtP{}  -> BoolTy
         OrP  -> BoolTy
-        LtEqP-> BoolTy
-        GtEqP-> BoolTy
+        LtEqP{}-> BoolTy
+        GtEqP{}-> BoolTy
         FLtP  -> BoolTy
         FGtP  -> BoolTy
         FLtEqP-> BoolTy
@@ -599,7 +610,7 @@ recoverType ddfs env2 ex =
         MkTrue  -> BoolTy
         MkFalse -> BoolTy
         Gensym  -> SymTy0
-        SizeParam      -> IntTy
+        SizeParam      -> IntTy W64
         IsBig          -> BoolTy
         DictHasKeyP _  -> BoolTy
         DictEmptyP ty  -> SymDictTy Nothing ty
@@ -608,7 +619,7 @@ recoverType ddfs env2 ex =
         VAllocP elty   -> VectorTy elty
         VFreeP _elty   -> ProdTy []
         VFree2P _elty  -> ProdTy []
-        VLengthP _elty -> IntTy
+        VLengthP _elty -> IntTy W64
         VNthP elty     -> elty
         VSliceP elty   -> VectorTy elty
         InplaceVUpdateP elty -> VectorTy elty
@@ -630,17 +641,17 @@ recoverType ddfs env2 ex =
         LLFreeP _elty   -> ProdTy []
         LLFree2P _elty  -> ProdTy []
         LLCopyP elty -> ListTy elty
-        GetNumProcessors -> IntTy
+        GetNumProcessors -> IntTy W64
         (ErrorP _ ty)  -> ty
         ReadPackedFile _ _ _ ty -> ty
         WritePackedFile{} -> ProdTy []
         ReadArrayFile _ ty      -> ty
-        PrintInt     -> ProdTy []
+        PrintInt{}     -> ProdTy []
         PrintChar    -> ProdTy []
         PrintFloat   -> ProdTy []
         PrintBool    -> ProdTy []
         PrintSym     -> ProdTy []
-        ReadInt      -> IntTy
+        ReadInt      -> IntTy W64
         RequestSizeOf-> error "primRetTy1: RequestSizeOf not handled yet"
         RequestEndOf -> error "primRetTy1: RequestEndOf not handled yet"
         SymSetEmpty  -> error "primRetTy1: SymSetEmpty not handled yet"

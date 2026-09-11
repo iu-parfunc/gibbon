@@ -1,0 +1,12 @@
+-- The one-constructor control.  Nothing to lift across a join; this shape
+-- always worked and must keep working, so that the repair is not "stop
+-- reordering".
+data T = A Int T | End
+{-# ANN type T "Linear" #-}
+mkT :: Int -> T
+mkT n = if n <= 0 then End else let rst = mkT (n - 1) in A n rst
+lenT :: T -> Int
+lenT t = case t of { End -> 0 ; A x rst -> 1 + lenT rst }
+sumA :: T -> Int
+sumA t = case t of { End -> 0 ; A x rst -> x + sumA rst }
+gibbon_main = let t = mkT @N@ in (lenT t, sumA t, 0)

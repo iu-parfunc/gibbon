@@ -20,11 +20,21 @@ import qualified Gibbon.L4.Syntax as T
 
 -- |
 import RouteEnds
+import OutputCompareTests
+import TimingOutputContract
+import IntWidths
+import IntWidthsPipeline
+import IntWidthsCompat
+import IntConversions
+import IntArithmetic
+import CArithModes
 import InferEffects
 import InferRegionScope
 import Unariser
 import AddRAN
 import LoopifyTraversals
+import ReorderScalarWrites
+import AssignScalarCountSlots
 import ScalarCountPropagation
 import SelectiveBufferSharing
 import VectorizeTraversals
@@ -41,13 +51,22 @@ main :: IO ()
 main = defaultMain allTests
   where allTests = testGroup "All"
                    [ tests
+                   , outputCompareTests
+                   , timingOutputContractTests
                    , addRANTests
                    , loopifyTraversalsTests
-                   , scalarCountPropagationTests
+                   , reorderScalarWritesTests
+                   , assignScalarCountSlotsTests, scalarCountPropagationTests
                    , selectiveBufferSharingTests
                    , vectorizeTraversalsTests
                    , codegenSimdTests
                    , routeEnds2Tests
+                   , intWidthTests
+                   , intWidthPipelineTests
+                   , intWidthsCompatTests
+                   , intConversionsTests
+                   , intArithmeticTests
+                   , cArithModesTests
                    , inferLocations2Tests
                    , inferEffects2Tests
                    , inferRegScopeTests

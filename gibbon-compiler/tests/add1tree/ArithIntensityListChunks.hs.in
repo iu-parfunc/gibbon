@@ -1,0 +1,41 @@
+-- BW-02 lane-tail/chunk-boundary fixture, one width per
+-- instantiation (@W@ is substituted). Correctness-only; NOT a benchmark.
+--
+-- List-shaped (unlike the committed ArithmeticIntensityIntN.hs's
+-- Fibonacci tree), so an EXACT node count is directly controllable via
+-- `sizeParam` -- needed to hit the lane-1/lane/lane+1/2*lane-1/2*lane/
+-- 2*lane+1 boundaries precisely. Same nonlinear mixing kernel
+-- (MayVectorize) and same order-sensitive checksum shape as
+-- ArithmeticIntensityIntN.hs's `arithKernel`/`checksumTree`, applied to a
+-- list instead of a tree.
+module ArithIntensityListChunks where
+
+data L = Cons Int@W@ L | Nil
+{-# ANN type L "Factored" #-}
+
+{-# ANN mkL "OPT:StoreScalarCounts" #-}
+mkL :: Int -> Int -> L
+mkL n seed =
+  if n <= 0
+  then Nil
+  else Cons (toInt@W@ (mod seed 64 - 32)) (mkL (n - 1) (seed * 2 + 1))
+
+{-# ANN arithKernelL "OPT:MayVectorize" #-}
+arithKernelL :: L -> L
+arithKernelL t =
+  case t of
+    Nil -> Nil
+    Cons x rst ->
+      let a = x * x + 17
+          b = a * a - x
+          c = b * x + a
+          d = c * c - b
+      in Cons (d + x) (arithKernelL rst)
+
+checksumL :: L -> Int@W@ -> Int@W@
+checksumL t h =
+  case t of
+    Nil -> h
+    Cons x rst -> checksumL rst (h * 31 + x)
+
+gibbon_main = checksumL (arithKernelL (mkL sizeParam 1)) (toInt@W@ 0)

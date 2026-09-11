@@ -19,7 +19,7 @@ sumMultiList xs =
     MNil -> 0
     MCons a b c d f rst -> a + b + c + d + sumMultiList rst
 
-{-# ANN add1MultiList "OPT:CanVectorize" #-}
+{-# ANN add1MultiList "OPT:MayVectorize" #-}
 add1MultiList :: MultiList -> MultiList
 add1MultiList xs =
   case xs of

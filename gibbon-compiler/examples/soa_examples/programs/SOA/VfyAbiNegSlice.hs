@@ -1,10 +1,4 @@
--- Independent verification of the RTS ABI width defect (F4).
---
--- `gib_vector_slice` is called from generated code.  Pre-fix its prototype was
--- `GibVector *gib_vector_slice(GibInt, GibInt, GibVector *)`, and `GibInt` is
--- `int32_t` in the generated TU (which is built with -DGIBBON_INT32 under
--- --int32) but `int64_t` in the RTS TU (which is never rebuilt per width).  A
--- negative index therefore arrives in the callee with a garbage upper half.
+-- VfyAbiNegSlice.
 gibbon_main =
   let v0 :: Vector Int
       v0 = valloc 8

@@ -1,15 +1,6 @@
--- CORRECTNESS reproducer (audit finding F3).
---
--- Recursive (no flags)                         : prints 1
--- --store-scalar-field-counts --enable-loopification : prints 0   (WRONG)
--- (fires with the explicit OPT:CanVectorize annotation; --auto-loopification
---  is not required)
---
--- Cause: Gibbon/Passes/LoopifyTraversals.hs `extractBranchPlans` only
--- inspects `Ext (WriteScalar ..)` bindings (stepWrite, line 681-716).  A
--- constructor branch that changes only the *tag* (NilA -> NilB) yields an
--- empty plan map and is accepted.  mkDConInnerLoop (line 1200-1217) then
--- copies input tags verbatim, so the constructor rewrite is dropped.
+-- LoopifyTagRewriteRepro: L (Factored).
+-- Functions: mkList, flipNil, endsWithB, sumList.
+-- Annotated: MayVectorize on flipNil; StoreScalarCounts on mkList.
 data L = Cons Int L | NilA | NilB
 {-# ANN type L "Factored" #-}
 
@@ -24,7 +15,7 @@ mkList n = if n <= 0
 -- scalar field.  Nullary constructors contribute no scalar buffers, so the
 -- LoopifyTraversals branch extractor sees an empty plan for the NilA branch
 -- and the generated dcon loop copies input tags verbatim.
-{-# ANN flipNil "OPT:CanVectorize" #-}
+{-# ANN flipNil "OPT:MayVectorize" #-}
 flipNil :: L -> L
 flipNil lst = case lst of
                 NilA -> NilB

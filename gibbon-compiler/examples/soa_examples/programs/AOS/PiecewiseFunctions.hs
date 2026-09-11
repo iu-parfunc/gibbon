@@ -1,11 +1,14 @@
--- @BENCH adt_fields=8
+-- PiecewiseFunctions: PW (Linear).
+-- Functions: absI, maxI, mixSeed, buildPW, norm2Estimate,
+-- truncateTolViolations, compressMass, autorefineMaxLevel. ...
+-- Annotated: MayVectorize on addConstPW, diffPW.
 data PW
-  = Leaf Int    -- scaling-function coefficient
-         Int    -- local scale level
-         Int    -- detail/error proxy
-  | Node Int    -- split dimension
-         Int    -- split value
-         Int    -- node level
+  = Leaf Int64    -- scaling-function coefficient
+         Int64    -- local scale level
+         Int64    -- detail/error proxy
+  | Node Int64    -- split dimension
+         Int64    -- split value
+         Int64    -- node level
          PW
          PW
 
@@ -58,7 +61,7 @@ truncateTolViolations p tol =
 compressMass :: PW -> Int
 compressMass p =
   case p of
-    Leaf c _ _ -> absI c
+    Leaf c _ _ -> if c < 0 then 0 - c else c
     Node _ _ _ l r -> compressMass l + compressMass r
 
 -- MADNESS-inspired fold: maximum active refinement level.
@@ -75,7 +78,7 @@ pmapCutHistogram :: PW -> Int -> Int
 pmapCutHistogram p cut =
   case p of
     Node dim split _ l r ->
-      let here = if split > cut then dim + 1 else 0
+      let here = if split > cut then (dim + 1) else 0
       in here + pmapCutHistogram l cut + pmapCutHistogram r cut
     Leaf _ _ _ -> 0
 
@@ -85,11 +88,11 @@ lbDeuxLoadProxy :: PW -> Int
 lbDeuxLoadProxy p =
   case p of
     Leaf _ lvl detail -> (lvl + 1) * (1 + detail / 8)
-    Node _ _ lvl l r -> (lvl + 1) + lbDeuxLoadProxy l + lbDeuxLoadProxy r
+    Node _ _ lvl l r -> lvl + 1 + lbDeuxLoadProxy l + lbDeuxLoadProxy r
 
 -- Map-like operator: add a constant potential term to all leaves.
 -- Inspiration: high-level MADNESS function addition on adaptive function variables.
-{-# ANN addConstPW "OPT:CanVectorize" #-}
+{-# ANN addConstPW "OPT:MayVectorize" #-}
 addConstPW :: PW -> Int -> PW
 addConstPW p c =
   case p of
@@ -98,7 +101,7 @@ addConstPW p c =
 
 -- Map-like operator: local differentiation proxy on basis coefficients.
 -- Inspiration: MADNESS operator differentiation over function trees.
-{-# ANN diffPW "OPT:CanVectorize" #-}
+{-# ANN diffPW "OPT:MayVectorize" #-}
 diffPW :: PW -> PW
 diffPW p =
   case p of
@@ -106,7 +109,7 @@ diffPW p =
     Node d v lvl l r -> Node d v lvl (diffPW l) (diffPW r)
 
 gibbon_main =
-            let _ = printsym (quote "Running Program Piecewise Functions (MADNESS style): ")
+            let _ = printsym (quote "Running program Piecewise Functions (MADNESS style): ")
                 _ = printsym (quote "NEWLINE")
                 pfTree = buildPW (sizeParam + 23) 17
 
@@ -140,12 +143,12 @@ gibbon_main =
                 loadW = iterate (lbDeuxLoadProxy pfTree)
                 _ = printsym (quote "End")
                 _ = printsym (quote "NEWLINE")
-                _ = printsym (quote "Running pass addConstPW (map, uses=8): ")
+                _ = printsym (quote "Running pass addConstPW (map, uses=8, shared=5): ")
                 _ = printsym (quote "NEWLINE")
                 shifted = iterate (addConstPW pfTree 10)
                 _ = printsym (quote "End")
                 _ = printsym (quote "NEWLINE")
-                _ = printsym (quote "Running pass diffPW (map, uses=8): ")
+                _ = printsym (quote "Running pass diffPW (map, uses=8, shared=4): ")
                 _ = printsym (quote "NEWLINE")
                 _diffed = iterate (diffPW shifted)
                 _ = printsym (quote "End")

@@ -103,22 +103,22 @@ tester1 e = case fst $ fst $ defaultPackedRunPassM $ St.runStateT (runExceptT (i
               Left a -> error $ show a
 
 t1 :: Exp2
-t1 = tester1 (L1.LitE 3)
+t1 = tester1 (L1.mkLitE64 3)
 
 t2 :: Exp2
 t2 = tester1 $
-     L1.LetE ("x",[],IntTy,L1.LitE 1) $
-     L1.LetE ("y",[],IntTy,L1.LitE 2) $
-     L1.LetE ("z",[],IntTy,L1.PrimAppE L1.AddP [L1.VarE "x", L1.VarE "y"]) $
+     L1.LetE ("x",[],IntTy W64,L1.mkLitE64 1) $
+     L1.LetE ("y",[],IntTy W64,L1.mkLitE64 2) $
+     L1.LetE ("z",[],IntTy W64,L1.PrimAppE L1.addP64 [L1.VarE "x", L1.VarE "y"]) $
      L1.VarE "z"
 
 case_t1 :: Assertion
-case_t1 = t1 @=? (LitE 3)
+case_t1 = t1 @=? (mkLitE64 3)
 
 case_t2 :: Assertion
-case_t2 = t2 @=? (LetE ("x",[],IntTy,LitE 1) $
-                  LetE ("y",[],IntTy,LitE 2) $
-                  LetE ("z",[],IntTy,PrimAppE L2.AddP [VarE "x", VarE "y"]) $
+case_t2 = t2 @=? (LetE ("x",[],IntTy W64,mkLitE64 1) $
+                  LetE ("y",[],IntTy W64,mkLitE64 2) $
+                  LetE ("z",[],IntTy W64,PrimAppE L2.addP64 [VarE "x", VarE "y"]) $
                   VarE "z")
 
 

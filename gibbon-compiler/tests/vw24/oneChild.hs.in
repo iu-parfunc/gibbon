@@ -1,0 +1,30 @@
+-- VW-24 minimal reproducer: ONE child. `agg` is computed by calling a
+-- getter (AppE) on the already-constructed child `c0`, then `c0` is
+-- re-embedded as the constructor's own child argument -- the shape that
+-- exposed the bug (a repeated read-then-reconstruct of the same value).
+data T = Leaf Int32
+       | Node Int32   -- ctl: pass-through-ish constant control field
+              Int32   -- agg: computed from the single child
+              T
+
+{-# ANN type T "Linear" #-}
+
+getAgg :: T -> Int32
+getAgg t =
+  case t of
+    Leaf v -> v
+    Node _ agg _ -> agg
+
+buildT :: Int -> T
+buildT d =
+  if d == 0
+  then Leaf 7
+  else
+    let c0 = buildT (d - 1)
+        agg = getAgg c0
+    in Node 99 agg c0
+
+gibbon_main =
+  let t = buildT @D@
+      a = getAgg t
+  in a

@@ -192,7 +192,7 @@ handleScalarRet bod fn = do
         let e1 = (LetE (tmp,[],bind_ty,bind_e) (VarE tmp))
         pure $ fn e1
   case bod of
-    LitE n -> bind_and_recur (LitE n) IntTy
+    LitE ann n -> bind_and_recur (LitE ann n) (IntTy (litWidth ann))
     CharE n -> bind_and_recur (CharE n) CharTy
     FloatE n -> bind_and_recur (FloatE n) FloatTy
     LitSymE n -> bind_and_recur (LitSymE n) SymTy
@@ -697,7 +697,7 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
                                (VarE v')
                  exp dflags inst_waiting_on_loc fns retlocs eor (M.insert (fromVarToFreeVarsTy v') loc lenv) afterenv (extendVEnvLocVar (fromVarToFreeVarsTy v') ty env2) (e')
 
-          LitE i -> return (LitE i)
+          LitE ann i -> return (LitE ann i)
           CharE i -> return (CharE i)
           FloatE i -> return (FloatE i)
 

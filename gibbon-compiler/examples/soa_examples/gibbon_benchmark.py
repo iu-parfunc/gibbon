@@ -72,12 +72,15 @@ Usage:
   ./gibbon_benchmark.py --dump-raw                   save raw exe output
 """
 
-import os, re, sys, json, time, shutil, argparse, statistics, subprocess, textwrap, datetime, math
+import os, re, sys, json, time, shutil, argparse, statistics, subprocess, textwrap, datetime, math, signal
+import platform
 try:
     import resource
 except ImportError:
     resource = None
 import multiprocessing
+import fnmatch
+import difflib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -98,7 +101,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # Default program list
 # ---------------------------------------------------------------------------
 DEFAULT_PROGRAMS = [
-    "Compiler.hs", "DBQuery.hs", "DecisionTree.hs", "DomTree.hs",
+    "Compiler.hs", "DBQuery.hs", "DecisionTree.hs", "DecisionTreeClassify.hs",
+    "DomTree.hs",
     "KDTree.hs", "LinearListReduction.hs", "reduceNestedList.hs",
     "List.hs", "MonoTree.hs",
     "ObjectGraph.hs",
@@ -106,30 +110,536 @@ DEFAULT_PROGRAMS = [
     "OctTree_countActive.hs", "OctTree_countParticles.hs",
     "OctTree_barnesHutPotential.hs", "OctTree_fmmPotential.hs",
     "OctTree_scaleEnergy.hs", "OctTree_clearFlags.hs",
-    "PiecewiseFunctions.hs", "TernaryTree.hs", "Trie.hs", "ColorOctree.hs"
+    # PiecewiseFunctions ships as one executable per timed pass (see
+    # PROGRAM_MERGE_GROUPS); the tables fold these eight back into a single
+    # "PiecewiseFunctions" row/table.
+    "PiecewiseFunctions_norm2Estimate.hs",
+    "PiecewiseFunctions_truncateTolViolations.hs",
+    "PiecewiseFunctions_compressMass.hs",
+    "PiecewiseFunctions_autorefineMaxLevel.hs",
+    "PiecewiseFunctions_pmapCutHistogram.hs",
+    "PiecewiseFunctions_lbDeuxLoadProxy.hs",
+    "PiecewiseFunctions_addConstPW.hs",
+    "PiecewiseFunctions_diffPW.hs",
+    "TernaryTree.hs", "Trie.hs", "ColorOctree.hs"
 ]
 
+# The four-width add1Tree correctness-generation family. Deliberately NOT
+# part of DEFAULT_PROGRAMS -- these are opt-in via --add1tree-widths (the
+# same "narrow opt-in flag" pattern as --benchmark-ghc/--benchmark-mlton
+# below), not unconditionally included in every default run. This family
+# performs no timing; the constant and its collection/table plumbing exist
+# so a future full-mode invocation can request all four programs and emit
+# the width table without special manual post-processing.
+ADD1TREE_WIDTH_PROGRAMS = [
+    "Add1TreeInt8.hs", "Add1TreeInt16.hs", "Add1TreeInt32.hs", "Add1TreeInt64.hs",
+]
+
+class ProgramSelectionError(ValueError):
+    """Raised by resolve_program_selection for an unusable --programs /
+    --exclude-programs combination (an unknown name, or an exclusion set
+    that leaves nothing to run)."""
+
+
+def normalize_program_name(name: str) -> str:
+    """Canonicalize a program name to its `Foo.hs` basename, so the command
+    line accepts `Trie`, `Trie.hs` and `programs/AOS/Trie.hs` alike."""
+    stem = Path(name).name
+    return stem if stem.endswith(".hs") else stem + ".hs"
+
+
+def resolve_program_selection(selected: Optional[List[str]],
+                              excluded: Optional[List[str]],
+                              default_programs: Optional[List[str]] = None,
+                              programs_dir: Optional[Path] = None) -> List[str]:
+    """The program list a run actually benchmarks.
+
+    --programs picks the candidate set (default: DEFAULT_PROGRAMS);
+    --exclude-programs then subtracts from whatever that set is, which is
+    what lets a full evaluation skip a benchmark that is broken, too slow,
+    or otherwise not wanted for this campaign without having to retype the
+    other 21 names. Both accept the loose spellings normalize_program_name
+    handles.
+
+    Each exclusion is a shell-style glob matched case-insensitively against
+    the whole candidate name (fnmatch: `*`, `?`, `[...]`), so a family comes
+    out in one entry rather than name by name. Note that the octree family
+    is spelled two ways -- OctTree_*.hs is Oct+Tree, ColorOctree.hs is
+    Color+Octree -- so `OctTree*` leaves ColorOctree.hs behind; all nine
+    take either two patterns (`OctTree* ColorOctree.hs`) or one that spans
+    both spellings (`*oct*ree*`). Matching is anchored to the full name, not
+    a substring search, which is what keeps a literal `List.hs` from also
+    taking LinearListReduction.hs and reduceNestedList.hs; a literal name
+    has no wildcards and so still matches only itself.
+
+    An exclusion that matches NOTHING in the candidate set is an ERROR, not
+    a silent no-op: a typo (or a pattern the shell already expanded) would
+    otherwise leave the unwanted benchmark in a multi-hour run, and the
+    mistake would only surface in the results. Excluding everything is
+    likewise an error rather than a no-op run.
+
+    A --programs entry naming a program with NO source file is likewise an
+    error, when `programs_dir` is supplied so existence can be checked. It was
+    not, and that cost a real multi-hour run: `--programs Add1Tree8.hs` (the
+    actual name is Add1TreeInt8.hs) was accepted, every configuration failed
+    "source not found", and the run produced a report of nothing but failures
+    and a PDF with no per-program tables at all -- the mistake only visible
+    after the fact. An unmatched --exclude-programs pattern was already an
+    error for exactly this reason; a misspelled --programs entry is the same
+    mistake and now fails the same way, with near-miss suggestions."""
+    candidates = [normalize_program_name(p)
+                  for p in (selected if selected
+                            else (default_programs if default_programs is not None
+                                  else DEFAULT_PROGRAMS))]
+    if selected and programs_dir is not None:
+        missing = [c for c in candidates
+                   if not _program_source_exists(programs_dir, c)]
+        if missing:
+            known = _known_program_names(programs_dir)
+            hints = []
+            for m in missing:
+                close = difflib.get_close_matches(m, known, n=3, cutoff=0.6)
+                hints.append("%s%s" % (repr(m),
+                                       " (did you mean %s?)"
+                                       % " or ".join(repr(c) for c in close)
+                                       if close else ""))
+            raise ProgramSelectionError(
+                "--programs names %s, which has no source under %s/AOS or "
+                "%s/SOA. Nothing would be benchmarked for it."
+                % (" and ".join(hints), programs_dir, programs_dir))
+    patterns = [normalize_program_name(p) for p in (excluded or [])]
+    dropset: set = set()
+    unmatched: List[str] = []
+    for pat in patterns:
+        # fnmatch.fnmatch() would normcase via the platform, which is a
+        # no-op on POSIX -- lowercase both sides explicitly instead.
+        hits = [c for c in candidates
+                if fnmatch.fnmatchcase(c.lower(), pat.lower())]
+        if not hits:
+            unmatched.append(pat)
+        dropset.update(hits)
+    if unmatched:
+        raise ProgramSelectionError(
+            "--exclude-programs entry %s matched no program in the list for "
+            "this run (%s). Available: %s"
+            % (" and ".join(repr(p) for p in unmatched),
+               "from --programs" if selected else "DEFAULT_PROGRAMS",
+               ", ".join(candidates)))
+    kept = [p for p in candidates if p not in dropset]
+    if not kept:
+        raise ProgramSelectionError(
+            "--exclude-programs excluded every program in the run; nothing left "
+            "to benchmark.")
+    return kept
+
+
+def _program_source_exists(programs_dir: Path, program: str) -> bool:
+    """Does this program have a source in EITHER layout?
+
+    Either is enough: a program present only as AoS or only as SoA is a
+    partial-coverage case the tables already render, whereas a name present in
+    neither cannot produce a single measurement.
+    """
+    d = Path(programs_dir)
+    return (d / "AOS" / program).exists() or (d / "SOA" / program).exists()
+
+
+def _known_program_names(programs_dir: Path) -> List[str]:
+    """Every program name that could legitimately be asked for, for
+    near-miss suggestions on a misspelled --programs entry."""
+    d = Path(programs_dir)
+    names = set(DEFAULT_PROGRAMS) | set(PLDI_EXTRA_PROGRAMS)
+    for layout in ("AOS", "SOA"):
+        sub = d / layout
+        if sub.is_dir():
+            names.update(f.name for f in sub.glob("*.hs"))
+    return sorted(names)
+
+
 # Per-program compile overrides for benchmarks that need non-default flags.
-PROGRAM_COMPILE_OVERRIDES = {
-    "reduceNestedList.hs": {
-        "aos": {
-            "use_mutable_cursors": True,
-            "use_no_ran": False,
-        },
-        "aos_imm": {
-            "use_mutable_cursors": False,
-            "use_no_ran": False,
-        },
-        "soa": {
-            "use_mutable_cursors": True,
-            "use_no_ran": False,
-        },
-        "soa_imm": {
-            "use_mutable_cursors": False,
-            "use_no_ran": False,
-        },
-    },
+#
+# No override may weaken the campaign-wide --no-ran policy for a curated
+# program: `--no-ran` is a correctness/provenance requirement, not a
+# per-program tuning knob, and reduceNestedList.hs in particular is
+# independently driver-QUALIFIED under --no-ran (see
+# benchmark_qualification.md), so no entry here should ever need to disable
+# it. `_validate_no_ran_overrides` below runs at every benchmark invocation
+# and raises loudly if any entry here (or in any override table) ever
+# weakens `use_no_ran` for a curated/default program -- see that function's
+# docstring.
+PROGRAM_COMPILE_OVERRIDES: Dict[str, Dict[str, Dict]] = {}
+
+
+# Programs measured with random-access nodes ENABLED, by explicit exception to
+# the campaign-wide --no-ran policy.
+#
+# The policy exists because a result compiled with RAN silently enabled is not
+# admissible evidence for the timing campaign.  The operative word is
+# SILENTLY: an exception is admissible when it is named, justified, and
+# reported as such, which is what this table and 'ran_caption_note' provide.
+# Everything not listed here still gets --no-ran, and
+# '_validate_no_ran_overrides' still rejects any attempt to disable it by
+# other means.
+#
+# Each value states why the exception is sound FOR THAT PROGRAM. Adding an
+# entry requires re-qualifying the program under RAN against its oracle --
+# the existing qualification was established under --no-ran and does not
+# carry over on its own.
+RAN_ENABLED_PROGRAMS: Dict[str, str] = {
+    "DecisionTreeClassify.hs":
+        "classify follows a single root-to-leaf path. Without random-access "
+        "nodes, descending to a right child must first walk the entire left "
+        "subtree, so the benchmark measured subtree-skipping rather than "
+        "classification: _traverse_DTree was 90.7% of cycles under AoS and "
+        "93.7% under SoA, and the AoS/SoA ratio it reported (1.52x) was an "
+        "artifact of that walk -- with RAN the two layouts are within 1.03x. "
+        "Re-qualified under RAN: AoS and SoA, each with and without RAN, all "
+        "four produce the oracle's '#(1907500 -210000) at the driver's own "
+        "--size-param 0.",
 }
+
+
+def program_uses_no_ran(program: str, use_ran: bool = False) -> bool:
+    """Should this program be compiled with --no-ran?
+
+    Yes for everything except the explicitly re-qualified exceptions in
+    'RAN_ENABLED_PROGRAMS', and no for any run that asked for RAN globally.
+    """
+    if use_ran:
+        return False
+    return normalize_program_name(program) not in RAN_ENABLED_PROGRAMS
+
+
+def ran_caption_note(program: str) -> str:
+    """The sentence a table must carry when a program was measured with RAN.
+
+    The --no-ran policy permits an exception only if the result is labelled
+    RAN-enabled wherever it is reported; this is that label.
+    """
+    if normalize_program_name(program) not in RAN_ENABLED_PROGRAMS:
+        return ""
+    return ("\\textbf{Measured with random-access nodes enabled} "
+            "(no \\texttt{--no-ran}), unlike every other benchmark in this "
+            "campaign: without them this program measures subtree-skipping "
+            "rather than the traversal it names. See "
+            "\\texttt{RAN\\_ENABLED\\_PROGRAMS} for the justification and "
+            "its re-qualification against the oracle. ")
+
+
+def _validate_no_ran_overrides(overrides: Dict[str, Dict[str, Dict]] = PROGRAM_COMPILE_OVERRIDES) -> None:
+    """Fail loudly if ANY program/variant entry in a compile-override
+    table tries to weaken the campaign-wide `--no-ran` policy.
+
+    `--no-ran` is a correctness/provenance requirement, not a per-program
+    tuning knob: RAN bugs and RAN performance are explicitly deferred (see
+    BUGS.md), so a curated/default benchmark result compiled with RAN
+    silently enabled is not admissible evidence for the timing campaign,
+    no matter how it got there. This validator is the single place that
+    enforces that -- called from `benchmark_program`/`main` before any
+    override is consulted, so a future override entry that sets
+    `use_no_ran: False` (or omits the key while trying to disable it some
+    other way) is rejected at the source, not discovered later by staring
+    at a suspiciously large speedup.
+    """
+    violations = []
+    for prog, variants in overrides.items():
+        for variant, opts in variants.items():
+            if opts.get("use_no_ran") is False and prog not in RAN_ENABLED_PROGRAMS:
+                violations.append("%s[%s]: use_no_ran=False" % (prog, variant))
+    if violations:
+        raise RuntimeError(
+            "VW-36 policy violation: a PROGRAM_COMPILE_OVERRIDES entry weakens "
+            "the campaign-wide --no-ran requirement for a curated/default "
+            "program. RAN bugs and RAN performance are deferred; no override "
+            "may silently disable --no-ran. Offending entries:\n  " +
+            "\n  ".join(violations) +
+            "\nIf a program genuinely needs a RAN-enabled measurement, use "
+            "--use-ran explicitly for that single invocation and label the "
+            "result as RAN-enabled in every table/report -- never bake it "
+            "into the default campaign path. A program that genuinely needs "
+            "RAN for every run belongs in RAN_ENABLED_PROGRAMS, which "
+            "requires re-qualifying it under RAN and makes every table say "
+            "so; it is not the same thing as an unannounced override.")
+
+
+# Defense in depth: validate at import time too, so the violation is caught
+# by merely loading this module (e.g. from a test or a REPL), not only by
+# reaching benchmark_program()'s own call.
+_validate_no_ran_overrides()
+
+# ---------------------------------------------------------------------------
+# Benchmark-driver C arithmetic mode policy
+#
+# The driver's own default is `unsafe` (native C operators, no
+# `-fwrapv`) -- distinct from Gibbon the COMPILER's own default, which stays
+# `portable` (see Gibbon.Common.defaultConfig). Every Gibbon compile the
+# driver issues must pass `--c-arithmetic=<mode>` EXPLICITLY; the driver must
+# never rely on Gibbon's own default, so a curated benchmark's arithmetic
+# mode is always the one this file's caller asked for, not whatever Gibbon
+# ships with next.
+# ---------------------------------------------------------------------------
+C_ARITH_MODES = ("portable", "wrapv", "unsafe")
+DEFAULT_C_ARITH_MODE = "unsafe"
+
+# SIMD instruction set every configuration in a comparison is compiled for --
+# BOTH Gibbon's own vectorizer (which picks its register width from it) and the
+# C compiler's auto-vectorizer (which gets the matching -m flag).
+#
+# avx2 rather than sse2 because that is what this machine is: pinning it to the
+# baseline would report numbers for hardware nobody is running.  It is pinned
+# EXPLICITLY, and identically for every configuration, because Gibbon's own
+# default depends on whether --opt-vectorization was given -- so leaving it
+# implicit would compile the Gibbon-vectorized column for a 256-bit target and
+# everything it is compared against for the x86-64 baseline.
+#
+# Note `native` is deliberately NOT the default: on a machine with AVX-512 it
+# would let the C compiler's auto-vectorizer go wider than Gibbon's vectorizer
+# can (there is no 512-bit helper set), which is the same asymmetry again.
+DEFAULT_SIMD_ISA = "avx2"
+SIMD_ISA_CHOICES = ("sse2", "avx2", "native")
+
+
+# Routine per-item chatter (paths, mtimes, per-compile status) is suppressed
+# while the pinned progress display is showing, because a two-line bar is not
+# readable next to a fast-scrolling log. Warnings, failures and qualification
+# problems are NOT routed through this -- they use plain print() and scroll
+# above the bar as usual, so nothing diagnostic is ever hidden.
+#
+# --verbose restores the full output and turns the bar off, which is the mode
+# to use when investigating one specific compile.
+_VERBOSE = True
+_PROGRESS = None
+
+
+def set_verbosity(verbose: bool) -> None:
+    global _VERBOSE
+    _VERBOSE = bool(verbose)
+
+
+def vprint(*args, **kwargs) -> None:
+    """print() for routine progress chatter; silent unless --verbose."""
+    if _VERBOSE:
+        print(*args, **kwargs)
+
+
+def set_progress(display) -> None:
+    global _PROGRESS
+    _PROGRESS = display
+
+
+def progress():
+    """The active display, or a no-op stand-in."""
+    if _PROGRESS is not None:
+        return _PROGRESS
+    import bench_progress
+    return bench_progress.NullProgress()
+
+
+def _parse_cpu_list(text: str) -> List[int]:
+    """Parse a Linux CPU list such as "0-15" or "0,2,4-7"."""
+    out: List[int] = []
+    for part in (text or "").strip().split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            lo, _, hi = part.partition("-")
+            try:
+                out.extend(range(int(lo), int(hi) + 1))
+            except ValueError:
+                continue
+        else:
+            try:
+                out.append(int(part))
+            except ValueError:
+                continue
+    return out
+
+
+def reserve_pin_cpu(pin_cpu: Optional[int]) -> bool:
+    """Keep the DRIVER off the core reserved for measurement.
+
+    Pinning the benchmark to a core does not reserve it: the driver, its
+    compile subprocesses and the progress ticker are all still schedulable
+    there, so the measurement competes with the tool measuring it. Restricting
+    this process to every core EXCEPT the pinned one fixes that, and children
+    inherit the restriction -- so compiles stay off it too.
+
+    The timed run itself is launched through `taskset -c <pin>`, which
+    explicitly widens that child's affinity back to the reserved core.
+    Verified: a plain child inherits the exclusion, while a taskset child
+    lands on CPU <pin> alone.
+
+    Returns True if the reservation was applied.
+    """
+    if pin_cpu is None or not hasattr(os, "sched_setaffinity"):
+        return False
+    try:
+        allowed = set(os.sched_getaffinity(0))
+    except OSError:
+        return False
+    rest = allowed - {pin_cpu}
+    if not rest:
+        # A single-CPU machine (or an already-restricted cpuset): reserving
+        # would leave the driver nowhere to run.
+        return False
+    try:
+        os.sched_setaffinity(0, rest)
+        return True
+    except OSError:
+        return False
+
+
+def default_pin_cpu() -> Optional[int]:
+    """A performance core to pin timed runs to, or None if pinning is
+    impossible.
+
+    Timed runs are pinned because an unpinned number is not comparable
+    run-to-run on a HYBRID machine. On this project's i7-12700K the kernel
+    may schedule a run on a P-core or on a much slower E-core, or migrate it
+    mid-measurement, and `perf` reports the two core types as separate
+    `cpu_core/` and `cpu_atom/` counter sets -- a run that straddles both
+    yields counts that belong to neither.
+
+    Intel hybrid parts publish the P-core list at
+    /sys/devices/cpu_core/cpus; a non-hybrid machine has no such file and
+    every core is equivalent, so CPU 0 is fine there. CPU 0 is avoided when
+    there is a choice because it typically carries the bulk of interrupt
+    handling.
+    """
+    if not shutil.which("taskset"):
+        return None
+    try:
+        cpus = _parse_cpu_list(Path("/sys/devices/cpu_core/cpus").read_text())
+    except OSError:
+        cpus = []
+    if not cpus:
+        return 0
+    # Skip CPU 0 AND its SMT siblings. On this project's 12700K, CPU 1 is the
+    # second hyperthread of CPU 0's physical core, so pinning there would
+    # share execution resources with the core that handles most interrupts --
+    # the noise this pinning exists to remove.
+    avoid = set()
+    try:
+        avoid = set(_parse_cpu_list(
+            Path("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list").read_text()))
+    except OSError:
+        avoid = {0}
+    avoid.add(0)
+    for c in cpus:
+        if c not in avoid:
+            return c
+    return cpus[0]
+
+# The SIMD target the CURRENT report was compiled for, named in table captions
+# so a reader can tell which hardware the numbers describe -- and, more to the
+# point, that every column describes the SAME hardware.  Run-scoped rather than
+# threaded through each table writer: one report is one ISA by construction,
+# since the driver passes a single --simd-isa to every compile.
+_REPORT_SIMD_ISA = DEFAULT_SIMD_ISA
+
+
+def set_report_simd_isa(isa: str) -> None:
+    """Record the ISA this report's tables were compiled for."""
+    global _REPORT_SIMD_ISA
+    _REPORT_SIMD_ISA = isa
+
+
+# Whether every compile in THIS run passes --reclaim-iterate-regions.
+#
+# Gibbon's `iterate` loop rewinds to its output region's first chunk and
+# re-grows it each iteration, stranding the previous iteration's chunk chain:
+# memory grows by one whole output value per iteration (929 MB/iteration for a
+# 100M-element list, i.e. an OOM kill at --iterate 101).  The compiler flag is
+# opt-in, so this is too.
+#
+# Run-scoped rather than threaded through every config dict, and consumed
+# inside `build_gibbon_command` -- the single point every compile passes
+# through.  Threading it through the ~20 config dictionaries instead would let
+# one of them silently miss the flag, which is exactly the failure this must
+# not have: a campaign where some columns reclaim and others do not is not
+# comparable.
+RECLAIM_ITERATE_REGIONS = False
+
+
+def set_reclaim_iterate_regions(enabled: bool) -> None:
+    """Turn region reclamation on for every compile in this run."""
+    global RECLAIM_ITERATE_REGIONS
+    RECLAIM_ITERATE_REGIONS = bool(enabled)
+
+
+def reclaim_caption_note() -> str:
+    """One clause for table captions when reclamation is on.
+
+    Worth naming in the report: it changes runtime memory behaviour and, at
+    large outputs, the measured times too -- the un-fixed loop makes the kernel
+    supply fresh zeroed pages for memory it leaked, and that cost disappears.
+    """
+    if not RECLAIM_ITERATE_REGIONS:
+        return ""
+    return ("Every configuration was compiled with "
+            "\\texttt{--reclaim-iterate-regions}, so the per-iteration region "
+            "chunks are freed rather than stranded; peak memory is flat in the "
+            "iteration count instead of linear. ")
+
+
+def no_gcc_vec_caption_note() -> str:
+    """One sentence for the two integer-width table captions.
+
+    Both tables compile EVERY column with the C compiler's auto-vectorizer
+    off, so the only vectorization they can show is Gibbon's own.  Saying so
+    matters because the alternative reading -- that these are ordinary builds
+    -- would make the absolute times look unaccountably slow next to the
+    per-program tables, which do leave the C vectorizer on."""
+    return ("Every column is compiled with the C compiler's auto-vectorizer "
+            "disabled (\\texttt{--no-gcc-vectorize}, which suppresses "
+            "basic-block/SLP vectorization as well as loop vectorization), so "
+            "the SIMD column isolates Gibbon's own vectorizer rather than the "
+            "backend's; absolute times are correspondingly higher than a "
+            "default build. ")
+
+
+def simd_isa_caption_note() -> str:
+    """One sentence for a table caption, naming the shared SIMD target.
+
+    This exists because the comparison is only meaningful if every column was
+    compiled for the same instruction set, and that fact is invisible in the
+    numbers themselves.
+    """
+    detail = {
+        "sse2": "128-bit SSE2, the x86-64 baseline (no \\texttt{-m} flag)",
+        "avx2": "256-bit AVX2 (\\texttt{-mavx2})",
+        "native": "\\texttt{-march=native} (256-bit registers for Gibbon's own vectorizer)",
+    }.get(_REPORT_SIMD_ISA, _REPORT_SIMD_ISA)
+    return ("Every configuration was compiled for the same SIMD target, " + detail
+            + "; Gibbon's vectorizer and the C compiler's auto-vectorizer both "
+              "target it, so the columns are like-for-like. ")
+
+
+def _validate_c_arith_mode(mode: str) -> str:
+    """Reject anything but the three Gibbon-recognized modes before it ever
+    reaches an argv list. Defense in depth against a typo or a future caller
+    passing an arbitrary string straight through to `--c-arithmetic=`."""
+    if mode not in C_ARITH_MODES:
+        raise ValueError(
+            f"invalid --c-arithmetic mode {mode!r}; must be one of "
+            f"{', '.join(C_ARITH_MODES)}")
+    return mode
+
+
+def check_arithmetic_mode_consistency(records: List[Dict]) -> Optional[str]:
+    """Given a list of serialized result records (each with an `arith_mode`
+    key), return an error string if more than one distinct mode is present,
+    else None. A single report must never silently mix artifacts compiled
+    under different arithmetic-mode policies -- reports from different
+    arithmetic modes must not be silently merged or compared as if they used
+    the same configuration."""
+    modes = {r.get("arith_mode") for r in records if r and r.get("arith_mode") is not None}
+    if len(modes) > 1:
+        return ("incompatible arithmetic modes in one report: " +
+                ", ".join(sorted(modes)))
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Result container
@@ -145,6 +655,9 @@ class BenchmarkResult:
         self.exec_time_per_iter       = 0.0   # full executable runtime normalized by --iterations
         self.compile_success          = False
         self.run_success              = False
+        # Exit status of the run, kept so a stack-exhaustion crash can be
+        # told apart from any other run failure.
+        self.run_returncode: Optional[int] = None
         self.error_message: Optional[str] = None
         self.adt_fields: Optional[int]    = None
         self.adt_info:   Optional[Dict]   = None   # from parse_adt_buffers
@@ -152,6 +665,16 @@ class BenchmarkResult:
         self.papi_counters: List[str]     = []
         self.papi_regions_total: int      = 0
         self.papi_regions_used: int       = 0
+        # The one place a numeric sink may ask "is this trustworthy?".
+        # Populated by `qualify_variant` for every variant of every program
+        # in full benchmark mode -- see `bench_provenance.verified_result`.
+        self.qualification: Optional["prov.QualificationStatus"] = None
+        # Per-artifact arithmetic-mode/no-RAN provenance, set from the
+        # actual compile options used for THIS result -- not a
+        # global assumption, so a mixed-mode report is mechanically detectable
+        # (see `check_arithmetic_mode_consistency`).
+        self.arith_mode: Optional[str] = None
+        self.use_no_ran: Optional[bool] = None
 
 # ---------------------------------------------------------------------------
 # Source-file annotation scanner
@@ -523,6 +1046,21 @@ def parse_adt_buffers(content: str, search_root: Optional[Path] = None) -> Optio
     return max(parsed_adts, key=lambda a: a["total_field_slots"])
 
 
+ATTR_RE = re.compile(r'(\w+)\s*=\s*(\d+)')
+
+
+def parse_pass_attrs(blob: Optional[str]) -> Dict[str, int]:
+    """Parse the trailing ``, key=N, key=N`` list of a pass annotation.
+
+    Both the source scan and the exe-output scan feed this the same text, so a
+    new key only has to be understood here.  Unknown keys are kept in the dict
+    and simply ignored by callers that do not care about them.
+    """
+    if not blob:
+        return {}
+    return {k.lower(): int(v) for k, v in ATTR_RE.findall(blob)}
+
+
 def build_source_classification(programs_dir: Path) -> Dict[str, Dict]:
     """
     Scan AoS/*.hs and SoA/*.hs for:
@@ -544,11 +1082,16 @@ def build_source_classification(programs_dir: Path) -> Dict[str, Dict]:
     adt_re   = re.compile(r'--\s*@BENCH\s+adt_fields\s*=\s*(\d+)', re.IGNORECASE)
     # adt_info is populated once (from AOS source) by parse_adt_buffers()
 
-    # Match:  printsym (quote "Running pass Name (fold[, uses=N]): ")
-    # Group 1 = name, Group 2 = type keyword, Group 3 = uses value (optional)
+    # Match:  printsym (quote "Running pass Name (fold[, key=N]...): ")
+    # Group 1 = name, Group 2 = type keyword, Group 3 = the trailing
+    # comma-separated key=value list (optional), parsed by parse_pass_attrs().
+    # Recognised keys: uses=N (field-usage count) and ilp=N (independent
+    # dependence chains in the pass body -- see the intensity table in the
+    # layout-version report).  Unknown keys are ignored, so the annotation can
+    # grow without breaking older programs.
     pass_re  = re.compile(
         r'printsym\s*\(\s*quote\s*"Running pass\s+([^("]+?)\s*'
-        r'\(\s*([^,)]+?)\s*(?:,\s*uses\s*=\s*(\d+))?\s*\)\s*:',
+        r'\(\s*([^,)]+?)\s*((?:,\s*\w+\s*=\s*\d+)*)\s*\)\s*:',
         re.IGNORECASE,
     )
 
@@ -570,6 +1113,8 @@ def build_source_classification(programs_dir: Path) -> Dict[str, Dict]:
                     "adt_info_source": None,
                     "pass_types": {},
                     "pass_uses":  {},
+                    "pass_shared": {},
+                    "pass_ilp":   {},
                 }
             try:
                 content = src.read_text(encoding="utf-8", errors="ignore")
@@ -594,20 +1139,26 @@ def build_source_classification(programs_dir: Path) -> Dict[str, Dict]:
             for pm in pass_re.finditer(content):
                 raw_name  = pm.group(1).strip()
                 raw_type  = pm.group(2).strip().lower()
-                raw_uses  = pm.group(3)            # may be None
+                attrs     = parse_pass_attrs(pm.group(3))
                 ptype = ("fold"    if "fold" in raw_type
                          else ("map" if "map"  in raw_type else "unknown"))
-                uses  = int(raw_uses) if raw_uses is not None else None
+                uses  = attrs.get("uses")
+                ilp   = attrs.get("ilp")
+                shared = attrs.get("shared")
 
                 for variant in _name_variants(raw_name):
                     result[prog]["pass_types"][variant] = ptype
                     if uses is not None:
                         result[prog]["pass_uses"][variant] = uses
+                    if ilp is not None:
+                        result[prog].setdefault("pass_ilp", {})[variant] = ilp
+                    if shared is not None:
+                        result[prog].setdefault("pass_shared", {})[variant] = shared
 
                 found += 1
                 if vdir == "AOS":
                     uses_str = f", uses={uses}" if uses is not None else " (no uses annotation)"
-                    print(f"  ✓ {prog}: '{raw_name}' → {ptype}{uses_str}")
+                    vprint(f"  ✓ {prog}: '{raw_name}' → {ptype}{uses_str}")
 
             if found == 0 and vdir == "AOS":
                 print(f"  ⚠  {prog}: no pass annotations found")
@@ -617,7 +1168,7 @@ def build_source_classification(programs_dir: Path) -> Dict[str, Dict]:
         ann = entry.get("adt_fields_annot")
         adt_info = entry.get("adt_info")
         if ann is not None:
-            print(f"  ✓ {prog}: @BENCH adt_fields={ann}")
+            vprint(f"  ✓ {prog}: @BENCH adt_fields={ann}")
         if adt_info:
             parsed_fields = adt_info["total_field_slots"]
             entry["adt_fields"] = parsed_fields
@@ -667,6 +1218,16 @@ def lookup_pass_uses(exe_pass_name: str, src_data: Dict) -> Optional[int]:
             return src_data["pass_uses"][v]
     return None
 
+
+def lookup_pass_ilp(exe_pass_name: str, src_data: Dict) -> Optional[int]:
+    """Independent dependence chains in a pass body, from an ``ilp=N``
+    annotation.  Only the arithmetic-intensity programs declare it; everything
+    else returns None and renders as ``--``."""
+    for v in _name_variants(exe_pass_name):
+        if v in src_data.get("pass_ilp", {}):
+            return src_data["pass_ilp"][v]
+    return None
+
 # ---------------------------------------------------------------------------
 # Output parsing  — extract type and uses from exe output line
 # ---------------------------------------------------------------------------
@@ -692,12 +1253,19 @@ def parse_passes(raw: str) -> Dict:
     current: Optional[str]  = None
     cur_type                = "unknown"
     cur_uses: Optional[int] = None
+    cur_ilp:  Optional[int] = None
+    # `shared=N`: for a MAP pass, how many scalar fields the pass leaves
+    # unmodified. A map copies every field to the output region, so "used"
+    # is vacuously all of them and says nothing; what distinguishes maps is
+    # which fields are merely COPIED, since those are what selective buffer
+    # sharing can share instead of rewriting.
+    cur_shared: Optional[int] = None
     cur_times: List[float]  = []
 
-    # Match:  Running pass Name (fold[, uses=N]):
+    # Match:  Running pass Name (fold[, key=N]...):
     pass_re = re.compile(
         r'Running\s+pass\s+([^(:\n]+?)\s*'
-        r'(?:\(\s*([^,)]+?)\s*(?:,\s*uses\s*=\s*(\d+))?\s*\))?\s*:',
+        r'(?:\(\s*([^,)]+?)\s*((?:,\s*\w+\s*=\s*\d+)*)\s*\))?\s*:',
         re.IGNORECASE,
     )
     # Match:  ITER TIMES: [0.052013, 0.052099, ...]
@@ -708,7 +1276,8 @@ def parse_passes(raw: str) -> Dict:
 
     def _commit():
         if current is not None and cur_times:
-            passes[current] = _stats(cur_times, cur_type, cur_uses)
+            passes[current] = _stats(cur_times, cur_type, cur_uses, cur_ilp,
+                                     cur_shared)
 
     for line in raw.splitlines():
         s = line.strip()
@@ -719,10 +1288,12 @@ def parse_passes(raw: str) -> Dict:
             _commit()
             current  = m.group(1).strip()
             hint     = (m.group(2) or "").strip().lower()
-            uses_str = m.group(3)
+            attrs    = parse_pass_attrs(m.group(3))
             cur_type = ("fold" if "fold" in hint
                         else ("map" if "map" in hint else "unknown"))
-            cur_uses  = int(uses_str) if uses_str else None
+            cur_uses = attrs.get("uses")
+            cur_ilp  = attrs.get("ilp")
+            cur_shared = attrs.get("shared")
             cur_times = []
             continue
 
@@ -792,7 +1363,8 @@ def fmt_ci95(ci: Optional[float]) -> str:
 
 
 def _stats(times: List[float], pass_type: str = "unknown",
-           uses: Optional[int] = None) -> Dict:
+           uses: Optional[int] = None, ilp: Optional[int] = None,
+           shared: Optional[int] = None) -> Dict:
     """
     Compute summary statistics from the ITER TIMES list.
 
@@ -821,7 +1393,9 @@ def _stats(times: List[float], pass_type: str = "unknown",
         "ci95_pct":    ci95_pct,
         "n":           n,
         "pass_type":   pass_type,
+        "ilp":         ilp,
         "uses":        uses,
+        "shared":      shared,
     }
 
 
@@ -938,9 +1512,12 @@ def attach_papi_native_to_passes(result: BenchmarkResult, raw_stdout: str) -> No
     Expected line format:
       PAPI_NATIVE <METRIC>[<EVENT_NAME>]=<VALUE>
     """
+    # Same annotation grammar as parse_passes(); see parse_pass_attrs().  This
+    # only needs the pass NAME, but it must still tolerate the full trailing
+    # key=value list or it silently stops matching annotated passes.
     pass_re = re.compile(
         r'Running\s+pass\s+([^(:\n]+?)\s*'
-        r'(?:\(\s*([^,)]+?)\s*(?:,\s*uses\s*=\s*(\d+))?\s*\))?\s*:',
+        r'(?:\(\s*([^,)]+?)\s*((?:,\s*\w+\s*=\s*\d+)*)\s*\))?\s*:',
         re.IGNORECASE,
     )
     native_re = re.compile(
@@ -1203,8 +1780,32 @@ def apply_source_classification(result: BenchmarkResult,
             pdata["pass_type"] = lookup_pass_type(pname, src_data)
         if pdata.get("uses") is None:
             pdata["uses"] = lookup_pass_uses(pname, src_data)
+        if pdata.get("ilp") is None:
+            pdata["ilp"] = lookup_pass_ilp(pname, src_data)
+        if pdata.get("shared") is None:
+            pdata["shared"] = (src_data.get("pass_shared") or {}).get(pname)
 
         uses = pdata.get("uses")
+
+        # Shareable-field metric, for MAP passes only.
+        #
+        # A map copies every field into the output region, so "fields used" is
+        # vacuously all of them and distinguishes nothing. What separates one
+        # map from another is how many scalar fields it leaves UNMODIFIED,
+        # because those are exactly the buffers selective buffer sharing can
+        # share rather than rewrite.
+        #
+        # The denominator is scalar_field_slots, NOT adt_fields: a recursive
+        # child field is structurally rebuilt and is not a buffer that could
+        # be shared, so counting it would understate the ratio against a
+        # denominator no configuration can ever reach.
+        shared = pdata.get("shared")
+        slots = (result.adt_info or {}).get("scalar_field_slots")
+        pdata["shared_slots"] = slots
+        if shared is not None and slots:
+            pdata["shared_ratio"] = shared / slots
+        else:
+            pdata["shared_ratio"] = None
 
         # Dead-field metrics: denominator is adt_fields (total, incl. recursive)
         # because uses= also counts total fields accessed (incl. recursive).
@@ -1218,7 +1819,7 @@ def apply_source_classification(result: BenchmarkResult,
 # ---------------------------------------------------------------------------
 # GC / allocator noise filter
 # ---------------------------------------------------------------------------
-_GC_RE = re.compile(
+_LEGACY_UNANCHORED_GC_RE_REMOVED = re.compile(
     r"itertime:|ITER TIMES:|ITERS:|SIZE:|BATCHTIME:|SELFTIMED:|"
     r"PAPI_NATIVE\s+|"
     r"Running pass|Running program|^End$|INFO_TABLE:|Initialized footer at|"
@@ -1228,10 +1829,16 @@ _GC_RE = re.compile(
 )
 
 def clean_output(raw: str) -> Optional[str]:
+    """Semantic (program) output only.
+
+    Delegates to bench_provenance.semantic_output, whose rules match a WHOLE
+    line.  The previous implementation used an unanchored substring search, so
+    a program value line containing "SIZE:", "SELFTIMED:", "ITER TIMES:" or
+    "Running pass" was discarded in full and the driver compared empty text."""
     lines = []
-    for line in raw.splitlines():
+    for line in prov.semantic_lines(raw):
         s = line.strip()
-        if not s or _GC_RE.search(s):
+        if not s:
             continue
         # Normalize SML tuple output "#(" to Gibbon-style "'#(".
         if s.startswith("#("):
@@ -1322,51 +1929,28 @@ def analyze_outputs_by_variant(named_results: Dict[str, Optional[BenchmarkResult
 # Compiler mtime cache (checked once per script run)
 # ---------------------------------------------------------------------------
 _COMPILER_CACHE: Dict[str, Tuple[Path, float]] = {}
+import bench_provenance as prov
+
 _GIBBON_EXE_CACHE: Optional[Path] = None
 
+_GIBBON_RESOLUTION: Optional["prov.CompilerResolution"] = None
+
+def resolve_gibbon() -> "prov.CompilerResolution":
+    """THE Gibbon compiler for this run: $GIBBON_EXE, then `cabal list-bin`,
+    then $PATH.  The same absolute path is used for argv[0], the build
+    fingerprint, the status block and the recorded provenance -- previously the
+    driver resolved here but executed the bare string "gibbon", so a
+    GIBBON_EXE override could be reported while a different binary ran."""
+    global _GIBBON_RESOLUTION
+    if _GIBBON_RESOLUTION is None:
+        _GIBBON_RESOLUTION = prov.resolve_gibbon_exe(REPO_ROOT)
+    return _GIBBON_RESOLUTION
+
+
 def get_gibbon_exe() -> Optional[Path]:
-    """
-    Prefer a locally built gibbon executable if available.
-    Priority:
-      1) $GIBBON_EXE
-      2) cabal list-bin exe:gibbon (from gibbon-compiler)
-      3) PATH lookup
-    """
-    global _GIBBON_EXE_CACHE
-    if _GIBBON_EXE_CACHE is not None:
-        return _GIBBON_EXE_CACHE
+    """Absolute path of the resolved Gibbon compiler (see resolve_gibbon)."""
+    return resolve_gibbon().path
 
-    env_exe = os.environ.get("GIBBON_EXE")
-    if env_exe:
-        p = Path(env_exe).resolve()
-        if p.exists():
-            _GIBBON_EXE_CACHE = p
-            return p
-
-    # Try cabal list-bin from the gibbon-compiler directory
-    try:
-        gc_dir = REPO_ROOT / "gibbon-compiler"
-        r = subprocess.run(
-            ["cabal", "list-bin", "exe:gibbon"],
-            cwd=str(gc_dir),
-            capture_output=True,
-            text=True,
-        )
-        if r.returncode == 0:
-            p = Path(r.stdout.strip()).resolve()
-            if p.exists():
-                _GIBBON_EXE_CACHE = p
-                return p
-    except Exception:
-        pass
-
-    path = shutil.which("gibbon")
-    if path:
-        p = Path(path).resolve()
-        if p.exists():
-            _GIBBON_EXE_CACHE = p
-            return p
-    return None
 
 def postprocess_sml_for_bench(sml_path: Path) -> None:
     """
@@ -1558,6 +2142,65 @@ def ensure_mlton_sml(aos_hs: Path, mlton_sml: Path, force: bool = False) -> Tupl
 
     return True, None
 
+# ---------------------------------------------------------------------------
+# C compiler selection
+# ---------------------------------------------------------------------------
+# Pinned deliberately.  GCC 15 fails to register-promote the SoA traversal's
+# cursors across loop iterations, which made SoA folds run at IPC ~1.5 against
+# AoS's ~4 and cost a spurious 2.7x on List.hs/sumList.  A silent toolchain
+# upgrade can change SoA results by multiples, so the compiler is chosen
+# explicitly and its version is recorded in every report rather than being
+# whatever `gcc` happens to resolve to.
+#
+# A prior version of this comment additionally claimed that GCC 16 promotes
+# those cursors well enough that "SoA comes out slightly FASTER than AoS".
+# That claim was measured before List.hs's fields were migrated to explicit
+# per-field GibInt32 codegen (under the old whole-program `--int32` macro
+# trick, where the RTS's own GibInt was also 32-bit). Under the current
+# explicit-width codegen it does not hold: with GCC 16.2.0, --no-ran,
+# --use-mutable-cursors, List.hs's SoA sumList/sumListAcc measures SLOWER
+# than AoS, by roughly 3.8x, not faster.
+#
+# Root cause (isolated by recompiling the current generated List.soa.c with
+# ONLY the sumList/sumListAcc accumulator/return type widened from GibInt32 to
+# GibInt (int64), everything else byte-identical): GCC 16's -O3 -flto inliner
+# produces a materially worse loop for this specific shape -- a self-recursive
+# tail-position function taking Gibbon's SoA `GibCursor x[2]` array-by-
+# reference parameters (aliased/restrict-qualified sub-cursors threaded
+# through the whole recursive chain) -- when the accumulator is 32-bit than
+# when it is 64-bit; widening it alone restores AoS-competitive timing with no
+# other change. Simplified reproducers (a plain malloc'd linked-list fold, and
+# the same fold using the real branchy gib_add_i32/gib_u2s_i32 deterministic-
+# wraparound helper) do NOT reproduce the gap, so this is specific to the
+# interaction between GCC 16's LTO loop/tail-call heuristics and Gibbon's
+# cursor-array calling convention at narrow width -- a GCC 16 code-generation-
+# quality characteristic of that combination, not a Gibbon compiler defect,
+# and not something to "fix" by widening List.hs's types (List.hs's Int32
+# policy stays as-is; RAN performance/bugs are separately deferred).
+PREFERRED_CC = "gcc-16"
+SELECTED_CC: Optional[str] = None   # set by --cc; None means auto-detect
+
+
+def resolve_cc(requested: Optional[str] = None) -> str:
+    """Pick the C compiler Gibbon should shell out to."""
+    requested = requested or SELECTED_CC
+    if requested:
+        return requested
+    if shutil.which(PREFERRED_CC):
+        return PREFERRED_CC
+    return "gcc"
+
+
+def cc_version(cc: str) -> str:
+    """First line of `<cc> --version`, or a marker if it cannot be run."""
+    try:
+        out = subprocess.run([cc, "--version"], capture_output=True, text=True, timeout=20)
+        first = (out.stdout or out.stderr).strip().split("\n")
+        return first[0] if first and first[0] else "unknown"
+    except Exception:
+        return "unavailable"
+
+
 def get_compiler_info(name: str = "gibbon") -> Optional[Tuple[Path, float]]:
     """
     Returns (compiler_path, mtime) for the specified compiler executable.
@@ -1580,58 +2223,11 @@ def get_compiler_info(name: str = "gibbon") -> Optional[Tuple[Path, float]]:
     return _COMPILER_CACHE[name]
 
 
-def needs_recompilation(source: Path, exe: Path, c_file: Optional[Path]
-                        , expected_cmd_sig: Optional[str] = None
-                        , buildinfo_file: Optional[Path] = None
-                        , compiler_name: str = "gibbon"
-                        ) -> Tuple[bool, str]:
-    """
-    Returns (needs_recompile: bool, reason: str).
-    reason is printed so the user knows why we skipped or recompiled.
-    
-    Checks:
-      1. exe or c_file missing → recompile
-      2. source newer than exe → recompile (common sense: if the
-         compiler was updated, old exes are stale)
-      3. compiler newer than exe → recompile
-      4. compile command signature changed (stored in buildinfo sidecar) → recompile
-    """
-    if not exe.exists():
-        return True, "exe missing"
-    if c_file is not None and not c_file.exists():
-        return True, "c file missing"
-    
-    exe_t = exe.stat().st_mtime
-    src_t = source.stat().st_mtime
-    
-    if src_t > exe_t:
-        src_dt  = datetime.datetime.fromtimestamp(src_t).strftime("%Y-%m-%d %H:%M:%S")
-        exe_dt  = datetime.datetime.fromtimestamp(exe_t).strftime("%Y-%m-%d %H:%M:%S")
-        return True, f"source ({src_dt}) newer than exe ({exe_dt})"
-    
-    # Check if the compiler itself is newer than the exe
-    compiler_info = get_compiler_info(compiler_name)
-    if compiler_info is not None:
-        compiler_path, compiler_t = compiler_info
-        if compiler_t > exe_t:
-            comp_dt = datetime.datetime.fromtimestamp(compiler_t).strftime("%Y-%m-%d %H:%M:%S")
-            exe_dt  = datetime.datetime.fromtimestamp(exe_t).strftime("%Y-%m-%d %H:%M:%S")
-            return True, f"compiler ({compiler_path}, {comp_dt}) newer than exe ({exe_dt})"
-
-    # Check whether the compile command used for this exe has changed.
-    if expected_cmd_sig is not None and buildinfo_file is not None:
-        if not buildinfo_file.exists():
-            return True, "compile metadata missing (command fingerprint unavailable)"
-        try:
-            meta = json.loads(buildinfo_file.read_text())
-            old_sig = meta.get("compile_cmd_signature")
-            if old_sig != expected_cmd_sig:
-                return True, "compile command changed"
-        except Exception:
-            return True, "compile metadata unreadable"
-    
-    exe_dt = datetime.datetime.fromtimestamp(exe_t).strftime("%Y-%m-%d %H:%M:%S")
-    return False, f"exe up-to-date (compiled {exe_dt})"
+# `needs_recompilation` was removed: it decided freshness from mtimes plus
+# the compile-command string, which reused a stale executable whenever a
+# source, imported module, compiler, RTS input or artifact changed with an
+# unchanged or older timestamp. The content-addressed replacement is
+# bench_provenance.decide_recompile; there is deliberately no second path.
 
 # ---------------------------------------------------------------------------
 # Variant-specific optimization policy
@@ -1644,22 +2240,149 @@ def effective_optimization_flags(variant: str,
                                  enable_loopification: bool,
                                  enable_loop_fusion: bool,
                                  enable_selective_buffer_sharing: bool,
-                                 enable_vectorization: bool) -> Dict[str, bool]:
+                                 enable_vectorization: bool,
+                                 auto_loopification: bool = True) -> Dict[str, bool]:
     """Return the flags that should actually be passed for this variant.
 
     AoS flat layouts can use only flat map loopification.  Scalar-count
     footers, selective buffer sharing, and loop fusion are fully factored SoA
     mechanisms, so the harness deliberately does not pass those flags to AoS
     variants even when the user enabled them globally.
+
+    `auto_loopification` is independent of layout (unlike the SoA-only flags
+    above): it only controls whether `--auto-loopification` accompanies
+    `--opt-loopification`, not whether loopification itself is attempted.
+    Defaults to True so every existing caller keeps getting today's paired
+    behavior; callers that know every relevant function is already annotated
+    `OPT:MayVectorize` may pass False to rely on the annotation alone.
     """
     is_soa = is_soa_gibbon_variant(variant)
     return {
         "store_scalar_field_counts": store_scalar_field_counts and is_soa,
         "enable_loopification": enable_loopification,
+        "auto_loopification": auto_loopification,
         "enable_loop_fusion": enable_loop_fusion and is_soa,
         "enable_selective_buffer_sharing": enable_selective_buffer_sharing and is_soa,
         "enable_vectorization": enable_vectorization and is_soa,
     }
+
+# ---------------------------------------------------------------------------
+# Pure command construction
+# ---------------------------------------------------------------------------
+def build_gibbon_command(source: Path, variant: str, c_file: Path, exe: Path,
+                         cc: str,
+                         gibbon_exe: Optional[str] = None,
+                         use_mutable_cursors: bool = True,
+                         enable_papi: bool = False,
+                         enable_papi_native: bool = False,
+                         store_scalar_field_counts: bool = False,
+                         enable_loopification: bool = False,
+                         enable_loop_fusion: bool = False,
+                         enable_selective_buffer_sharing: bool = False,
+                         enable_vectorization: bool = False,
+                         use_sse41: bool = False,
+                         use_no_gcc_vec: bool = False,
+                         use_no_ran: bool = True,
+                         c_arith_mode: str = DEFAULT_C_ARITH_MODE,
+                         use_no_gcc_tail_calls: bool = False,
+                         auto_loopification: bool = True,
+                         simd_isa: str = DEFAULT_SIMD_ISA,
+                         reclaim_iterate_regions: Optional[bool] = None) -> List[str]:
+    """Build the Gibbon compile command.
+
+    Pure: no filesystem access, no subprocess, no compiler lookup.  `cc` is
+    passed in rather than resolved here so tests can construct and assert on a
+    command without a compiler installed.
+
+    NOTE ON WIDTH: this function takes no width parameter, and must not grow
+    one.  Integer width is declared by the source program (`Int8`/`Int16`/
+    `Int32`/`Int64`; bare `Int` means `Int64`), and a mixed-width program has no
+    single width a benchmark flag could select.  The removed `--int32`
+    whole-program mode used to be appended here.
+
+    `--sse4.1` and `--no-gcc-vectorize` are deliberately independent of
+    `--opt-vectorization`: the first grants an ISA permission to the C
+    compiler, the second suppresses the C compiler's own auto-vectorizer, and
+    only the third turns on Gibbon's SIMD pass.
+
+    `simd_isa` is ALWAYS passed explicitly, to EVERY configuration, and this is
+    load-bearing for the comparison rather than a convenience.  Gibbon defaults
+    `--simd-isa` to avx2 when `--opt-vectorization` is given and to sse2
+    otherwise, so leaving it implicit compiles the Gibbon-vectorized column for
+    a 256-bit target while every column it is compared against gets the x86-64
+    baseline -- where the C compiler's own auto-vectorizer can only reach SSE2.
+    Measured: the same non-vectorized program contains 0 `ymm` references
+    without the flag and 528 with it.  That difference lands entirely in
+    Gibbon's favour, so the flag is pinned for all configurations.
+
+    `c_arith_mode` is ALWAYS passed explicitly as `--c-arithmetic=<mode>` --
+    never omitted to fall back on Gibbon's own compiler default (`portable`).
+    The driver's own default is `unsafe`; see `DEFAULT_C_ARITH_MODE`. This
+    never adds `-fwrapv` or any other C flag itself -- that is Gibbon's job
+    for `wrapv` mode.
+
+    `auto_loopification=False` suppresses `--auto-loopification` while still
+    passing `--opt-loopification` when `enable_loopification` is set -- for a
+    caller that knows every relevant function is already annotated
+    `OPT:MayVectorize`, so structural inference isn't needed. Defaults to
+    True, preserving every existing caller's paired behavior unchanged.
+    """
+    _validate_c_arith_mode(c_arith_mode)
+    # argv[0] must BE the resolved compiler, not the name "gibbon": otherwise
+    # the binary we fingerprint and report is not the binary PATH executes.
+    cmd = [str(gibbon_exe) if gibbon_exe else "gibbon", "--cc", cc,
+           f"--c-arithmetic={c_arith_mode}"]
+    if use_mutable_cursors:
+        cmd.append("--use-mutable-cursors")
+    if enable_papi_native:
+        cmd.append("--enable-papi-native")
+    if enable_papi:
+        cmd.append("--enable-papi")
+    if use_no_ran:
+        cmd.append("--no-ran")
+    if use_sse41:
+        cmd.append("--sse4.1")
+    cmd.append(f"--simd-isa={simd_isa}")
+    if use_no_gcc_vec:
+        cmd.append("--no-gcc-vectorize")
+    if use_no_gcc_tail_calls:
+        cmd.append("--no-gcc-tail-calls")
+    # None means "whatever this run selected", which is how every caller gets
+    # it without passing it; tests pass an explicit bool.  Resolved here at
+    # CALL time, not as a default argument, because Python binds defaults once
+    # at definition time and would freeze the value before main() sets it.
+    if (RECLAIM_ITERATE_REGIONS if reclaim_iterate_regions is None
+            else reclaim_iterate_regions):
+        cmd.append("--reclaim-iterate-regions")
+    effective_opts = effective_optimization_flags(
+        variant,
+        store_scalar_field_counts,
+        enable_loopification,
+        enable_loop_fusion,
+        enable_selective_buffer_sharing,
+        enable_vectorization,
+        auto_loopification,
+    )
+    if effective_opts["store_scalar_field_counts"]:
+        cmd.append("--store-scalar-field-counts")
+    if effective_opts["enable_loopification"]:
+        cmd.append("--opt-loopification")
+        if effective_opts["auto_loopification"]:
+            cmd.append("--auto-loopification")
+    if effective_opts["enable_loop_fusion"]:
+        cmd.append("--opt-loop-fusion")
+    if effective_opts["enable_selective_buffer_sharing"]:
+        cmd.append("--opt-selective-buffer-sharing")
+    if effective_opts["enable_vectorization"]:
+        cmd.append("--opt-vectorization")
+    cmd.extend([
+        "--packed", "--to-exe",
+        "--cfile",   str(c_file),
+        "--exefile", str(exe),
+        str(source),
+    ])
+    return cmd
+
 
 # ---------------------------------------------------------------------------
 # Compile one variant  (called from thread pool)
@@ -1673,9 +2396,15 @@ def compile_one(source: Path, variant: str, out_dir: Path,
                 enable_loop_fusion: bool = False,
                 enable_selective_buffer_sharing: bool = False,
                 enable_vectorization: bool = False,
-                use_int32: bool = False,
+                use_sse41: bool = False,
+                use_no_gcc_vec: bool = False,
                 use_no_ran: bool = True,
+                c_arith_mode: str = DEFAULT_C_ARITH_MODE,
+                use_no_gcc_tail_calls: bool = False,
+                auto_loopification: bool = True,
+                simd_isa: str = DEFAULT_SIMD_ISA,
                 ) -> Tuple[bool, float, Optional[str]]:
+    _validate_c_arith_mode(c_arith_mode)
     source = source.resolve()
     out_dir = out_dir.resolve()
     stem   = source.stem
@@ -1720,59 +2449,56 @@ def compile_one(source: Path, variant: str, out_dir: Path,
         # Use 64-bit ints to avoid overflow in larger synthetic benchmarks.
         cmd = ["mlton", "-default-type", "int64", "-output", str(exe), str(mlb_file)]
     else:
-        cmd = ["gibbon"]
-        if use_mutable_cursors:
-            cmd.append("--use-mutable-cursors")
-        if enable_papi_native:
-            cmd.append("--enable-papi-native")
-        if enable_papi:
-            cmd.append("--enable-papi")
-        if use_no_ran:
-            cmd.append("--no-ran")
-        if use_int32:
-            cmd.append("--int32")
-        effective_opts = effective_optimization_flags(
-            variant,
-            store_scalar_field_counts,
-            enable_loopification,
-            enable_loop_fusion,
-            enable_selective_buffer_sharing,
-            enable_vectorization,
+        _res = resolve_gibbon()
+        if _res.path is None:
+            print(f"           FAILED (gibbon executable could not be resolved)")
+            return False, 0.0, "gibbon executable not found (set GIBBON_EXE or build it)"
+        cmd = build_gibbon_command(
+            source, variant, c_file, exe, resolve_cc(),
+            gibbon_exe=str(_res.path),
+            use_mutable_cursors=use_mutable_cursors,
+            enable_papi=enable_papi,
+            enable_papi_native=enable_papi_native,
+            store_scalar_field_counts=store_scalar_field_counts,
+            enable_loopification=enable_loopification,
+            enable_loop_fusion=enable_loop_fusion,
+            enable_selective_buffer_sharing=enable_selective_buffer_sharing,
+            enable_vectorization=enable_vectorization,
+            use_sse41=use_sse41,
+            use_no_gcc_vec=use_no_gcc_vec,
+            use_no_gcc_tail_calls=use_no_gcc_tail_calls,
+            auto_loopification=auto_loopification,
+            use_no_ran=use_no_ran,
+            c_arith_mode=c_arith_mode,
+            simd_isa=simd_isa,
         )
-        if effective_opts["store_scalar_field_counts"]:
-            cmd.append("--store-scalar-field-counts")
-        if effective_opts["enable_loopification"]:
-            cmd.extend(["--enable-loopification", "--auto-loopification"])
-        if effective_opts["enable_loop_fusion"]:
-            cmd.append("--enable-loop-fusion")
-        if effective_opts["enable_selective_buffer_sharing"]:
-            cmd.append("--enable-selective-buffer-sharing")
-        if effective_opts["enable_vectorization"]:
-            cmd.append("--enable-vectorization")
-        cmd.extend([
-            "--packed", "--to-exe",
-            "--cfile",   str(c_file),
-            "--exefile", str(exe),
-            str(source),
-        ])
     cmd_sig = " ".join(cmd)
 
-    recompile, reason = needs_recompilation(
-        source, exe, c_file,
-        expected_cmd_sig=cmd_sig,
-        buildinfo_file=buildinfo_file,
-        compiler_name=compiler
+    # Content-addressed freshness.  mtimes are NOT consulted: a source, an
+    # imported module, the compiler, the RTS, the generated C or the executable
+    # can all change with an unchanged or older timestamp.
+    _fp = prov.build_fingerprint(
+        source, cmd,
+        resolve_gibbon() if compiler == "gibbon"
+            else prov.CompilerResolution(None, compiler, None),
+        prov.cc_identity(resolve_cc()) if compiler == "gibbon" else {"cc": compiler},
+        REPO_ROOT,
+        driver_path=Path(__file__).resolve(),
+        extra_roots=[source.parent],
     )
+    recompile, reason = prov.decide_recompile(buildinfo_file, _fp, c_file, exe)
     if not force and not recompile:
-        print(f"  [{variant.upper()}] {stem}: skipping  ({reason})")
-        print(f"           exe: {exe}")
-        print(f"           src: {source}")
+        progress().item(f"{stem} · {variant}", "cached")
+        vprint(f"  [{variant.upper()}] {stem}: skipping  ({reason})")
+        vprint(f"           exe: {exe}")
+        vprint(f"           src: {source}")
         return True, 0.0, None
 
     if force:
         reason = "forced recompile"
     
     flags_str = "mut-cursors" if use_mutable_cursors else "imm-cursors"
+    flags_str += f",arith={c_arith_mode},simd-isa={simd_isa}"
     if enable_papi_native:
         flags_str += ",papi-native"
     if enable_papi:
@@ -1784,9 +2510,12 @@ def compile_one(source: Path, variant: str, out_dir: Path,
         enable_loop_fusion,
         enable_selective_buffer_sharing,
         enable_vectorization,
+        auto_loopification,
     )
     if effective_label_opts["enable_loopification"]:
         flags_str += ",loopify"
+        if not effective_label_opts["auto_loopification"]:
+            flags_str += "(annotation-only)"
     if effective_label_opts["store_scalar_field_counts"]:
         flags_str += ",scalar-counts"
     if effective_label_opts["enable_selective_buffer_sharing"]:
@@ -1795,10 +2524,15 @@ def compile_one(source: Path, variant: str, out_dir: Path,
         flags_str += ",loop-fusion"
     if effective_label_opts["enable_vectorization"]:
         flags_str += ",vectorization"
-    if use_int32:
-        flags_str += ",int32"
-    print(f"  [{variant.upper()} {flags_str}] {stem}: compiling  ({reason})")
-    print(f"           src: {source}  →  {exe}")
+    if use_sse41:
+        flags_str += ",sse4.1"
+    if use_no_gcc_vec:
+        flags_str += ",no-gcc-vec"
+    if use_no_gcc_tail_calls:
+        flags_str += ",no-gcc-tail-calls"
+    progress().item(f"{stem} · {variant}", "compiling")
+    vprint(f"  [{variant.upper()} {flags_str}] {stem}: compiling  ({reason})")
+    vprint(f"           src: {source}  →  {exe}")
     t0 = time.time()
     try:
         env = os.environ.copy()
@@ -1807,17 +2541,18 @@ def compile_one(source: Path, variant: str, out_dir: Path,
         r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(REPO_ROOT), env=env)
         elapsed = time.time() - t0
         if r.returncode == 0:
-            c_file_str = str(c_file) if c_file else None
-            meta = {
-                "compile_cmd": cmd,
-                "compile_cmd_signature": cmd_sig,
-                "source": str(source),
-                "c_file": c_file_str,
-                "exe": str(exe),
-                "compiled_at": datetime.datetime.now().isoformat(timespec="seconds"),
-            }
-            buildinfo_file.write_text(json.dumps(meta, indent=2))
-            print(f"           ok ({elapsed:.1f}s)")
+            # Written atomically, and ONLY after a successful build, so a crash
+            # can never leave metadata that half-describes an executable.
+            prov.write_buildinfo_atomic(
+                buildinfo_file, _fp, c_file, exe, REPO_ROOT,
+                extra={"compile_cmd": cmd,
+                       "compile_cmd_signature": cmd_sig,
+                       "source": str(source),
+                       "c_file": str(c_file) if c_file else None,
+                       "exe": str(exe),
+                       "c_arithmetic": c_arith_mode if compiler == "gibbon" else None,
+                       "use_no_ran": use_no_ran if compiler == "gibbon" else None})
+            vprint(f"           ok ({elapsed:.1f}s)")
             return True, elapsed, None
         print(f"           FAILED ({elapsed:.1f}s)")
         return False, elapsed, r.stderr.strip()
@@ -1835,7 +2570,14 @@ def compile_parallel(tasks: List[Tuple]) -> Dict:
     #workers = max(1, multiprocessing.cpu_count())
     # Vidush: Explicitly making this serial for now since parallel compilation is causing issues in Gibbon
     workers = 1
-    print(f"\nCompiling {len(tasks)} file(s) using {workers} thread(s) ...")
+    # Name the sources. A bare count ("Compiling 2 file(s)") tells you nothing
+    # about which benchmark is slow, which is the question being asked when a
+    # campaign appears to sit still.
+    _by_prog: Dict[str, List[str]] = {}
+    for _t in tasks:
+        _by_prog.setdefault(_t[0], []).append(_t[1])
+    _named = "; ".join(f"{prog} [{', '.join(vs)}]" for prog, vs in _by_prog.items())
+    print(f"\n▸ compiling {_named}  ({len(tasks)} file(s), {workers} thread(s))")
     results: Dict = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
         fmap = {
@@ -1843,10 +2585,11 @@ def compile_parallel(tasks: List[Tuple]) -> Dict:
                         enable_papi_native, store_scalar_field_counts,
                         enable_loopification, enable_loop_fusion,
                         enable_selective_buffer_sharing, enable_vectorization,
-                        use_int32, use_no_ran): (prog, var)
+                        use_sse41, use_no_gcc_vec, use_no_ran, c_arith_mode): (prog, var)
             for prog, var, src, od, force, use_mut, enable_papi, enable_papi_native,
                 store_scalar_field_counts, enable_loopification, enable_loop_fusion,
-                enable_selective_buffer_sharing, enable_vectorization, use_int32, use_no_ran in tasks
+                enable_selective_buffer_sharing, enable_vectorization, use_sse41, use_no_gcc_vec,
+                use_no_ran, c_arith_mode in tasks
         }
         for fut in as_completed(fmap):
             prog, var = fmap[fut]
@@ -1869,6 +2612,9 @@ def run_exe(exe: Path, iterations: int,
             dump_dir: Optional[Path] = None,
             env_override: Optional[Dict[str, str]] = None,
             use_iterate_flag: bool = True,
+            size_param: int = 0,
+            record_argv: Optional[List[List[str]]] = None,
+            pin_cpu: Optional[int] = None,
             ) -> Tuple[bool, float, Optional[str], Optional[str], int]:
     """
     Run executable and return (success, elapsed, stdout, stderr, returncode).
@@ -1878,45 +2624,78 @@ def run_exe(exe: Path, iterations: int,
     exe_mtime = datetime.datetime.fromtimestamp(exe.stat().st_mtime).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
-    print(f"           running: {exe}")
+    progress().item(exe.stem,
+                    f"running x{iterations}" if use_iterate_flag and iterations > 1
+                    else "running")
+    vprint(f"           running: {exe}")
     if use_iterate_flag:
         run_mode = f"--iterate {iterations}"
     else:
         run_mode = "single-run (no --iterate)"
-    print(f"           exe mtime: {exe_mtime}  |  {run_mode}")
+    vprint(f"           exe mtime: {exe_mtime}  |  {run_mode}")
 
     cmd = [str(exe)]
     # For GHC, pass RTS options to increase heap size. This should prevent OOM crashes.
     if ".ghc." in exe.name:
         cmd.extend(["+RTS", "-H4G", "-RTS"])
-    # For all variants, pass a deterministic size-param to prevent compile-time precompute.
-    cmd.extend(["--size-param", "0"])
+    # A deterministic size-param prevents the compiler from precomputing the
+    # workload.  The historical default is 0 and is PRESERVED; --size-param on
+    # the driver overrides it, and the effective value is always recorded.
+    cmd.extend(["--size-param", str(size_param)])
     if use_iterate_flag:
         cmd.extend(["--iterate", str(iterations)])
+    if record_argv is not None:
+        # The PROGRAM's own argv, without the launcher prefix below: callers
+        # and tests assert on the arguments the benchmark received, and
+        # pinning is a property of how it was launched, not of what it ran.
+        record_argv.append(list(cmd))
+    # Pin AFTER recording argv. Prepending `taskset` keeps the measurement on
+    # one core for its whole life, so it cannot migrate between a P-core and a
+    # much slower E-core mid-run.
+    if pin_cpu is not None and shutil.which("taskset"):
+        cmd = ["taskset", "-c", str(pin_cpu)] + cmd
+        vprint(f"           pinned to CPU {pin_cpu}")
 
     t0  = time.time()
+    env = os.environ.copy()
+    if env_override:
+        env.update(env_override)
+    popen_kwargs = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+        "env": env,
+    }
+    if os.name == "posix":
+        popen_kwargs["preexec_fn"] = _disable_child_core_dumps
+        # A new session (== a new process group, this process as its
+        # leader) so a timeout can kill the WHOLE group, not just this one
+        # direct child -- Gibbon's own compiled executables never fork, so
+        # this makes no difference for them today, but `subprocess.run`'s
+        # plain timeout path only ever signals the direct child, which is a
+        # latent leak for any exe that does spawn a subprocess of its own
+        # -- see test_vw38_driver_boundary.py for the regression coverage.
+        popen_kwargs["start_new_session"] = True
+    proc = subprocess.Popen(cmd, **popen_kwargs)
     try:
-        env = os.environ.copy()
-        if env_override:
-            env.update(env_override)
-        run_kwargs = {
-            "capture_output": True,
-            "text": True,
-            "env": env,
-            "timeout": timeout,
-        }
-        if os.name == "posix":
-            run_kwargs["preexec_fn"] = _disable_child_core_dumps
-        r = subprocess.run(cmd, **run_kwargs)
+        stdout, stderr = proc.communicate(timeout=timeout)
         elapsed = time.time() - t0
         if dump_dir is not None:
             dump_dir.mkdir(parents=True, exist_ok=True)
-            (dump_dir / f"{exe.stem}.stdout.txt").write_text(r.stdout or "")
-            (dump_dir / f"{exe.stem}.stderr.txt").write_text(r.stderr or "")
-        
-        success = (r.returncode == 0)
-        return success, elapsed, r.stdout, r.stderr, r.returncode
+            (dump_dir / f"{exe.stem}.stdout.txt").write_text(stdout or "")
+            (dump_dir / f"{exe.stem}.stderr.txt").write_text(stderr or "")
+
+        success = (proc.returncode == 0)
+        return success, elapsed, stdout, stderr, proc.returncode
     except subprocess.TimeoutExpired:
+        if os.name == "posix":
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            proc.kill()
+        proc.communicate()
         return False, timeout, None, "timeout expired", -1
     except Exception as e:
         return False, time.time() - t0, None, str(e), -1
@@ -1929,9 +2708,12 @@ def benchmark_build_pass(program: str, variant: str, use_mutable_cursors: bool,
                          enable_loop_fusion: bool = False,
                          enable_selective_buffer_sharing: bool = False,
                          enable_vectorization: bool = False,
-                         use_int32: bool = False,
+                         use_sse41: bool = False,
+                         use_no_gcc_vec: bool = False,
                          use_no_ran: bool = True,
-                         dump_raw: bool = False) -> Tuple[Optional[Dict], Optional[str]]:
+                         c_arith_mode: str = DEFAULT_C_ARITH_MODE,
+                         dump_raw: bool = False,
+                        pin_cpu: Optional[int] = None) -> Tuple[Optional[Dict], Optional[str]]:
     """
     Benchmark build-only executable by launching it repeatedly (no --iterate).
     Returns (_stats dict tagged as pass_type='build', error_message).
@@ -1996,8 +2778,10 @@ def benchmark_build_pass(program: str, variant: str, use_mutable_cursors: bool,
         enable_loop_fusion=enable_loop_fusion,
         enable_selective_buffer_sharing=enable_selective_buffer_sharing,
         enable_vectorization=enable_vectorization,
-        use_int32=use_int32,
+        use_sse41=use_sse41,
+        use_no_gcc_vec=use_no_gcc_vec,
         use_no_ran=use_no_ran,
+        c_arith_mode=c_arith_mode,
     )
     if not ok:
         return None, err or "build-only compile failed"
@@ -2007,9 +2791,9 @@ def benchmark_build_pass(program: str, variant: str, use_mutable_cursors: bool,
 
     run_times: List[float] = []
     for i in range(iterations):
-        print(f"           [build] run {i + 1}/{iterations}")
+        vprint(f"           [build] run {i + 1}/{iterations}")
         ok2, rt, _stdout, stderr, returncode = run_exe(
-            exe, 1, dump_dir=dump_dir, use_iterate_flag=False
+            exe, 1, dump_dir=dump_dir, use_iterate_flag=False, pin_cpu=pin_cpu
         )
         if not ok2:
             err_txt = stderr or f"build-only execution failed (exit {returncode})"
@@ -2039,19 +2823,28 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
                       enable_loop_fusion: bool = False,
                       enable_selective_buffer_sharing: bool = False,
                       enable_vectorization: bool = False,
-                      use_int32: bool = False,
+                      use_sse41: bool = False,
+                      use_no_gcc_vec: bool = False,
                       use_ran: bool = False,
+                      pin_cpu: Optional[int] = None,
                       benchmark_ghc: bool = False,
                       benchmark_mlton: bool = False,
                       warmup_runs: int = 1,
                       warmup_iterations: int = 1,
                       cooldown_seconds: float = 3.0,
+                      allow_unverified_output: bool = False,
+                      c_arith_mode: str = DEFAULT_C_ARITH_MODE,
                       ) -> Tuple[Optional[BenchmarkResult], Optional[BenchmarkResult]]:
     """
     Benchmark one program. Returns (aos_result, soa_result) for backwards compatibility.
+    Calls `_validate_no_ran_overrides()` first -- an override that weakens
+    --no-ran must never reach the compile step, even if a future edit
+    reintroduces one.
     If benchmark_immutable=True, also compiles/runs immutable cursor variants but only
     returns the mutable cursor results. Use benchmark_program_all_variants() to get all 4.
     """
+    _validate_no_ran_overrides()
+    _validate_c_arith_mode(c_arith_mode)
     print(f"\n{'='*70}\nBenchmarking: {prog}\n{'='*70}")
 
     # Determine which variants to compile
@@ -2071,6 +2864,7 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
 
     tasks = []
     variant_compile_opts: Dict[str, Dict[str, bool]] = {}
+    variant_src: Dict[str, Path] = {}
     for var, use_mut in variants:
         # By default benchmark Gibbon variants with --no-ran.  --use-ran omits
         # that flag without adding GHC/MLton comparison variants.  Keep the old
@@ -2078,6 +2872,8 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
         # Gibbon comparison variants are also compiled with RAN enabled.
         is_gibbon_variant = var.startswith("aos") or var.startswith("soa")
         use_no_ran = not ((use_ran or benchmark_ghc) and is_gibbon_variant)
+        if is_gibbon_variant and not program_uses_no_ran(prog, use_ran):
+            use_no_ran = False
         override = PROGRAM_COMPILE_OVERRIDES.get(prog, {}).get(var, {})
         use_mut_eff = override.get("use_mutable_cursors", use_mut)
         use_no_ran_eff = override.get("use_no_ran", use_no_ran)
@@ -2088,8 +2884,10 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
             "enable_loop_fusion": enable_loop_fusion,
             "enable_selective_buffer_sharing": enable_selective_buffer_sharing,
             "enable_vectorization": enable_vectorization,
-            "use_int32": use_int32,
+            "use_sse41": use_sse41,
+            "use_no_gcc_vec": use_no_gcc_vec,
             "use_no_ran": use_no_ran_eff,
+            "c_arith_mode": c_arith_mode,
         }
         if var == "ghc":
             src_dir = "GHC"
@@ -2107,12 +2905,13 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
             # Source is always in AOS/ or SOA/ directory, not aos_imm/soa_imm
             src_dir = "AOS" if var.startswith("aos") else "SOA"
             src = programs_dir / src_dir / prog
+        variant_src[var] = src
         if src.exists():
             tasks.append((prog, var, src, out_dir, force, use_mut_eff, enable_papi,
                           enable_papi_native, store_scalar_field_counts,
                           enable_loopification, enable_loop_fusion,
                           enable_selective_buffer_sharing, enable_vectorization,
-                          use_int32, use_no_ran_eff))
+                          use_sse41, use_no_gcc_vec, use_no_ran_eff, c_arith_mode))
         else:
             print(f"  Warning: {src} not found")
 
@@ -2134,13 +2933,21 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
             "enable_loop_fusion": enable_loop_fusion,
             "enable_selective_buffer_sharing": enable_selective_buffer_sharing,
             "enable_vectorization": enable_vectorization,
-            "use_int32": use_int32,
+            "use_sse41": use_sse41,
+            "use_no_gcc_vec": use_no_gcc_vec,
             "use_no_ran": True,
+            "c_arith_mode": c_arith_mode,
         })
+        res.arith_mode = compile_opts.get("c_arith_mode")
+        res.use_no_ran = compile_opts.get("use_no_ran")
 
+        variant_source = variant_src.get(var)
         if key not in compile_results:
             res.compile_success = False
             res.error_message   = "source not found"
+            res.qualification = qualify_variant(
+                prog, var, variant_source, False, res.error_message, False, None, None,
+                allow_unverified=allow_unverified_output)
             results[var]        = res
             continue
 
@@ -2149,6 +2956,9 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
         if not ok:
             res.compile_success = False
             res.error_message   = err or "compile failed"
+            res.qualification = qualify_variant(
+                prog, var, variant_source, False, res.error_message, False, None, None,
+                allow_unverified=allow_unverified_output)
             results[var]        = res
             continue
 
@@ -2156,7 +2966,19 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
         stem = prog.replace(".hs", "")
         exe  = out_dir / f"{stem}.{var}.exe"
 
-        print(f"  [{var.upper()}] running ...")
+        progress().item(f"{prog.replace('.hs','')} · {var}", "running")
+        # Compiling and running are the two phases whose cost differs by
+        # orders of magnitude, so the transition is announced rather than
+        # left to be inferred from a stalled display.
+        # Mirror the actual loop below: warmup is `warmup_runs` separate runs
+        # of `warmup_iterations` each, THEN the timed run. Stating it wrongly
+        # would misrepresent where the time goes, which is the whole reason
+        # for printing it.
+        _wr, _wi = max(0, warmup_runs), max(1, warmup_iterations)
+        _plan = f"{iterations} timed iteration(s)"
+        if _wr:
+            _plan = f"{_wr} warmup run(s) x {_wi} iters, then " + _plan
+        print(f"\u25b8 running   {prog} [{var}]  ({_plan})")
         papi_env = ({"PAPI_EVENTS": ",".join(_PAPI_SELECTED_EVENTS)}
                     if (enable_papi and _PAPI_SELECTED_EVENTS) else None)
 
@@ -2164,14 +2986,20 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
         warmup_runs_eff = max(0, warmup_runs)
         warmup_iters_eff = max(1, warmup_iterations)
         for w in range(warmup_runs_eff):
-            print(f"           warmup {w + 1}/{warmup_runs_eff}  (--iterate {warmup_iters_eff})")
+            vprint(f"           warmup {w + 1}/{warmup_runs_eff}  (--iterate {warmup_iters_eff})")
+            progress().item(f"{prog.replace('.hs','')} · {var}",
+                            f"warmup x{warmup_iters_eff}")
             ok_w, _rt_w, _stdout_w, stderr_w, rc_w = run_exe(
-                exe, warmup_iters_eff, dump_dir=None, env_override=papi_env
+                exe, warmup_iters_eff, dump_dir=None, env_override=papi_env,
+                pin_cpu=pin_cpu
             )
             if not ok_w:
                 res.compile_success = True
                 res.run_success = False
                 res.error_message = stderr_w or f"warmup failed (exit {rc_w})"
+                res.qualification = qualify_variant(
+                    prog, var, variant_source, True, None, False, res.error_message, None,
+                    allow_unverified=allow_unverified_output)
                 print(f"           FAILED during warmup (exit {rc_w})")
                 warmup_failed = True
                 break
@@ -2182,7 +3010,8 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
         papi_before = _snapshot_papi_json_files(Path.cwd()) if enable_papi else {}
         run_started_at = time.time()
         ok2, rt, stdout, stderr, returncode = run_exe(
-            exe, iterations, dump_dir=dump_dir, env_override=papi_env
+            exe, iterations, dump_dir=dump_dir, env_override=papi_env,
+            pin_cpu=pin_cpu
         )
         # Full executable end-to-end time for this run.
         res.exec_wall_time = rt
@@ -2200,10 +3029,10 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
             ])
             
             # Debug output - show what we got
-            print(f"           exit code: {returncode}")
+            vprint(f"           exit code: {returncode}")
             if err_text:
                 stderr_preview = err_text[:200].replace('\n', ' ')
-                print(f"           stderr: {stderr_preview}...")
+                vprint(f"           stderr: {stderr_preview}...")
             
             if is_oom:
                 print(f"           FAILED (out of memory)")
@@ -2212,8 +3041,20 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
                 print(f"           FAILED (exit non-zero)")
                 res.error_message = stderr or "execution failed"
             res.run_success = False
+            res.qualification = qualify_variant(
+                prog, var, variant_source, True, None, False, res.error_message, None,
+                allow_unverified=allow_unverified_output)
         else:
             res.run_success = True
+            is_gibbon_variant = var.startswith("aos") or var.startswith("soa")
+            c_file = (out_dir / f"{stem}.{var}.c") if is_gibbon_variant else None
+            res.qualification = qualify_variant(
+                prog, var, variant_source, True, None, True, None, stdout,
+                allow_unverified=allow_unverified_output,
+                c_file=c_file, expect_vectorization=enable_vectorization)
+            vprint(f"           qualification: {res.qualification.label}"
+                  f"  (oracle={res.qualification.oracle_status}: {res.qualification.oracle_detail})"
+                  f"  verified={res.qualification.verified}")
             if stdout:
                 res.output  = clean_output(stdout)
                 res.passes  = parse_passes(stdout)
@@ -2248,8 +3089,11 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
                         enable_loop_fusion=compile_opts["enable_loop_fusion"],
                         enable_selective_buffer_sharing=compile_opts["enable_selective_buffer_sharing"],
                         enable_vectorization=compile_opts["enable_vectorization"],
-                        use_int32=compile_opts["use_int32"],
+                        use_sse41=compile_opts.get("use_sse41", False),
+                        use_no_gcc_vec=compile_opts.get("use_no_gcc_vec", False),
+                        pin_cpu=pin_cpu,
                         use_no_ran=compile_opts["use_no_ran"],
+                        c_arith_mode=compile_opts.get("c_arith_mode", DEFAULT_C_ARITH_MODE),
                         dump_raw=dump_raw,
                     )
                     if build_stats is not None:
@@ -2276,7 +3120,7 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
                         return f"{t:.6f}s"
                     return f"{t:.4f}s"
 
-                print(f"           wall={rt:.2f}s  passes={len(res.passes)}"
+                vprint(f"           wall={rt:.2f}s  passes={len(res.passes)}"
                       f"  total_itertime={total_t:.4f}s")
                 for pname, pd in res.passes.items():
                     its = pd.get("iter_times", [])
@@ -2287,7 +3131,7 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
                     mx  = pd["max_time"]
                     n   = pd.get("n", len(its))
                     t   = pd["pass_type"][0].upper() if pd["pass_type"] != "unknown" else "?"
-                    print(f"           [{t}] {pname}: "
+                    vprint(f"           [{t}] {pname}: "
                           f"median={_fmt_time(med)}  "
                           f"mean={_fmt_time(mean)}  "
                           f"95%CI=±{fmt_ci95(ci95)}  "
@@ -2297,7 +3141,7 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
 
         # Cooldown between variant executions to reduce thermal/cache carryover.
         if idx < len(variants) - 1 and cooldown_seconds > 0:
-            print(f"           waiting {cooldown_seconds:g}s before next variant run ...")
+            vprint(f"           waiting {cooldown_seconds:g}s before next variant run ...")
             time.sleep(cooldown_seconds)
 
     # For backwards compatibility, return (aos, soa) with mutable cursors
@@ -2336,14 +3180,22 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
         failed_s = ", ".join(f"{v} ({err})" for v, err in analysis["failed"])
         print(f"  Runtime failures excluded from output matching: {failed_s}")
 
-    if aos and soa and aos.run_success and soa.run_success:
+    if prov.eligible_pair(aos, soa) and aos.passes and soa.passes:
         aos_total = total_pass_time(aos)
         soa_total = total_pass_time(soa)
-        if aos_total is not None and soa_total is not None:
-            speedup = (aos_total / soa_total) if soa_total > 0 else None
-            speedup_s = (f"{speedup:.3f}x" if speedup is not None else "N/A")
-            print(f"  End-to-end (sum of pass medians): AoS={fmt(aos_total)}s, "
-                  f"SoA={fmt(soa_total)}s, AoS/SoA={speedup_s}")
+        speedup, _reason = prov.safe_speedup(aos, soa, total_pass_time)
+        speedup_s = (f"{speedup:.3f}x" if speedup is not None else "N/A")
+        aos_total_s = fmt(aos_total) if aos_total is not None else "N/A"
+        soa_total_s = fmt(soa_total) if soa_total is not None else "N/A"
+        print(f"  End-to-end (sum of pass medians, VERIFIED): AoS={aos_total_s}s, "
+              f"SoA={soa_total_s}s, AoS/SoA={speedup_s}")
+    elif prov.eligible_pair(aos, soa):
+        print("  End-to-end (sum of pass medians): N/A -- verified, but no "
+              "per-pass timing was recorded for this program")
+    elif aos and soa and (aos.run_success or soa.run_success):
+        print("  End-to-end (sum of pass medians): N/A -- unverified "
+              f"(aos: {prov.rejection_reason(aos)}; soa: {prov.rejection_reason(soa)})")
+    if aos and soa and aos.run_success and soa.run_success:
         if aos.passes:
             classified = [(p, d) for p, d in aos.passes.items()
                           if d["pass_type"] != "unknown"]
@@ -2390,15 +3242,37 @@ def fmt_pm(median: float, stderr: float) -> str:
     return f"{median:.{dp}f}$\\pm${stderr:.{err_dp}f}"
 
 
+# Passes that exist only to CHECK the program computed the right thing, not
+# to be measured. `checksumTree` folds the mapped tree down to the single
+# value the independent oracle compares against -- it is the correctness
+# apparatus, not a benchmark kernel, so reporting it alongside the kernels
+# (or letting it inflate a pass-sum) misstates what was measured. Excluded
+# from every table and from every aggregate `total_pass_time` feeds.
+# The oracle still consumes its OUTPUT; only its TIMING is dropped.
+VERIFICATION_PASSES = frozenset({"checksumTree"})
+
+
+def is_verification_pass(pass_name: str) -> bool:
+    return pass_name in VERIFICATION_PASSES
+
+
 def total_pass_time(res: Optional[BenchmarkResult], pass_type: Optional[str] = None) -> Optional[float]:
     """
     End-to-end compiler time = sum of median pass times.
     Optionally restrict to a pass type ("fold"/"map"/...).
+
+    This is the central chokepoint nearly every aggregate/speedup/table in
+    the file goes through, so it enforces strict eligibility itself rather
+    than trusting callers to have filtered first -- `prov.verified_result`,
+    not `res.run_success` (an unverified result can still have
+    `run_success=True`; it just never passed an independent oracle).
     """
-    if res is None or not res.run_success or not res.passes:
+    if not prov.verified_result(res) or not res.passes:
         return None
     total = 0.0
-    for pdata in res.passes.values():
+    for pname, pdata in res.passes.items():
+        if is_verification_pass(pname):
+            continue
         if pass_type is not None and pdata.get("pass_type") != pass_type:
             continue
         total += pdata.get("median_time", 0.0)
@@ -2415,6 +3289,19 @@ def _fmt_counter(v: Optional[float]) -> str:
     # Scientific notation with 2 significant digits for readability.
     # Python format ".1e" => 2 significant digits total.
     return f"{float(v):.1e}"
+
+
+def _first_present(*values):
+    """Return the first value that is not None.
+
+    Deliberately NOT `a or b`: 0, 0.0 and "" are legitimate values here (e.g.
+    a pass with 0% dead ratio, or 0 uses) and `or` would incorrectly treat
+    them as absent and fall through to the next argument.
+    """
+    for v in values:
+        if v is not None:
+            return v
+    return None
 
 
 def _papi_pair_cell(ad: Dict, sd: Dict, counter: str) -> str:
@@ -2501,7 +3388,7 @@ def _table_comparison_ghc_mlton(f, all_variants_results):
         
         def get_total_or_oom(res):
             if res is None: return None, False
-            if res.run_success: return sum(p["median_time"] for p in res.passes.values()), False
+            if prov.verified_result(res): return total_pass_time(res), False
             is_oom = (res.error_message == "out of memory")
             return None, is_oom
 
@@ -2607,9 +3494,9 @@ def _table_speedup_vs_ghc(f, all_variants_results):
     def get_total_or_oom(res):
         if res is None:
             return None, False
-        if res.run_success:
-            return sum(p["median_time"] for p in res.passes.values()), False
-        return None, (res.error_message == "out of memory")
+        if prov.verified_result(res):
+            return total_pass_time(res), False
+        return None, (res is not None and res.error_message == "out of memory")
 
     def fmt_spd(v: Optional[float]) -> str:
         if v is None:
@@ -2685,13 +3572,16 @@ def _table_cursor_comparison(f, all_variants_results):
 
     # Use full executable end-to-end runtime captured around run_exe().
     def get_total_or_oom(res):
-        """Returns (time, is_oom) tuple; time is full executable wall time."""
+        """Returns (time, is_oom) tuple; time is full executable wall time.
+        Gated on `verified_result`, not `run_success`: this feeds a speedup
+        table cell, so a result that ran but never passed its independent
+        oracle must render as unavailable here, not as a real time."""
         if res is None:
             return None, False
-        if res.run_success:
+        if prov.verified_result(res):
             return res.exec_wall_time, False
-        # Failed - check if it was OOM
-        is_oom = (res.error_message == "out of memory")
+        # Failed or unverified - check if it was OOM
+        is_oom = (res is not None and res.error_message == "out of memory")
         return None, is_oom
 
     # Collapse split OctTree programs (OctTree_*.hs) into one row by summing.
@@ -2867,14 +3757,2084 @@ def _table_cursor_comparison(f, all_variants_results):
     f.write("\\bottomrule\n\\end{tabular}\n\\end{table}\n\n")
 
 
+# ---------------------------------------------------------------------------
+# The four-width add1Tree width/vectorization table.
+#
+# NOTE ON SCOPE: this table performs no timing on its own. The collection
+# function below (`collect_add1tree_width_results`) exists so a future timed
+# run can call it and get real `BenchmarkResult` objects with real pass
+# timings -- it is plumbed through exactly like any other program's
+# compile/run/qualify path (`compile_one`/`run_exe`/`qualify_variant`, the
+# same functions every other row in this file goes through) so no numeric
+# value it produces bypasses the verified-result contract. It is NOT invoked
+# by this file's own test suite; only the RENDERING function
+# (`_table_add1tree_widths`) is exercised here, against synthetic
+# `BenchmarkResult`/`QualificationStatus` fixtures -- see
+# test_add1tree_widths.py's `TestAdd1TreeWidthTable`.
+# ---------------------------------------------------------------------------
+
+# config name -> compile_one kwargs. "aos_mut"/"soa_mut" match this file's
+# existing variant-naming convention elsewhere; "soa_loopify"/"soa_simd" are
+# add1tree-table-specific configs (loopified SCALAR buffers with Gibbon's
+# own vectorizer explicitly off vs. on, GCC auto-vectorization off in both
+# so the two isolate Gibbon's own SIMD pass).
+ADD1TREE_WIDTH_CONFIGS: Dict[str, Dict] = {
+    "aos_mut": dict(use_mutable_cursors=True, use_no_gcc_vec=True),
+    "soa_mut": dict(use_mutable_cursors=True, use_no_gcc_vec=True),
+    "soa_loopify": dict(use_mutable_cursors=True, store_scalar_field_counts=True,
+                        enable_loopification=True, use_no_gcc_vec=True),
+    "soa_simd": dict(use_mutable_cursors=True, store_scalar_field_counts=True,
+                     enable_loopification=True, enable_vectorization=True,
+                     use_no_gcc_vec=True),
+}
+
+
+def _add1tree_width_of(program: str) -> Optional[int]:
+    m = re.match(r"Add1TreeInt(\d+)\.hs$", program)
+    return int(m.group(1)) if m else None
+
+
+def collect_add1tree_width_results(programs_dir: Path, out_dir: Path, cc: str,
+                                   force: bool, gibbon_exe: Optional[str],
+                                   iterations: int = 1,
+                                   c_arith_mode: str = DEFAULT_C_ARITH_MODE,
+                                   simd_isa: str = DEFAULT_SIMD_ISA,
+                                   pin_cpu: Optional[int] = None,
+                                   ) -> Dict[int, Dict[str, BenchmarkResult]]:
+    """Compiles and runs (once, no --iterate warmup campaign) all four
+    Add1TreeIntN.hs programs under the four ADD1TREE_WIDTH_CONFIGS, exactly
+    the same compile_one/run_exe/qualify_variant path as every other row in
+    this file. Returns {width: {config_name: BenchmarkResult}}. This
+    function performs real executions -- callers that must not produce
+    timing evidence must not call it outside a synthetic test that stubs it
+    out.
+
+    `c_arith_mode` defaults to the same driver-wide `unsafe` default --
+    this table retains its own width policy (Int8/16/32/64 are the
+    experiment) but its arithmetic mode still follows the driver default."""
+    _validate_c_arith_mode(c_arith_mode)
+    manifest = default_oracle_manifest()
+    results: Dict[int, Dict[str, BenchmarkResult]] = {}
+    for program in ADD1TREE_WIDTH_PROGRAMS:
+        width = _add1tree_width_of(program)
+        results[width] = {}
+        for cfg_name, cfg_kwargs in ADD1TREE_WIDTH_CONFIGS.items():
+            src_dir = "AOS" if cfg_name.startswith("aos") else "SOA"
+            source = programs_dir / src_dir / program
+            res = BenchmarkResult(program, cfg_name)
+            res.arith_mode = c_arith_mode
+            res.use_no_ran = program_uses_no_ran(program)
+            if not source.exists():
+                res.compile_success = False
+                res.error_message = "source not found: %s" % source
+                res.qualification = qualify_variant(
+                    program, cfg_name, source, False, res.error_message,
+                    False, None, None, manifest=manifest)
+                results[width][cfg_name] = res
+                continue
+            ok, compile_time, err = compile_one(source, cfg_name, out_dir, force,
+                                                use_no_ran=program_uses_no_ran(program),
+                                                c_arith_mode=c_arith_mode,
+                                                simd_isa=simd_isa,
+                                                **cfg_kwargs)
+            res.compile_success = ok
+            res.compile_time = compile_time
+            exe = out_dir / f"{source.stem}.{cfg_name}.exe"
+            c_file = out_dir / f"{source.stem}.{cfg_name}.c"
+            if ok:
+                run_ok, elapsed, out, err2, rc = run_exe(exe, iterations, use_iterate_flag=True, pin_cpu=pin_cpu)
+                res.run_success = run_ok
+                res.run_returncode = rc
+                res.output = out
+                res.exec_wall_time = elapsed
+                if run_ok and out:
+                    res.passes = parse_passes(out)
+                res.qualification = qualify_variant(
+                    program, cfg_name, source, ok, err, run_ok, err2, out,
+                    manifest=manifest, c_file=c_file if c_file.exists() else None,
+                    expect_vectorization=(cfg_name == "soa_simd"))
+            else:
+                res.qualification = qualify_variant(
+                    program, cfg_name, source, False, err, False, None, None,
+                    manifest=manifest)
+            results[width][cfg_name] = res
+    return results
+
+
+def _qual_summary(cfgs: Dict[str, Optional[BenchmarkResult]]) -> str:
+    """Compact per-row qualification summary shared by the width tables:
+    'OK' when every present config is VERIFIED, otherwise only the
+    non-verified configs and their status label -- so a fully-qualified
+    row costs one word instead of one clause per config."""
+    problems = []
+    for name, res in cfgs.items():
+        st = getattr(res, "qualification", None) if res is not None else None
+        label = st.label if st is not None else "MISSING"
+        if label != "VERIFIED":
+            problems.append("%s=%s" % (name, label))
+    return "OK" if not problems else "; ".join(problems)
+
+
+def _table_add1tree_widths(f, results_by_width: Dict[int, Dict[str, BenchmarkResult]]):
+    """Integer-width add1Tree vectorization table: one row per width, every
+    numeric cell gated through prov.verified_result/eligible_pair/
+    safe_speedup -- an unverified, missing-oracle, failed or empty-output
+    variant renders N/A with a reason and never contributes to a speedup,
+    total, aggregate, plot or exported JSON numeric result (the same
+    contract every other table in this file enforces, not a duplicated
+    parallel eligibility check)."""
+    f.write("% Integer-width add1Tree vectorization\n")
+    f.write("\\begin{table}[h]\n\\centering\n")
+    f.write("\\caption{Integer-width add1Tree vectorization. "
+            + simd_isa_caption_note() + no_gcc_vec_caption_note() + "}\n")
+    f.write("\\label{tab:add1tree_widths}\n\\small\n")
+    f.write("\\resizebox{\\textwidth}{!}{%\n")
+    f.write("\\begin{tabular}{lcccccccc}\n\\toprule\n")
+    f.write("Width & AoS raw & SoA raw & AoS/SoA & SoA loopify & SoA SIMD & "
+            "SIMD spd. & AoS-vs-SIMD & Qual. \\\\\n\\midrule\n")
+
+    def cell(res: Optional[BenchmarkResult]) -> str:
+        t = total_pass_time(res)
+        return f"{t:.6f}" if t is not None else "N/A"
+
+    for width in sorted(results_by_width.keys()):
+        cfgs = results_by_width[width]
+        aos = cfgs.get("aos_mut")
+        soa = cfgs.get("soa_mut")
+        loop = cfgs.get("soa_loopify")
+        simd = cfgs.get("soa_simd")
+
+        aos_over_soa, aos_over_soa_reason = prov.safe_speedup(aos, soa, total_pass_time)
+        simd_spd, simd_reason = prov.safe_speedup(loop, simd, total_pass_time)
+        aos_vs_simd, aos_vs_simd_reason = prov.safe_speedup(aos, simd, total_pass_time)
+
+        def spd_or_na(spd, reason):
+            return _spd_cell(spd) if spd is not None else ("N/A -- %s" % reason)
+
+        row = (f"Int{width}"
+               f" & {cell(aos)}"
+               f" & {cell(soa)}"
+               f" & {spd_or_na(aos_over_soa, aos_over_soa_reason)}"
+               f" & {cell(loop)}"
+               f" & {cell(simd)}"
+               f" & {spd_or_na(simd_spd, simd_reason)}"
+               f" & {spd_or_na(aos_vs_simd, aos_vs_simd_reason)}"
+               f" & {_tex_escape(_qual_summary(cfgs))}")
+        f.write(row + " \\\\\n")
+    f.write("\\bottomrule\n\\end{tabular}}\n\\end{table}\n\n")
+
+
+# ---------------------------------------------------------------------------
+# The high-arithmetic-intensity width/vectorization table.
+#
+# Same scope note as ADD1TREE_WIDTH_* above: this table performs no timing
+# on its own. `collect_arithintensity_width_results` is real compile/run/
+# qualify plumbing for a future timed run; only the rendering function
+# (`_table_arith_intensity`) is exercised by this file's own tests, against
+# synthetic fixtures -- see test_arithintensity_widths.py's
+# `TestArithIntensityWidthTable`.
+#
+# W64 SIMD EXCLUSION (the one structural difference from Add1Tree's table):
+# `L3.simdCapable VecOpMul (IntS W64)` is `True` in the current compiler --
+# the only packed W64 multiply helper that exists (`gib_vec_mul_int64x2`)
+# spills each 128-bit register to a 2-element scalar array, calls the same
+# scalar `gib_mul_i64` used on the non-vectorized path per lane, and
+# reassembles the register (Codegen.hs's own comment: "NOT an
+# acceleration... retained ONLY because W64 vectorization already shipped
+# with them"). Enabling --opt-vectorization for a W64 MayVectorize
+# multiply is therefore CORRECT but not real SIMD, and this benchmark's
+# policy is that it must never be reported as one. Rather than change the
+# global capability matrix (`L3.simdCapable`) to work around a codegen
+# quirk unrelated to compiler correctness, ARITHINTENSITY_WIDTH_CONFIGS
+# simply never builds a "soa_simd" config for width 64
+# (collect_arithintensity_width_results skips it structurally, not via a
+# runtime check on the result), and _table_arith_intensity hardcodes width
+# 64's SIMD/speedup cells to a fixed N/A reason BEFORE consulting any
+# BenchmarkResult -- so a stray or synthetic W64 "soa_simd" result, however
+# constructed, can never reach that cell as a number. This is proven, not
+# assumed: see TestArithIntensityWidthTable.
+# test_w64_simd_column_is_always_na_even_if_a_verified_result_is_supplied.
+ARITHINTENSITY_WIDTH_PROGRAMS = [
+    "ArithmeticIntensityInt8.hs", "ArithmeticIntensityInt16.hs",
+    "ArithmeticIntensityInt32.hs", "ArithmeticIntensityInt64.hs",
+]
+
+# Structural arithmetic-intensity accounting, derived from the accepted
+# kernel's own generated-C form (4 gib_mul_i<w> + 4 gib_add_i<w>/
+# gib_sub_i<w> per leaf -- confirmed by direct inspection of the emitted C
+# for arithKernel, not counted from source text alone) and each width's
+# byte size. Deliberately excludes loop control, address/cursor
+# arithmetic, tree construction and the verification fold -- none of that
+# is the kernel.
+ARITH_OPS_PER_ELEMENT = 415  # 8 independent chain-pairs x 6 rounds
+# of `a = a*(2b+1) + c`, plus seeding and the final sum. Raised from 8
+# on 2026-09-07: at 8 ops the kernel sat at 0.162 ops/byte against an
+# Int32 ridge of 2.20, i.e. 13.6x memory-bound, so the width sweep was
+# measuring bytes moved rather than vectorization. It is now 4.75
+# ops/byte -- compute-bound -- which is what makes the roofline
+# overlay's x-axis meaningful. Counted from the generated program, not
+# asserted; see the kernel comment in the .hs sources.
+
+
+def arith_intensity_metrics(width: int) -> Dict[str, float]:
+    width_bytes = width // 8
+    bytes_loaded = width_bytes    # one Leaf field read
+    bytes_stored = width_bytes    # one Leaf field written back
+    return {
+        "ops_per_element": ARITH_OPS_PER_ELEMENT,
+        "bytes_loaded_per_element": bytes_loaded,
+        "bytes_stored_per_element": bytes_stored,
+        "ops_per_byte": ARITH_OPS_PER_ELEMENT / (bytes_loaded + bytes_stored),
+    }
+
+
+# W64 is deliberately absent from "soa_simd" -- see the module-level note
+# above. Only W8/16/32 get a real Gibbon-SIMD config.
+# EVERY column here disables the C compiler's own auto-vectorizer.
+#
+# It was previously disabled only on the Gibbon-side columns (soa_loopify,
+# soa_simd) while the two raw columns kept it, which made loopification look
+# like a REGRESSION: measured on Int16, the table reported raw 0.1875s against
+# loopified 0.4663s -- 2.5x slower -- because the raw column was being
+# vectorized by GCC and the loopified one was not. Compared honestly,
+# loopification wins either way: 0.1875 -> 0.1374 with the C vectorizer on for
+# both (1.36x), and 0.5184 -> 0.4651 with it off for both (1.11x).
+#
+# GCC helps the recursive form more than one might expect because the kernel
+# is straight-line arithmetic over independent chains, which its SLP
+# (basic-block) vectorizer packs even though the traversal itself is
+# recursive; --no-gcc-vectorize disables SLP as well as loop vectorization.
+#
+# These programs exist to isolate GIBBON's SIMD pass, so the C vectorizer is
+# off in every column and the table measures one thing. The absolute times are
+# therefore NOT what a normal build produces -- the per-program PLDI tables
+# carry the C-vectorizer-enabled configurations for that.
+ARITHINTENSITY_WIDTH_CONFIGS: Dict[int, Dict[str, Dict]] = {
+    width: (
+        {
+            "aos_mut": dict(use_mutable_cursors=True, use_no_gcc_vec=True),
+            "soa_mut": dict(use_mutable_cursors=True, use_no_gcc_vec=True),
+            "soa_loopify": dict(use_mutable_cursors=True, store_scalar_field_counts=True,
+                                enable_loopification=True, use_no_gcc_vec=True),
+        } if width == 64 else
+        {
+            "aos_mut": dict(use_mutable_cursors=True, use_no_gcc_vec=True),
+            "soa_mut": dict(use_mutable_cursors=True, use_no_gcc_vec=True),
+            "soa_loopify": dict(use_mutable_cursors=True, store_scalar_field_counts=True,
+                                enable_loopification=True, use_no_gcc_vec=True),
+            "soa_simd": dict(use_mutable_cursors=True, store_scalar_field_counts=True,
+                             enable_loopification=True, enable_vectorization=True,
+                             use_no_gcc_vec=True),
+        }
+    )
+    for width in (8, 16, 32, 64)
+}
+
+W64_SIMD_NA_REASON = ("unsupported packed multiply: gib_vec_mul_int64x2 is a "
+                      "legacy scalar-spill helper (Codegen.hs), not real SIMD -- "
+                      "excluded from this benchmark's Gibbon-SIMD configuration "
+                      "per owner policy; see BUGS.md")
+
+
+def _arithintensity_width_of(program: str) -> Optional[int]:
+    m = re.match(r"ArithmeticIntensityInt(\d+)\.hs$", program)
+    return int(m.group(1)) if m else None
+
+
+def collect_arithintensity_width_results(programs_dir: Path, out_dir: Path, cc: str,
+                                         force: bool, gibbon_exe: Optional[str],
+                                         iterations: int = 1,
+                                         c_arith_mode: str = DEFAULT_C_ARITH_MODE,
+                                   simd_isa: str = DEFAULT_SIMD_ISA,
+                                   pin_cpu: Optional[int] = None,
+                                         ) -> Dict[int, Dict[str, BenchmarkResult]]:
+    """Same compile_one/run_exe/qualify_variant path as
+    collect_add1tree_width_results. For width 64, ARITHINTENSITY_WIDTH_CONFIGS
+    has no "soa_simd" entry at all, so this function structurally never
+    builds one -- not a runtime skip, an absent config.
+
+    `c_arith_mode` defaults to the driver-wide `unsafe` default -- this
+    table retains its own width policy independent of it."""
+    _validate_c_arith_mode(c_arith_mode)
+    manifest = default_oracle_manifest()
+    results: Dict[int, Dict[str, BenchmarkResult]] = {}
+    for program in ARITHINTENSITY_WIDTH_PROGRAMS:
+        width = _arithintensity_width_of(program)
+        results[width] = {}
+        for cfg_name, cfg_kwargs in ARITHINTENSITY_WIDTH_CONFIGS[width].items():
+            src_dir = "AOS" if cfg_name.startswith("aos") else "SOA"
+            source = programs_dir / src_dir / program
+            res = BenchmarkResult(program, cfg_name)
+            res.arith_mode = c_arith_mode
+            res.use_no_ran = program_uses_no_ran(program)
+            if not source.exists():
+                res.compile_success = False
+                res.error_message = "source not found: %s" % source
+                res.qualification = qualify_variant(
+                    program, cfg_name, source, False, res.error_message,
+                    False, None, None, manifest=manifest)
+                results[width][cfg_name] = res
+                continue
+            ok, compile_time, err = compile_one(source, cfg_name, out_dir, force,
+                                                use_no_ran=program_uses_no_ran(program),
+                                                c_arith_mode=c_arith_mode,
+                                                simd_isa=simd_isa,
+                                                **cfg_kwargs)
+            res.compile_success = ok
+            res.compile_time = compile_time
+            exe = out_dir / f"{source.stem}.{cfg_name}.exe"
+            c_file = out_dir / f"{source.stem}.{cfg_name}.c"
+            if ok:
+                run_ok, elapsed, out, err2, rc = run_exe(exe, iterations, use_iterate_flag=True, pin_cpu=pin_cpu)
+                res.run_success = run_ok
+                res.run_returncode = rc
+                res.output = out
+                res.exec_wall_time = elapsed
+                if run_ok and out:
+                    res.passes = parse_passes(out)
+                res.qualification = qualify_variant(
+                    program, cfg_name, source, ok, err, run_ok, err2, out,
+                    manifest=manifest, c_file=c_file if c_file.exists() else None,
+                    expect_vectorization=(cfg_name == "soa_simd"))
+            else:
+                res.qualification = qualify_variant(
+                    program, cfg_name, source, False, err, False, None, None,
+                    manifest=manifest)
+            results[width][cfg_name] = res
+    return results
+
+
+# ---------------------------------------------------------------------------
+# --pldi-submission: per-program fold/map tables across an expanded AoS/SoA
+# variant matrix.
+#
+# Every loopified config below passes --opt-loopification WITHOUT
+# --auto-loopification: every curated map function this driver times already
+# carries an explicit OPT:MayVectorize annotation (verified against every
+# .hs file in programs/AOS and programs/SOA before this policy was adopted),
+# so structural inference is unnecessary. The one known exception,
+# DomTree.hs's `computeWidths`, has a genuine parent-child dependency (the
+# parent's width is computed from its recursively-produced children) and is
+# correctly left unloopified either way -- its loopified-row cells report
+# unchanged, non-loopified timing, which is the correct result to show, not
+# a bug to work around.
+PLDI_FOLD_CONFIGS: Dict[str, Dict[str, Dict]] = {
+    "aos": {
+        "aos_imm_notco": dict(use_mutable_cursors=False, use_no_gcc_tail_calls=True),
+        "aos_imm":       dict(use_mutable_cursors=False),
+        "aos_mut":       dict(use_mutable_cursors=True),
+        "aos_mut_notco": dict(use_mutable_cursors=True, use_no_gcc_tail_calls=True),
+    },
+    "soa": {
+        "soa_imm_notco": dict(use_mutable_cursors=False, use_no_gcc_tail_calls=True),
+        "soa_imm":       dict(use_mutable_cursors=False),
+        "soa_mut":       dict(use_mutable_cursors=True),
+        "soa_mut_notco": dict(use_mutable_cursors=True, use_no_gcc_tail_calls=True),
+    },
+}
+
+# Each map-table layout's first 3 rows are exactly the fold-table's rows for
+# that layout (the same compiled binary's fold-pass timing feeds the fold
+# table; its map-pass timing feeds the map table) -- a program is compiled
+# once per config name, not once per table.
+PLDI_MAP_CONFIGS: Dict[str, Dict[str, Dict]] = {
+    "aos": {
+        **PLDI_FOLD_CONFIGS["aos"],
+        "aos_loop_gccvec_off": dict(use_mutable_cursors=True, enable_loopification=True,
+                                    auto_loopification=False, use_no_gcc_vec=True),
+        "aos_loop_gccvec_on":  dict(use_mutable_cursors=True, enable_loopification=True,
+                                    auto_loopification=False),
+    },
+    "soa": {
+        **PLDI_FOLD_CONFIGS["soa"],
+        "soa_loop_gccvec_off_sbs_off": dict(
+            use_mutable_cursors=True, store_scalar_field_counts=True,
+            enable_loopification=True, auto_loopification=False, use_no_gcc_vec=True),
+        "soa_loop_gccvec_off_sbs_on": dict(
+            use_mutable_cursors=True, store_scalar_field_counts=True,
+            enable_loopification=True, auto_loopification=False,
+            enable_selective_buffer_sharing=True, use_no_gcc_vec=True),
+        "soa_loop_gccvec_on_sbs_on": dict(
+            use_mutable_cursors=True, store_scalar_field_counts=True,
+            enable_loopification=True, auto_loopification=False,
+            enable_selective_buffer_sharing=True),
+        "soa_loop_gccvec_off_sbs_on_gibvec_on": dict(
+            use_mutable_cursors=True, store_scalar_field_counts=True,
+            enable_loopification=True, auto_loopification=False,
+            enable_selective_buffer_sharing=True, enable_vectorization=True,
+            use_no_gcc_vec=True),
+        "soa_loop_gccvec_on_sbs_on_gibvec_on": dict(
+            use_mutable_cursors=True, store_scalar_field_counts=True,
+            enable_loopification=True, auto_loopification=False,
+            enable_selective_buffer_sharing=True, enable_vectorization=True),
+    },
+}
+
+# Programs the --pldi-submission matrix reports IN ADDITION to the curated
+# campaign list. The integer-width add1Tree series is a width sweep, not a
+# workload in the main AoS/SoA comparison, so it is not in DEFAULT_PROGRAMS
+# -- but its fold/map split is exactly what the PLDI tables report, and the
+# per-width contrast is a result in its own right.
+#
+# All four widths, so the sweep is complete. Int64 was briefly left out on
+# the expectation that it duplicates MonoTree.hs; it does not. The two are
+# comparable only in the MAP pass -- both map `Leaf x -> Leaf (x+1)` over
+# an Int64 tree of similar size (MonoTree 2^23 = 8,388,608 leaves,
+# Add1TreeInt64 9,227,465) -- and even there the tree SHAPES differ
+# (MonoTree perfectly balanced, Add1TreeInt64 Fibonacci-shaped). Their
+# folds are not comparable at all, and in any case Add1Tree's fold is
+# `checksumTree`, a verification pass excluded from every table
+# (VERIFICATION_PASSES), so what these four rows actually report is the
+# add1Tree map at four integer widths -- a sweep MonoTree is not part of.
+# Benchmark families that SHIP as one executable per timed pass (a shared
+# base module plus <Family>_<pass>.hs files) but must still be REPORTED as
+# one program -- same table, same rows -- exactly as when each was a single
+# executable. Keyed by the program name the tables show; the value is the
+# filename prefix its members share.
+#
+# OctTree predates this and keeps its own bespoke merge
+# (_merge_octree_results), because that one also folds in ColorOctree,
+# which is a separate program rather than a member of the family.
+PROGRAM_MERGE_GROUPS: Dict[str, str] = {
+    "PiecewiseFunctions.hs": "PiecewiseFunctions_",
+}
+
+
+def merge_group_members(program: str, prefix: str,
+                        candidates: List[str]) -> List[str]:
+    """The <Family>_<pass>.hs files present, in DEFAULT_PROGRAMS order.
+
+    Order matters: it becomes the row order of the merged program's table,
+    and DEFAULT_PROGRAMS lists these in the order the original combined
+    program computed them -- so the merged table reads exactly as the
+    single-executable one did. Anything not in DEFAULT_PROGRAMS is appended
+    in sorted order. Empty when the family was not run (or was excluded),
+    in which case nothing is merged and every program is left untouched."""
+    present = [p for p in candidates if p.startswith(prefix) and p.endswith(".hs")]
+    canonical = [p for p in DEFAULT_PROGRAMS if p in present]
+    return canonical + sorted(p for p in present if p not in canonical)
+
+
+def merge_pldi_program_groups(
+        pldi_variant_results: Optional[Dict[str, Dict[str, BenchmarkResult]]],
+        groups: Optional[Dict[str, str]] = None,
+        ) -> Optional[Dict[str, Dict[str, BenchmarkResult]]]:
+    """Fold each split family's per-pass entries back into ONE program
+    entry, so the per-program tables render the family exactly as they did
+    when it was a single executable: one table, one row per pass.
+
+    Provenance is kept PER PASS (`pass_origin`), not merged into a single
+    verdict: each row's number and its failure symbol come from the member
+    that actually produced that pass, so one member failing blanks only its
+    own row instead of the whole family's column."""
+    if not pldi_variant_results:
+        return pldi_variant_results
+    groups = PROGRAM_MERGE_GROUPS if groups is None else groups
+    out = dict(pldi_variant_results)
+    for merged_name, prefix in groups.items():
+        members = merge_group_members(merged_name, prefix, list(pldi_variant_results))
+        if not members:
+            continue
+        # Which member owns each pass name, and in which order the rows
+        # should appear -- learned across ALL configurations, so a pass
+        # stays a row even in a configuration where its member failed.
+        pass_owner: Dict[str, str] = {}
+        configs: List[str] = []
+        for member in members:
+            for cfg, res in pldi_variant_results[member].items():
+                if cfg not in configs:
+                    configs.append(cfg)
+                for pname in (res.passes or {}) if res is not None else {}:
+                    pass_owner.setdefault(pname, member)
+        merged_by_cfg: Dict[str, BenchmarkResult] = {}
+        for cfg in configs:
+            merged = BenchmarkResult(merged_name, cfg)
+            merged.compile_success = True
+            merged.run_success = True
+            merged.passes = {}
+            merged.pass_origin = {}
+            contributors = []
+            for pname, owner in pass_owner.items():
+                res = pldi_variant_results[owner].get(cfg)
+                merged.pass_origin[pname] = res
+                if res is None:
+                    continue
+                if prov.verified_result(res) and res.passes and pname in res.passes:
+                    merged.passes[pname] = res.passes[pname]
+            for member in members:
+                res = pldi_variant_results[member].get(cfg)
+                if res is not None:
+                    contributors.append(res)
+                    if merged.adt_fields is None and res.adt_fields is not None:
+                        merged.adt_fields = res.adt_fields
+                        merged.adt_info = res.adt_info
+                    if merged.arith_mode is None:
+                        merged.arith_mode = res.arith_mode
+                        merged.use_no_ran = res.use_no_ran
+            merged.qualification = prov.synthesize_derived_status(
+                cfg, merged_name, contributors)
+            merged_by_cfg[cfg] = merged
+        for member in members:
+            out.pop(member, None)
+        out[merged_name] = merged_by_cfg
+    return out
+
+
+#
+# The arithmetic-intensity family is the same shape and is included for the
+# same reason: one timed map pass (`arithKernel`) at four integer widths,
+# with `checksumTree` as its verification fold (excluded from every table
+# by VERIFICATION_PASSES). Both families therefore render map tables only.
+# Built from the family constants themselves rather than retyped, so a
+# width added to either family joins the PLDI matrix automatically instead
+# of being silently left out of the tables (which is exactly how the
+# arithmetic-intensity family came to be missing).
+PLDI_EXTRA_PROGRAMS = list(ADD1TREE_WIDTH_PROGRAMS) + list(ARITHINTENSITY_WIDTH_PROGRAMS)
+
+PLDI_ROW_LABELS: Dict[str, str] = {
+    # Spelled out in full: this is the legend a reader decodes the compact
+    # column symbols from, so it is the one place that must not itself
+    # introduce an undefined abbreviation (no SBS, no TCO, no gcc-vec).
+    # AoS/SoA are expanded in the legend caption.
+    "aos_imm_notco": "AoS, recursive traversal, immutable cursors, "
+                     "C tail-call optimization disabled",
+    "aos_imm": "AoS, recursive traversal, immutable cursors",
+    "aos_mut": "AoS, recursive traversal, mutable cursors",
+    "aos_mut_notco": "AoS, recursive traversal, mutable cursors, "
+                     "C tail-call optimization disabled",
+    "aos_loop_gccvec_off": "AoS, loopified, C auto-vectorization disabled",
+    "aos_loop_gccvec_on": "AoS, loopified, C auto-vectorization enabled",
+    "soa_imm_notco": "SoA, recursive traversal, immutable cursors, "
+                     "C tail-call optimization disabled",
+    "soa_imm": "SoA, recursive traversal, immutable cursors",
+    "soa_mut": "SoA, recursive traversal, mutable cursors",
+    "soa_mut_notco": "SoA, recursive traversal, mutable cursors, "
+                     "C tail-call optimization disabled",
+    "soa_loop_gccvec_off_sbs_off":
+        "SoA, loopified, C auto-vectorization disabled, "
+        "no selective buffer sharing",
+    "soa_loop_gccvec_off_sbs_on":
+        "SoA, loopified, C auto-vectorization disabled, "
+        "selective buffer sharing",
+    "soa_loop_gccvec_on_sbs_on":
+        "SoA, loopified, C auto-vectorization enabled, "
+        "selective buffer sharing",
+    "soa_loop_gccvec_off_sbs_on_gibvec_on":
+        "SoA, loopified, C auto-vectorization disabled, "
+        "selective buffer sharing, Gibbon SIMD vectorization",
+    "soa_loop_gccvec_on_sbs_on_gibvec_on":
+        "SoA, loopified, C auto-vectorization enabled, "
+        "selective buffer sharing, Gibbon SIMD vectorization",
+}
+
+
+# Compact column symbols for the PLDI per-program fold/map tables.  The
+# scheme is systematic so a reader can decode an unfamiliar column:
+#   base letter -- A = array-of-structs (AoS), S = struct-of-arrays (SoA)
+#   subscript   -- Gibbon-side codegen: r recursive traversal, i immutable
+#                  cursors, m mutable cursors, \ell loopified, b selective
+#                  buffer sharing, v Gibbon SIMD vectorization
+#   superscript -- the C-compiler knob that differs from the column's
+#                  default: +av leaves C auto-vectorization ON (loopified
+#                  columns disable it), \neg t disables C tail-call opt.
+# Superscripts are wrapped in \scriptscriptstyle: at plain superscript
+# size the binary + is set as large as the subscript letters and reads as
+# part of the name rather than as a modifier.
+# PLDI_ROW_LABELS keeps the long prose spelling of each configuration;
+# _table_pldi_legend pairs the two so the symbols stay decodable from
+# inside the paper itself.
+PLDI_COL_SYMBOLS: Dict[str, str] = {
+    "aos_imm_notco": "$A_{ri}^{\\scriptscriptstyle \\neg t}$",
+    "aos_imm":       "$A_{ri}$",
+    "aos_mut":       "$A_{rm}$",
+    "aos_mut_notco": "$A_{rm}^{\\scriptscriptstyle \\neg t}$",
+    "aos_loop_gccvec_off": "$A_{\\ell}$",
+    "aos_loop_gccvec_on":  "$A_{\\ell}^{\\scriptscriptstyle +av}$",
+    "soa_imm_notco": "$S_{ri}^{\\scriptscriptstyle \\neg t}$",
+    "soa_imm":       "$S_{ri}$",
+    "soa_mut":       "$S_{rm}$",
+    "soa_mut_notco": "$S_{rm}^{\\scriptscriptstyle \\neg t}$",
+    "soa_loop_gccvec_off_sbs_off":          "$S_{\\ell}$",
+    "soa_loop_gccvec_off_sbs_on":           "$S_{\\ell b}$",
+    "soa_loop_gccvec_on_sbs_on":            "$S_{\\ell b}^{\\scriptscriptstyle +av}$",
+    "soa_loop_gccvec_off_sbs_on_gibvec_on": "$S_{\\ell bv}$",
+    "soa_loop_gccvec_on_sbs_on_gibvec_on":  "$S_{\\ell bv}^{\\scriptscriptstyle +av}$",
+}
+
+
+# ---------------------------------------------------------------------------
+# Per-pass DELTA tables: what each optimization actually bought, in seconds.
+#
+# Every entry is (layout, symbol, baseline config, feature config, legend
+# text). Each symbol's subscript names the feature using the SAME letters
+# the configuration symbols use (PLDI_COL_SYMBOLS): m mutable cursors,
+# \ell loopified, b selective buffer sharing, v Gibbon SIMD vectorization,
+# av the C auto-vectorizer (spelled `+av` as a superscript there), t the C
+# tail-call optimization (`\neg t` there). A reader who has learned the
+# configuration legend can therefore read a delta column without relearning
+# anything. The value rendered is (BASELINE - FEATURE) / FEATURE as a
+# percentage -- identically (speedup - 1) x 100 -- so a POSITIVE number
+# always means "enabling this made the pass faster", in every column of
+# every table. The denominator is the FEATURE, not the baseline: against
+# the baseline the scale saturates (a 5x win reads 80%, an 8x win 87.5%),
+# which compresses exactly the large improvements these tables exist to
+# size. See `_signed_percent` for the full argument. Either way the numbers
+# are scale-free and so comparable across passes whose absolute times
+# differ by orders of magnitude.
+#
+# That uniform orientation is a deliberate normalization of the request,
+# which spelled three of the twelve columns feature-first (mutable cursors,
+# selective buffer sharing, and Gibbon-vec-on-top-of-auto-vec) and asked for
+# absolute values |x - y|. Magnitudes are exactly as requested; what changes
+# is that the sign survives -- and it has to, because two of the columns ask
+# whether one vectorizer HINDERS or HELPS the other, which an absolute value
+# cannot express.
+PLDI_DELTA_COLUMNS_FOLD: List[Tuple[str, str, str, str, str]] = [
+    ("AoS", "$\\Delta^{A}_{m}$", "aos_imm_notco", "aos_mut_notco",
+     "What mutable cursors alone bought vanilla Gibbon. BOTH sides have the "
+     "C tail-call optimization disabled, so this isolates mutability: "
+     "measured against $A_{ri}$ (tail calls ENABLED) it would report "
+     "mutability plus whatever tail calls contributed, and mutability is "
+     "precisely what puts the traversal in tail position for them to work "
+     "on"),
+    ("AoS", "$\\Delta^{A}_{t}$", "aos_mut_notco", "aos_mut",
+     "What the C tail-call optimization bought AoS mutable. Mutable cursors "
+     "are what leave the traversal in tail position, so this optimization "
+     "has something to work on only once they are in use"),
+    ("SoA", "$\\Delta^{S}_{m}$", "soa_imm_notco", "soa_mut_notco",
+     "What mutable cursors alone bought SoA; as in AoS, both sides have the "
+     "C tail-call optimization disabled so the two effects are not "
+     "conflated"),
+    ("SoA", "$\\Delta^{S}_{t}$", "soa_mut_notco", "soa_mut",
+     "What the C tail-call optimization bought SoA mutable; as in AoS, it is "
+     "mutability that leaves the traversal in tail position"),
+]
+
+PLDI_DELTA_COLUMNS_MAP: List[Tuple[str, str, str, str, str]] = [
+    # Both layouts' cursor/TCO columns carry forward from the fold table.
+    PLDI_DELTA_COLUMNS_FOLD[0],
+    PLDI_DELTA_COLUMNS_FOLD[1],
+    ("AoS", "$\\Delta^{A}_{\\ell}$", "aos_mut", "aos_loop_gccvec_off",
+     "What loopification gained over recursion in AoS mutable"),
+    ("AoS", "$\\Delta^{A}_{av}$", "aos_loop_gccvec_off", "aos_loop_gccvec_on",
+     "What the C auto-vectorizer added to loopified AoS mutable"),
+    PLDI_DELTA_COLUMNS_FOLD[2],
+    PLDI_DELTA_COLUMNS_FOLD[3],
+    ("SoA", "$\\Delta^{S}_{\\ell}$", "soa_mut", "soa_loop_gccvec_off_sbs_off",
+     "What loopification gained over recursion in SoA mutable"),
+    ("SoA", "$\\Delta^{S}_{b}$", "soa_loop_gccvec_off_sbs_off",
+     "soa_loop_gccvec_off_sbs_on",
+     "What selective buffer sharing added over SoA loopified"),
+    ("SoA", "$\\Delta^{S}_{av}$", "soa_loop_gccvec_off_sbs_on",
+     "soa_loop_gccvec_on_sbs_on",
+     "What the C auto-vectorizer added over SoA loopified $+$ selective "
+     "buffer sharing"),
+    ("SoA", "$\\Delta^{S}_{v}$", "soa_loop_gccvec_off_sbs_on",
+     "soa_loop_gccvec_off_sbs_on_gibvec_on",
+     "What Gibbon SIMD vectorization added over SoA loopified $+$ selective "
+     "buffer sharing"),
+    ("SoA", "$\\Delta^{S}_{av|v}$", "soa_loop_gccvec_off_sbs_on_gibvec_on",
+     "soa_loop_gccvec_on_sbs_on_gibvec_on",
+     "Whether the C auto-vectorizer HELPS ($>0$) or HINDERS ($<0$) Gibbon "
+     "vectorization --- both are already on, and this turns the C one on top"),
+    ("SoA", "$\\Delta^{S}_{v|av}$", "soa_loop_gccvec_on_sbs_on",
+     "soa_loop_gccvec_on_sbs_on_gibvec_on",
+     "Whether Gibbon vectorization HELPS ($>0$) or HINDERS ($<0$) the C "
+     "auto-vectorizer --- the mirror of the column above, adding Gibbon's "
+     "vectorizer on top of the C one"),
+]
+
+
+def _signed_sig4(value: Optional[float]) -> str:
+    """A signed delta at 4 significant digits, with an explicit `+' so the
+    direction is legible at a glance in a column of mixed signs."""
+    if value is None:
+        return "--"
+    body = _sig4(abs(value))
+    return ("$-$" if value < 0 else "+") + body
+
+
+def _signed_percent(baseline: Optional[float],
+                    feature: Optional[float]) -> str:
+    """(baseline - feature) / FEATURE, as a signed percentage.
+
+    Percent of the FEATURE's own time, which is identically
+    (speedup - 1) x 100. The denominator was the baseline, which is the
+    natural reading of "this cut N% off the time" but SATURATES: a 5x win is
+    80%, an 8x win 87.5%, a 100x win 99%, so large improvements compress into
+    a narrow band and stop being distinguishable. Against the feature the
+    scale is unbounded -- 8x reads +700% -- which is what the delta tables
+    are for.
+
+    The trade is that SLOWDOWNS now saturate instead, approaching -100% as
+    the feature gets arbitrarily worse. That is the better way round here:
+    these columns exist to size wins, and a slowdown is adequately conveyed
+    by any negative number.
+
+    Positive still means the feature made the pass faster. A zero (or
+    negative) feature time has no meaningful percentage, so it renders `--'
+    rather than dividing."""
+    if baseline is None or feature is None or feature <= 0:
+        return "--"
+    return _signed_sig4((baseline - feature) / feature * 100.0) + "\\%"
+
+
+def _pldi_delta_cell(results_for_program: Dict[str, BenchmarkResult],
+                     baseline_cfg: str, feature_cfg: str,
+                     pass_name: str) -> str:
+    """(BASELINE - FEATURE) / FEATURE for one pass, as a percentage, or `--'.
+
+    A delta needs BOTH measurements, so unlike a timing cell it cannot name
+    a single failure mode -- if either side is missing or unverified the
+    cell is `--' and the per-configuration reason is in the timing table
+    above it (and in the driver's warning list)."""
+    _btext, base = _pldi_cell(results_for_program.get(baseline_cfg), pass_name)
+    _ftext, feat = _pldi_cell(results_for_program.get(feature_cfg), pass_name)
+    return _signed_percent(base, feat)
+
+
+def _render_pldi_delta_table(f, program: str,
+                             results_for_program: Dict[str, BenchmarkResult],
+                             columns: List[Tuple[str, str, str, str, str]],
+                             pass_type: str, kind: str) -> None:
+    pass_names = _pldi_pass_names(results_for_program, pass_type)
+    if not pass_names:
+        return
+    prog_stem = program.replace(".hs", "")
+    prog_display = _tex_escape(prog_stem)
+    groups: List[Tuple[str, List[Tuple[str, str, str, str, str]]]] = []
+    for col in columns:
+        if not groups or groups[-1][0] != col[0]:
+            groups.append((col[0], []))
+        groups[-1][1].append(col)
+    f.write(f"% -- PLDI {kind} delta table: {prog_stem} --\n")
+    f.write("\\begin{table}[t]\n\\centering\n")
+    f.write(
+        f"\\caption{{What each optimization bought, per {kind} pass, for "
+        f"\\texttt{{{prog_display}}} (percent; companion to "
+        f"Table~\\ref{{tab:pldi-{kind}-{prog_stem}}}). Every column is "
+        "(\\emph{baseline} $-$ \\emph{feature enabled}) / \\emph{feature "
+        "enabled}, which is identically $(\\text{speedup} - 1) \\times 100$: "
+        "$+100\\%$ means the feature made the pass twice as fast, $+700\\%$ "
+        "eight times as fast, and a negative value means it made the pass "
+        "slower. Percentages are scale-free, so they are comparable across "
+        "passes whose absolute times differ widely. "
+        "See "
+        "Table~\\ref{tab:pldi-delta-legend} for each column's exact "
+        "definition. `--' marks a pass where either side of the difference "
+        "was not measured; the timing table above says which.}\n")
+    f.write(f"\\label{{tab:pldi-{kind}-delta-{prog_stem}}}\n")
+    if len(columns) > 8:
+        f.write("\\footnotesize\\gibbonnumfont\n"
+                "\\setlength{\\tabcolsep}{4pt}\n")
+    else:
+        f.write("\\small\\gibbonnumfont\n")
+    f.write("\\begin{tabular}{l" + " r" * len(columns) + "}\n\\toprule\n")
+    f.write("\\textbf{Pass}"
+            + "".join(" & \\multicolumn{%d}{c}{\\textbf{%s}}" % (len(g), lbl)
+                      for lbl, g in groups)
+            + " \\\\\n")
+    col = 2
+    rules = []
+    for _lbl, group in groups:
+        rules.append("\\cmidrule(lr){%d-%d}" % (col, col + len(group) - 1))
+        col += len(group)
+    f.write("".join(rules) + "\n")
+    f.write("".join(" & %s" % sym for _l, sym, _b, _fe, _d in columns)
+            + " \\\\\n\\midrule\n")
+    for pname in pass_names:
+        cells = [_pldi_delta_cell(results_for_program, base, feat, pname)
+                 for _l, _sym, base, feat, _d in columns]
+        f.write(_tex_escape(pname) + "".join(" & %s" % c for c in cells)
+                + " \\\\\n")
+    f.write("\\bottomrule\n\\end{tabular}\n\\end{table}\n\n")
+
+
+def _table_pldi_fold_deltas(f, program: str,
+                            results_for_program: Dict[str, BenchmarkResult]) -> None:
+    _render_pldi_delta_table(f, program, results_for_program,
+                             PLDI_DELTA_COLUMNS_FOLD, "fold", "fold")
+
+
+def _table_pldi_map_deltas(f, program: str,
+                           results_for_program: Dict[str, BenchmarkResult]) -> None:
+    _render_pldi_delta_table(f, program, results_for_program,
+                             PLDI_DELTA_COLUMNS_MAP, "map", "map")
+
+
+def _table_pldi_delta_legend(f) -> None:
+    r"""Emitted once, beside the configuration legend: what each $\Delta$
+    column means and exactly which two configurations it subtracts."""
+    f.write("% -- PLDI delta-column legend --\n")
+    f.write("\\begin{table}[t]\n\\centering\n")
+    f.write(
+        "\\caption{Key for the per-pass delta tables. Each column is "
+        "(\\emph{baseline} $-$ \\emph{feature enabled}) / \\emph{feature enabled}, "
+        "expressed as a percentage, which is identically "
+        "$(\\text{speedup} - 1) \\times 100$: $+100\\%$ means the feature made the "
+        "pass twice as fast, $+700\\%$ eight times as fast, and a negative value "
+        "means it made the pass slower. Normalizing to the FEATURE rather than "
+        "the baseline is deliberate -- against the baseline the scale "
+        "saturates, with a 5$\\times$ win reading 80\\% and an 8$\\times$ win "
+        "87.5\\%, so large improvements compress into a narrow band and stop "
+        "being distinguishable. Superscript names the layout "
+        "($A$ = array-of-structs, $S$ = struct-of-arrays); subscript names "
+        "the feature. The two $|$-subscripted columns ask whether one "
+        "vectorizer helps or hinders the other, which is why these are signed "
+        "differences rather than magnitudes. Table~\\ref{tab:pldi-legend} "
+        "defines the configuration symbols themselves.}\n")
+    f.write("\\label{tab:pldi-delta-legend}\n\\small\\gibbonnumfont\n")
+    f.write("\\begin{tabular}{c p{0.82\\linewidth}}\n\\toprule\n")
+    f.write("\\textbf{Column} & \\textbf{Meaning: (baseline $-$ feature) / feature} "
+            "\\\\\n\\midrule\n")
+    seen = set()
+    previous_layout = None
+    def _formula(base_cfg: str, feat_cfg: str) -> str:
+        """The column's formula, DERIVED from its configuration pair.
+
+        Previously each legend spelled its own formula out by hand. Twelve
+        hand-written copies of the arithmetic is twelve things to forget when
+        the arithmetic changes -- and when the denominator moved from the
+        baseline to the feature, every one of them would have silently
+        contradicted the numbers above it."""
+        b = PLDI_COL_SYMBOLS.get(base_cfg, base_cfg).strip("$")
+        ftr = PLDI_COL_SYMBOLS.get(feat_cfg, feat_cfg).strip("$")
+        return f"$({b} - {ftr}) / {ftr}$"
+
+    for layout, sym, _base, _feat, desc in (
+            PLDI_DELTA_COLUMNS_FOLD + PLDI_DELTA_COLUMNS_MAP):
+        if sym in seen:
+            continue
+        if previous_layout is not None and layout != previous_layout:
+            f.write("\\addlinespace\n")
+        previous_layout = layout
+        seen.add(sym)
+        f.write("%s & %s: %s \\\\\n" % (sym, desc, _formula(_base, _feat)))
+    f.write("\\bottomrule\n\\end{tabular}\n\\end{table}\n\n")
+
+
+def collect_pldi_variant_results(programs_dir: Path, out_dir: Path, cc: str,
+                                 force: bool, gibbon_exe: Optional[str],
+                                 iterations: int = 1,
+                                 c_arith_mode: str = DEFAULT_C_ARITH_MODE,
+                                   simd_isa: str = DEFAULT_SIMD_ISA,
+                                   pin_cpu: Optional[int] = None,
+                                 programs: Optional[List[str]] = None,
+                                 ) -> Dict[str, Dict[str, BenchmarkResult]]:
+    """Compiles and runs every PLDI_MAP_CONFIGS variant for every curated
+    program, using the same compile_one/run_exe/qualify_variant path as
+    every other table in this file (see collect_arithintensity_width_results
+    for the identical shape). Unlike the width tables, `iterations` is meant
+    to be the driver's real --iterations value (passed explicitly by the
+    caller), not left at the 1-iteration default: this table's numbers are
+    intended for the paper, not just a structural/correctness check.
+
+    Returns {program: {config_name: BenchmarkResult}}."""
+    _validate_c_arith_mode(c_arith_mode)
+    manifest = default_oracle_manifest()
+    # Same source scan the main campaign runs, so these results carry
+    # adt_fields and the derived dead_ratio.  `parse_passes` recovers `uses`
+    # from the executable's own banner, but the ADT's total field count comes
+    # only from the SOURCE -- without this the per-program tables' Uses and
+    # Dead% columns have no denominator and render "--" for every row.
+    source_cls_all = build_source_classification(programs_dir)
+    program_list = programs if programs is not None else DEFAULT_PROGRAMS
+    results: Dict[str, Dict[str, BenchmarkResult]] = {}
+    for program in program_list:
+        results[program] = {}
+        for layout, configs in PLDI_MAP_CONFIGS.items():
+            src_dir = "AOS" if layout == "aos" else "SOA"
+            source = programs_dir / src_dir / program
+            for cfg_name, cfg_kwargs in configs.items():
+                res = BenchmarkResult(program, cfg_name)
+                res.arith_mode = c_arith_mode
+                res.use_no_ran = program_uses_no_ran(program)
+                if not source.exists():
+                    res.compile_success = False
+                    res.error_message = "source not found: %s" % source
+                    res.qualification = qualify_variant(
+                        program, cfg_name, source, False, res.error_message,
+                        False, None, None, manifest=manifest)
+                    results[program][cfg_name] = res
+                    continue
+                ok, compile_time, err = compile_one(source, cfg_name, out_dir, force,
+                                                    use_no_ran=program_uses_no_ran(program),
+                                                    c_arith_mode=c_arith_mode,
+                                                    simd_isa=simd_isa,
+                                                    **cfg_kwargs)
+                res.compile_success = ok
+                res.compile_time = compile_time
+                exe = out_dir / f"{source.stem}.{cfg_name}.exe"
+                c_file = out_dir / f"{source.stem}.{cfg_name}.c"
+                if ok:
+                    run_ok, elapsed, out, err2, rc = run_exe(exe, iterations, use_iterate_flag=True, pin_cpu=pin_cpu)
+                    res.run_success = run_ok
+                    res.run_returncode = rc
+                    res.output = out
+                    res.exec_wall_time = elapsed
+                    if run_ok and out:
+                        res.passes = parse_passes(out)
+                    apply_source_classification(
+                        res, source_cls_all.get(program,
+                                                {"adt_fields": None, "adt_info": None,
+                                                 "pass_types": {}, "pass_uses": {}}))
+                    progress().advance()
+                    res.qualification = qualify_variant(
+                        program, cfg_name, source, ok, err, run_ok, err2, out,
+                        manifest=manifest, c_file=c_file if c_file.exists() else None,
+                        expect_vectorization=cfg_kwargs.get("enable_vectorization", False))
+                else:
+                    res.qualification = qualify_variant(
+                        program, cfg_name, source, False, err, False, None, None,
+                        manifest=manifest)
+                results[program][cfg_name] = res
+    return results
+
+
+def _sig4(value: Optional[float]) -> str:
+    """A number at 4 significant digits.  %.4g switches to exponent form
+    below 1e-4, which reads badly in a table, so that case is re-rendered as
+    LaTeX math ($1.234 \\times 10^{-5}$) rather than left as `1.234e-05'."""
+    if value is None:
+        return "--"
+    s = "%.4g" % value
+    if "e" not in s and "E" not in s:
+        return s
+    mant, _, exp = s.lower().partition("e")
+    return "$%s \\times 10^{%d}$" % (mant, int(exp))
+
+
+def _pldi_pass_names(results_for_program: Dict[str, BenchmarkResult], pass_type: str) -> List[str]:
+    """All distinct pass names of the given type ("fold"/"map") that ANY
+    variant of this program reported, in first-seen order."""
+    names: List[str] = []
+    seen = set()
+    for res in results_for_program.values():
+        if res is None or not res.passes:
+            continue
+        for pname, pdata in res.passes.items():
+            if is_verification_pass(pname):
+                continue
+            if pdata.get("pass_type") == pass_type and pname not in seen:
+                seen.add(pname)
+                names.append(pname)
+    return names
+
+
+# A cell with no number says WHICH failure it was, rather than collapsing
+# every one to a single dash -- "did not compile" and "compiled, ran, and
+# computed the wrong answer" are very different claims about a
+# configuration, and a reader cannot tell them apart from one symbol.
+# The driver still prints the full per-configuration detail through
+# pldi_qualification_warnings(); these are the table's shorthand.
+PLDI_SYM_COMPILE_FAIL = "*"    # never compiled
+PLDI_SYM_RUN_FAIL = "-"        # compiled, but the executable failed to run
+PLDI_SYM_WRONG_OUTPUT = "**"   # ran, but its output did not match the oracle
+PLDI_SYM_NOT_MEASURED = "?"    # not run at all, or no oracle to compare against
+# Ran and died on the C stack.  Distinguished from a generic run failure
+# because it is not a defect: an immutable-cursor or tail-call-disabled
+# configuration recurses once per element, and the curated inputs are sized
+# for the loop that mutable cursors plus tail calls produce.  List.hs builds
+# 100,000,000 elements, so those configurations need a stack no setting can
+# provide -- the RTS already raises RLIMIT_STACK to 4GB successfully and it is
+# nowhere near enough.  That is the very effect these columns exist to show,
+# so the table should say so rather than report an unexplained failure.
+PLDI_SYM_STACK_EXHAUSTED = "$\\ddagger$"
+
+
+def _pldi_failure_symbol(res: Optional[BenchmarkResult]) -> str:
+    """Which of the four no-number cases this result is.
+
+    Read off QualificationStatus.label, which is the single place the
+    driver decides what happened to a variant -- so the table cannot drift
+    from the warning list or the JSON report."""
+    if res is None:
+        return PLDI_SYM_NOT_MEASURED
+    st = getattr(res, "qualification", None)
+    if st is None:
+        return PLDI_SYM_NOT_MEASURED
+    label = st.label
+    if label == "COMPILE-FAIL":
+        return PLDI_SYM_COMPILE_FAIL
+    if label == "RUN-FAIL":
+        rc = getattr(res, "run_returncode", None)
+        # Python reports a signal death as a negative return code; a shell
+        # would report 128+signal.  Accept both spellings of SIGSEGV.
+        if rc in (-11, 139):
+            return PLDI_SYM_STACK_EXHAUSTED
+        return PLDI_SYM_RUN_FAIL
+    # EMPTY-OUTPUT is grouped with WRONG: the program ran and what it
+    # printed did not match what the oracle expected. Printing nothing is
+    # one way for that to be true, not a separate kind of event.
+    if label in ("WRONG", "EMPTY-OUTPUT"):
+        return PLDI_SYM_WRONG_OUTPUT
+    # VERIFIED-but-no-timing, NO-ORACLE, UNVERIFIED, NOT-REQUIRED.
+    return PLDI_SYM_NOT_MEASURED
+
+
+def _pldi_cell(res: Optional[BenchmarkResult],
+               pass_name: str) -> Tuple[str, Optional[float]]:
+    """A single timing cell, as (rendered text, comparable value).
+
+    A cell with no measurement renders the symbol naming its failure (see
+    _pldi_failure_symbol) and carries no value. The value is what
+    _highlight_row_extremes ranks; it is None exactly when the cell carries
+    no number, so a failed configuration can never be reported as a row's
+    fastest or slowest."""
+    # A merged family (one executable per timed pass) carries the member
+    # result that produced each pass, so a member's failure blanks only its
+    # own row rather than the family's whole column.
+    origin = getattr(res, "pass_origin", None) if res is not None else None
+    if origin is not None and pass_name in origin:
+        res = origin[pass_name]
+    if not prov.verified_result(res) or not res.passes or pass_name not in res.passes:
+        return _pldi_failure_symbol(res), None
+    t = res.passes[pass_name].get("median_time")
+    if t is None:
+        return PLDI_SYM_NOT_MEASURED, None
+    return _sig4(t), t
+
+
+# Row-extreme highlighting for the per-program tables. Defined in the
+# generated .tex itself (see write_latex_tables) so \input-ing it needs
+# only xcolor, no palette options.
+COLOR_FASTEST = "gibbonfast"   # forest green
+COLOR_SLOWEST = "gibbonslow"   # red
+
+
+def _highlight_row_extremes(cells: List[Tuple[str, Optional[float]]]) -> List[str]:
+    """Colour the fastest cell of a row green and the slowest red.
+
+    Ranks only cells that actually carry a number, so `--' (failed or
+    unverified) is never mistaken for "fastest". Colours nothing when the
+    row has fewer than two distinct values -- with one measurement, or with
+    every configuration identical, "fastest" and "slowest" would name the
+    same cell and the colours would assert a difference that is not there."""
+    values = [v for _, v in cells if v is not None]
+    if len(values) < 2 or min(values) == max(values):
+        return [text for text, _ in cells]
+    lo, hi = min(values), max(values)
+    out = []
+    for text, value in cells:
+        if value == lo:
+            out.append("\\textcolor{%s}{%s}" % (COLOR_FASTEST, text))
+        elif value == hi:
+            out.append("\\textcolor{%s}{%s}" % (COLOR_SLOWEST, text))
+        else:
+            out.append(text)
+    return out
+
+
+def _table_pldi_legend(f) -> None:
+    """Emitted once, ahead of the per-program tables, so the compact column
+    symbols used by every one of them are decodable from the paper."""
+    f.write("% -- PLDI configuration legend --\n")
+    f.write("\\begin{table}[t]\n\\centering\n")
+    f.write(
+        "\\caption{Configuration key for the per-program fold and map tables. "
+        + simd_isa_caption_note() +
+        "Base letter: $A$ = array-of-structs (AoS), $S$ = struct-of-arrays (SoA). "
+        "Subscripts name the Gibbon-side code generation "
+        "($r$ recursive traversal, $i$ immutable cursors, $m$ mutable cursors, "
+        "$\\ell$ loopified, $b$ selective buffer sharing, "
+        "$v$ Gibbon SIMD vectorization). "
+        "Superscripts name the C-compiler knob that differs from that column's "
+        "default: $+av$ leaves C auto-vectorization enabled (loopified columns "
+        "disable it), $\\neg t$ disables C tail-call optimization. "
+        "The first three configurations of each layout carry the fold passes; "
+        "map tables additionally report the loopified configurations.}\n")
+    f.write("\\label{tab:pldi-legend}\n\\small\\gibbonnumfont\n")
+    # p{} rather than l on the description: spelling every configuration
+    # out in full (no SBS/TCO shorthand) makes the longest entries wider
+    # than the text block, so that column has to wrap.
+    f.write("\\begin{tabular}{c p{0.72\\linewidth}}\n\\toprule\n")
+    f.write("\\textbf{Symbol} & \\textbf{Configuration} \\\\\n\\midrule\n")
+    for i, layout in enumerate(("aos", "soa")):
+        if i:
+            f.write("\\addlinespace\n")
+        for key in PLDI_MAP_CONFIGS[layout]:
+            f.write("%s & %s \\\\\n" % (PLDI_COL_SYMBOLS.get(key, _tex_escape(key)),
+                                        _tex_escape(PLDI_ROW_LABELS.get(key, key))))
+    f.write("\\bottomrule\n\\end{tabular}\n\\end{table}\n\n")
+
+
+def _pldi_best_of_layout_speedup(
+        cells: List[Tuple[str, Optional[float]]],
+        col_groups: List[Tuple[str, List[str]]]) -> str:
+    """Fastest AoS configuration in this row over the fastest SoA one.
+
+    Deliberately best-vs-best rather than a fixed pair: each layout is
+    represented by whatever configuration actually served it best for THIS
+    pass, so the ratio is not hostage to one configuration happening to be
+    a poor showing for a particular kernel. Only measured cells are
+    considered (a failed configuration has no value and cannot win), and
+    the ratio is `--' unless BOTH layouts have at least one measurement --
+    comparing a layout's best against a layout with nothing measured would
+    be a fabricated comparison."""
+    if len(col_groups) != 2:
+        return "--"
+    bests: List[Optional[float]] = []
+    start = 0
+    for _, group in col_groups:
+        values = [v for _, v in cells[start:start + len(group)] if v is not None]
+        bests.append(min(values) if values else None)
+        start += len(group)
+    aos, soa = bests
+    if aos is None or soa is None or soa <= 0:
+        return "--"
+    return _spd_cell(aos / soa)
+
+
+def _pldi_field_usage(results_for_program: Dict[str, BenchmarkResult],
+                      pname: str) -> Tuple[str, str]:
+    """This pass's field usage: "used/total" and the dead-field percentage.
+
+    Read from whichever configuration recorded it -- the ADT and the pass are
+    properties of the SOURCE, identical across configurations, so the first
+    configuration that parsed them answers for all of them.  Same derivation
+    as the legacy per-program table: `adt_total` is recovered from
+    uses/(1-dead_ratio) when the annotation itself is absent.
+    """
+    uses = dead_r = adt_total = None
+    for res in results_for_program.values():
+        pdata = (getattr(res, "passes", None) or {}).get(pname) if res else None
+        if not pdata:
+            continue
+        if uses is None:
+            uses = pdata.get("uses")
+        if dead_r is None:
+            dead_r = pdata.get("dead_ratio")
+        if adt_total is None:
+            adt_total = pdata.get("adt_total") or getattr(res, "adt_fields", None)
+    if adt_total is None and uses is not None and dead_r is not None and (1 - dead_r) > 0:
+        adt_total = int(round(uses / (1 - dead_r)))
+    uses_s = (f"{uses}/{adt_total}"
+              if (uses is not None and adt_total is not None) else "--")
+    dead_s = (f"{100.0 * dead_r:.0f}\\%" if dead_r is not None else "--")
+    return uses_s, dead_s
+
+
+def _pldi_shared_buffers(results_for_program: Dict[str, BenchmarkResult],
+                         pname: str) -> Tuple[str, str]:
+    """A MAP pass's shared BUFFERS: "shared/total" and the percentage.
+
+    Buffers, not fields. A fully factored SoA value is stored as one buffer
+    per scalar field PLUS the constructor stream, and a dependence-free map
+    always shares that constructor stream too -- it rebuilds the same shape,
+    so the tags are copied unchanged. Counting only fields therefore
+    understated every map by exactly one buffer and, for a single-field ADT,
+    reported 0 shared where the compiler in fact shares half the data.
+
+    Confirmed against the generated C for PiecewiseFunctions: with selective
+    buffer sharing on, `selective_share_buf0` (the constructor stream) and
+    `buf2`..`buf6` appear -- six of the seven buffers -- while `buf1`, the
+    coefficient the map actually rewrites, does not.
+
+    The source annotation `shared=N` records the SCALAR fields left
+    unmodified, which is what is directly readable from the pass body; the
+    constructor stream is added here because it is a property of the layout,
+    not of the pass.
+    """
+    shared = slots = total_bufs = None
+    for res in results_for_program.values():
+        pdata = (getattr(res, "passes", None) or {}).get(pname) if res else None
+        if pdata:
+            if shared is None:
+                shared = pdata.get("shared")
+            if slots is None:
+                slots = pdata.get("shared_slots")
+        info = (getattr(res, "adt_info", None) or {}) if res else {}
+        if total_bufs is None:
+            total_bufs = info.get("soa_total_buffers")
+        if slots is None:
+            slots = info.get("scalar_field_slots")
+    # One buffer per scalar field plus the constructor stream. Prefer the
+    # parser's own total; fall back to slots+1 if it did not report one.
+    if total_bufs is None and slots is not None:
+        total_bufs = slots + 1
+    if shared is None or not total_bufs:
+        return "--", "--"
+    shared_bufs = shared + 1          # + the constructor stream
+    return (f"{shared_bufs}/{total_bufs}",
+            f"{100.0 * shared_bufs / total_bufs:.0f}\\%")
+
+
+def _render_pldi_table(f, program: str, results_for_program: Dict[str, BenchmarkResult],
+                       col_groups: List[Tuple[str, List[str]]],
+                       pass_type: str, kind: str) -> None:
+    """Shared renderer for _table_pldi_fold/_table_pldi_map: one table per
+    program, rows = that program's passes of the given type, columns =
+    compiled configuration, grouped under AoS/SoA spanning headers.  Columns
+    carry the compact PLDI_COL_SYMBOLS names (see _table_pldi_legend), which
+    is what keeps 13 configurations inside the text width -- the long prose
+    labels are what made an earlier rows=configuration draft overflow."""
+    pass_names = _pldi_pass_names(results_for_program, pass_type)
+    if not pass_names:
+        return
+    keys = [k for _, group in col_groups for k in group]
+    prog_stem = program.replace(".hs", "")
+    prog_display = _tex_escape(prog_stem)
+    f.write(f"% -- PLDI {kind} table: {prog_stem} --\n")
+    f.write("\\begin{table}[t]\n\\centering\n")
+    f.write(
+        f"\\caption{{Per-pass {kind} performance for \\texttt{{{prog_display}}}. "
+        + ran_caption_note(program) +
+        "Times are median per iteration (s), 4 significant digits. "
+        "Columns are compiled configurations; see Table~\\ref{tab:pldi-legend} "
+        "for the symbol key. "
+        + simd_isa_caption_note() +
+        "In each row the fastest configuration is "
+        "\\textcolor{" + COLOR_FASTEST + "}{green} and the slowest "
+        "\\textcolor{" + COLOR_SLOWEST + "}{red}. "
+        + ("\\textbf{$\\Sigma_b$} is the BUFFERS selective buffer sharing ($b$) "
+           "shares rather than rewrites, out of the fully factored value's "
+           "total, and \\textbf{$\\Sigma_b\\%$} that as a fraction. A factored "
+           "value is one buffer per scalar field plus the constructor "
+           "stream, and a dependence-free map shares that constructor stream "
+           "too -- it rebuilds the same shape, so the tags are copied "
+           "unchanged. Counting fields alone would understate every map by "
+           "one buffer. A map copies every field into the output region, so "
+           "\"fields used\" is vacuously all of them and distinguishes "
+           "nothing; what separates one map from another is how much of the "
+           "data it merely COPIES. Recursive child fields are not buffers "
+           "and are excluded from both counts. "
+           if pass_type == "map" else
+           "\\textbf{Uses} is the fields this pass accesses out of the benchmark "
+           "ADT's total (recursive and non-recursive alike), and \\textbf{Dead\\%} "
+           "the fraction it never touches -- the quantity a struct-of-arrays "
+           "layout exists to exploit, since an unused field costs an AoS "
+           "traversal bandwidth it cannot avoid. ") +
+        "$A^{\\min}$/$S^{\\min}$ divides that row's fastest AoS configuration "
+        "by its fastest SoA one, so each layout is represented by whichever "
+        "configuration actually served this pass best; ${>}1{\\times}$ means "
+        "SoA is faster. "
+        "A cell with no time names its failure: "
+        "`" + PLDI_SYM_COMPILE_FAIL + "' did not compile, "
+        "`" + PLDI_SYM_RUN_FAIL + "' compiled but the executable failed to run, "
+        "`" + PLDI_SYM_WRONG_OUTPUT + "' ran but its output did not match the "
+        "oracle (an empty output included), "
+        "`" + PLDI_SYM_STACK_EXHAUSTED + "' exhausted the C stack, and "
+        "`" + PLDI_SYM_NOT_MEASURED + "' was not measured -- either not run in "
+        "this campaign or having no registered oracle to check it against. "
+        "A `" + PLDI_SYM_STACK_EXHAUSTED + "' is a RESULT, not a defect: that "
+        "configuration recurses once per element where mutable cursors and "
+        "tail calls produce a loop, and the curated inputs are sized for the "
+        "loop. "
+        "The benchmark driver prints a warning naming each one.}\n")
+    # The 6-column fold tables sit at \small, exactly like the other
+    # per-program tables; only the 13-column map tables step down one size
+    # (and tighten \tabcolsep, which is local to this table environment) so
+    # they still fit the text width without a \resizebox rescaling the font
+    # out of step with the rest of the paper.
+    f.write(f"\\label{{tab:pldi-{kind}-{prog_stem}}}\n")
+    if len(keys) > 8:
+        f.write("\\footnotesize\\gibbonnumfont\n"
+                "\\setlength{\\tabcolsep}{4pt}\n")
+    else:
+        f.write("\\small\\gibbonnumfont\n")
+    # One extra column beyond the configuration groups: the best-of-layout
+    # speedup (see _pldi_best_of_layout_speedup). It belongs to neither
+    # group, so it gets no \cmidrule and its label sits on the symbol row.
+    f.write("\\begin{tabular}{l c c" + " r" * len(keys) + " r}\n\\toprule\n")
+    f.write("\\textbf{Pass} & &"
+            + "".join(" & \\multicolumn{%d}{c}{\\textbf{%s}}" % (len(g), lbl)
+                      for lbl, g in col_groups)
+            + " & \\\\\n")
+    # Pass, Uses and Dead% occupy columns 1-3, so the layout groups the
+    # \cmidrule underlines start at 4.
+    col = 4
+    rules = []
+    for _, group in col_groups:
+        rules.append("\\cmidrule(lr){%d-%d}" % (col, col + len(group) - 1))
+        col += len(group)
+    f.write("".join(rules) + "\n")
+    _is_map = (pass_type == "map")
+    _hdr = ("\\textbf{$\\Sigma_b$} & \\textbf{$\\Sigma_b\\%$}" if _is_map
+            else "\\textbf{Uses} & \\textbf{Dead\\%}")
+    f.write(" & " + _hdr
+            + "".join(" & %s" % PLDI_COL_SYMBOLS.get(k, _tex_escape(k)) for k in keys)
+            + " & $A^{\\min}$/$S^{\\min}$"
+            + " \\\\\n\\midrule\n")
+    for pname in pass_names:
+        raw = [_pldi_cell(results_for_program.get(k), pname) for k in keys]
+        cells = _highlight_row_extremes(raw)
+        spd = _pldi_best_of_layout_speedup(raw, col_groups)
+        # Plain escaped pass name, matching _table_per_program's own row
+        # labels (a \texttt column would push the 13-column map tables
+        # back over the text width).
+        if _is_map:
+            uses_s, dead_s = _pldi_shared_buffers(results_for_program, pname)
+        else:
+            uses_s, dead_s = _pldi_field_usage(results_for_program, pname)
+        f.write(_tex_escape(pname) + " & " + uses_s + " & " + dead_s
+                + "".join(" & %s" % c for c in cells)
+                + " & " + spd + " \\\\\n")
+    f.write("\\bottomrule\n\\end{tabular}\n\\end{table}\n\n")
+
+
+def _table_pldi_fold(f, program: str, results_for_program: Dict[str, BenchmarkResult]) -> None:
+    col_groups = [("AoS", list(PLDI_FOLD_CONFIGS["aos"].keys())),
+                  ("SoA", list(PLDI_FOLD_CONFIGS["soa"].keys()))]
+    _render_pldi_table(f, program, results_for_program, col_groups, "fold", "fold")
+
+
+def _table_pldi_map(f, program: str, results_for_program: Dict[str, BenchmarkResult]) -> None:
+    col_groups = [("AoS", list(PLDI_MAP_CONFIGS["aos"].keys())),
+                  ("SoA", list(PLDI_MAP_CONFIGS["soa"].keys()))]
+    _render_pldi_table(f, program, results_for_program, col_groups, "map", "map")
+
+
+def pldi_qualification_warnings(
+        pldi_variant_results: Dict[str, Dict[str, BenchmarkResult]]) -> List[str]:
+    """One line per (program, configuration) whose result is not oracle-
+    VERIFIED -- i.e. exactly the cells the tables render as `--'.  Replaces
+    the per-table Qual. column: correctness is still checked for every cell,
+    it is just reported to the operator instead of consuming table width."""
+    lines: List[str] = []
+    for program in sorted(pldi_variant_results):
+        by_cfg = pldi_variant_results[program]
+        ordered = [k for layout in ("aos", "soa") for k in PLDI_MAP_CONFIGS[layout]]
+        ordered += [k for k in by_cfg if k not in ordered]
+        for cfg in ordered:
+            if cfg not in by_cfg:
+                continue
+            res = by_cfg[cfg]
+            if prov.verified_result(res):
+                continue
+            st = getattr(res, "qualification", None) if res is not None else None
+            label = st.label if st is not None else "MISSING"
+            detail = getattr(st, "oracle_detail", None) if st is not None else None
+            # For a RUN-FAIL the oracle never ran, so oracle_detail is empty
+            # and the exit code / stderr is the only thing that says why.
+            if not detail and res is not None:
+                detail = getattr(res, "error_message", None)
+            lines.append("%s [%s]: %s%s"
+                         % (program, PLDI_ROW_LABELS.get(cfg, cfg), label,
+                            " -- %s" % detail if detail else ""))
+    return lines
+
+
+def report_pldi_qualification_warnings(
+        pldi_variant_results: Dict[str, Dict[str, BenchmarkResult]]) -> List[str]:
+    lines = pldi_qualification_warnings(pldi_variant_results)
+    if not lines:
+        print("  ✓ Every PLDI configuration verified against its oracle")
+    else:
+        print("  ⚠ %d PLDI configuration(s) did not verify; their table cells "
+              "render as '--':" % len(lines))
+        for line in lines:
+            vprint("      - %s" % line)
+    return lines
+
+
+def _table_arith_intensity(f, results_by_width: Dict[int, Dict[str, BenchmarkResult]]):
+    """Integer-width high-arithmetic-intensity vectorization table: one row
+    per width. Every numeric cell is gated through prov.verified_result/
+    eligible_pair/safe_speedup EXCEPT width 64's SIMD-raw and SIMD-speedup
+    cells, which are hardcoded to W64_SIMD_NA_REASON unconditionally --
+    checked FIRST, before any lookup into results_by_width[64] -- so no
+    BenchmarkResult for width 64's "soa_simd" (real or synthetic) can ever
+    populate those two cells with a number."""
+    f.write("% Integer-width high-arithmetic-intensity vectorization\n")
+    f.write("\\begin{table}[h]\n\\centering\n")
+    f.write("\\caption{Integer-width high-arithmetic-intensity vectorization. "
+            + simd_isa_caption_note()
+            + no_gcc_vec_caption_note()
+            + "Int64 does not vectorize its multiplies: a packed 64-bit multiply "
+              "costs seven instructions for two lanes (four under AVX2) against "
+              "one \\texttt{imul} per lane scalar, so it is a measured LOSS -- "
+              "1.370 instructions per source operation vectorized against 0.750 "
+              "scalar. It is therefore excluded from the SIMD capability matrix, "
+              "and Int64's SIMD column reports the same time as its scalar one "
+              "rather than a slowdown.}\n")
+    f.write("\\label{tab:arith_intensity}\n\\small\n")
+    f.write("\\resizebox{\\textwidth}{!}{%\n")
+    f.write("\\begin{tabular}{lcccccccccccc}\n\\toprule\n")
+    f.write("Width & Ops/elem & Bytes ld/elem & Bytes st/elem & Ops/byte & "
+            "AoS raw & SoA raw & SoA loopify & SoA SIMD & SIMD spd. & "
+            "AoS-vs-SIMD & Status & Qual. \\\\\n\\midrule\n")
+
+    def cell(res: Optional[BenchmarkResult]) -> str:
+        t = total_pass_time(res)
+        return f"{t:.6f}" if t is not None else "N/A"
+
+    def spd_or_na(spd, reason):
+        return _spd_cell(spd) if spd is not None else ("N/A -- %s" % reason)
+
+    for width in sorted(results_by_width.keys()):
+        cfgs = results_by_width[width]
+        m = arith_intensity_metrics(width)
+        aos = cfgs.get("aos_mut")
+        soa = cfgs.get("soa_mut")
+        loop = cfgs.get("soa_loopify")
+
+        if width == 64:
+            # Hardcoded FIRST: no lookup into cfgs.get("soa_simd") at all --
+            # there structurally is no such entry (ARITHINTENSITY_WIDTH_CONFIGS
+            # never defines one for width 64), but even a caller who hand-built
+            # results_by_width with a rogue "soa_simd" entry cannot make this
+            # cell numeric, because this branch never reads it.
+            simd_cell = "N/A"
+            simd_spd_cell = "N/A"
+            aos_vs_simd_cell = "N/A"
+            status = "N/A (%s)" % W64_SIMD_NA_REASON.split(":", 1)[0]
+        else:
+            simd = cfgs.get("soa_simd")
+            simd_spd, simd_reason = prov.safe_speedup(loop, simd, total_pass_time)
+            aos_vs_simd, aos_vs_simd_reason = prov.safe_speedup(aos, simd, total_pass_time)
+            simd_cell = cell(simd)
+            simd_spd_cell = spd_or_na(simd_spd, simd_reason)
+            aos_vs_simd_cell = spd_or_na(aos_vs_simd, aos_vs_simd_reason)
+            status = "SIMD"
+
+        row = (f"Int{width}"
+               f" & {m['ops_per_element']:.0f}"
+               f" & {m['bytes_loaded_per_element']:.0f}"
+               f" & {m['bytes_stored_per_element']:.0f}"
+               f" & {m['ops_per_byte']:.2f}"
+               f" & {cell(aos)}"
+               f" & {cell(soa)}"
+               f" & {cell(loop)}"
+               f" & {simd_cell}"
+               f" & {simd_spd_cell}"
+               f" & {aos_vs_simd_cell}"
+               f" & {_tex_escape(status)}"
+               f" & {_tex_escape(_qual_summary(cfgs))}")
+        f.write(row + " \\\\\n")
+    f.write("\\bottomrule\n\\end{tabular}}\n\\end{table}\n\n")
+
+
+def merge_program_groups_in_pairs(all_results: List[Tuple],
+                                  groups: Optional[Dict[str, str]] = None) -> List[Tuple]:
+    """The (aos, soa) pair list with each split family folded into one pair,
+    so Table 1 shows the family as ONE row rather than one row per timed
+    pass. Mirrors merge_pldi_program_groups; a family whose members are all
+    absent is left alone."""
+    groups = PROGRAM_MERGE_GROUPS if groups is None else groups
+    pairs = list(all_results)
+    for merged_name, prefix in groups.items():
+        by_program = {a.program: (a, s) for a, s in pairs if a and s}
+        members = merge_group_members(merged_name, prefix, list(by_program))
+        if not members:
+            continue
+
+        def build(index: int, variant: str) -> BenchmarkResult:
+            merged = BenchmarkResult(merged_name, variant)
+            merged.compile_success = True
+            merged.run_success = True
+            merged.passes = {}
+            contributors = []
+            for member in members:
+                res = by_program[member][index]
+                # Only a VERIFIED member contributes a pass -- same rule
+                # _merge_octree_results applies to the OctTree family.
+                if res is None or not prov.verified_result(res):
+                    continue
+                contributors.append(res)
+                for pname, pdata in (res.passes or {}).items():
+                    merged.passes[pname] = dict(pdata)
+                if merged.adt_fields is None and res.adt_fields is not None:
+                    merged.adt_fields = res.adt_fields
+                    merged.adt_info = res.adt_info
+                if merged.arith_mode is None:
+                    merged.arith_mode = res.arith_mode
+                    merged.use_no_ran = res.use_no_ran
+            merged.run_success = len(merged.passes) > 0
+            merged.qualification = prov.synthesize_derived_status(
+                variant, merged_name, contributors)
+            return merged
+
+        merged_pair = (build(0, "aos"), build(1, "soa"))
+        pairs = [(a, s) for a, s in pairs if a is None or a.program not in members]
+        pairs.append(merged_pair)
+    return pairs
+
+
+# ---------------------------------------------------------------------------
+# Empirical roofline (--roofline)
+#
+# Measures THIS machine's practical ceilings rather than quoting a
+# datasheet: single-threaded DRAM bandwidth, and the peak rate of
+# multiply-add work at each type Gibbon actually emits.
+#
+# Single-threaded on purpose: every Gibbon benchmark in this suite runs as
+# one process with no parallelism, so an all-core ceiling would not bound
+# any of them -- and on a hybrid CPU it blends fast and slow core types
+# into a number no kernel can reach.
+#
+# Integer ceilings per width, not just FP64: Gibbon's kernels are integer
+# (Int8/16/32/64) and the per-width ceilings are NOT proportional to lane
+# count -- on AVX2 there is no packed 8-bit or 64-bit multiply, so those
+# widths are emulated and much slower than 16-bit. A single FP64 roofline
+# would say nothing about any of that. FP64 is measured too, for
+# comparability with published rooflines.
+ROOFLINE_SOURCE = r"""#define _POSIX_C_SOURCE 200809L
+// Empirical SINGLE-THREADED roofline probe.
+//
+// Single-threaded on purpose: the Gibbon benchmarks this roofline is meant
+// to bound run as one process with no parallelism, so an all-core ceiling
+// would not bound them. On a hybrid CPU it would also blend P-core and
+// E-core throughput into a number no kernel can reach.
+//
+// Reports, on stdout, one "KEY VALUE" line per measurement so the driver
+// can parse it without regexing prose.
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <time.h>
+
+/* Plain C so this builds with the same --cc the driver already uses for
+   Gibbon's generated programs, rather than needing a C++ toolchain. */
+static double now_s(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+
+// ~256 MB per array, 768 MB live: an order of magnitude past this class of
+// CPU's L3, so the triad is served from DRAM rather than cache.
+static const size_t STREAM_N = 32u * 1000u * 1000u;
+
+static double bandwidth_gb_s() {
+    double *A = (double *)aligned_alloc(64, STREAM_N * sizeof(double));
+    double *B = (double *)aligned_alloc(64, STREAM_N * sizeof(double));
+    double *C = (double *)aligned_alloc(64, STREAM_N * sizeof(double));
+    if (!A || !B || !C) { fprintf(stderr, "alloc failed\n"); exit(1); }
+    for (size_t i = 0; i < STREAM_N; ++i) { A[i] = 1.0; B[i] = 2.0; C[i] = 0.0; }
+
+    double best = 0.0;
+    for (int rep = 0; rep < 3; ++rep) {          // best of 3: least disturbed
+        double t0 = now_s();
+        for (size_t i = 0; i < STREAM_N; ++i) C[i] = A[i] + 3.0 * B[i];
+        double t1 = now_s();
+        // STREAM convention: 2 reads + 1 write = 24 B/element. Real DRAM
+        // traffic is 32 B/element when the write allocates, so counting 24
+        // makes this a CONSERVATIVE (under-)estimate of achieved bandwidth.
+        double gb = (double)STREAM_N * 24.0 / 1e9;
+        double bw = gb / (t1 - t0);
+        if (bw > best) best = bw;
+    }
+    volatile double sink = C[STREAM_N / 2]; (void)sink;
+    free(A); free(B); free(C);
+    return best;
+}
+
+// Compute ceilings.
+//
+// The accumulators must live in REGISTERS, not memory: an earlier version
+// used plain arrays and measured ~5.5 GFLOPS because every iteration
+// reloaded and stored them, making the loop store-bound rather than
+// FMA-bound. GCC/Clang vector extensions give one AVX register per
+// accumulator, and 12 independent chains are enough to cover FMA latency
+// (~4 cycles) across the two FMA ports.
+#define ACCS 12
+
+// A 1 the optimizer cannot see. Without this the multiply in `a*x+y` is
+// folded away when x is a literal 1, and the benchmark reports roughly
+// double the ops it actually executed -- which is exactly what an earlier
+// revision of this file did.
+static volatile double OPAQUE_SEED = 1.0;
+static inline double opaque_one() { return OPAQUE_SEED; }
+
+#define PEAK_FN(NAME, TYPE, LANES, OPNAME)                                  \
+static double NAME() {                                                      \
+    typedef TYPE vec __attribute__((vector_size(sizeof(TYPE) * (LANES))));  \
+    vec a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, x, y;             \
+    for (int j = 0; j < (LANES); ++j) {                                     \
+        a0[j]=(TYPE)(j+1);  a1[j]=(TYPE)(j+2);  a2[j]=(TYPE)(j+3);          \
+        a3[j]=(TYPE)(j+4);  a4[j]=(TYPE)(j+5);  a5[j]=(TYPE)(j+6);          \
+        a6[j]=(TYPE)(j+7);  a7[j]=(TYPE)(j+8);  a8[j]=(TYPE)(j+9);          \
+        a9[j]=(TYPE)(j+10); a10[j]=(TYPE)(j+11); a11[j]=(TYPE)(j+12);       \
+        /* NOT 1: with x==1 the compiler folds a*x+y into a+y, which      \
+           deletes half the work we then count. opaque_one() hides the      \
+           value behind a volatile read so no constant propagation can      \
+           see it. */                                                       \
+        x[j] = (TYPE)opaque_one(); y[j] = (TYPE)opaque_one();               \
+    }                                                                       \
+    const size_t iters = 40u * 1000u * 1000u;                               \
+    __asm__ __volatile__("" : "+v"(a0), "+v"(a1), "+v"(a2), "+v"(a3),               \
+                      "+v"(a4), "+v"(a5), "+v"(a6), "+v"(a7));              \
+    __asm__ __volatile__("" : "+v"(a8), "+v"(a9), "+v"(a10), "+v"(a11),             \
+                      "+v"(x), "+v"(y));                                    \
+    double t0 = now_s();                                                   \
+    for (size_t it = 0; it < iters; ++it) {                                 \
+        a0 = a0 * x + y;  a1 = a1 * x + y;  a2  = a2  * x + y;              \
+        a3 = a3 * x + y;  a4 = a4 * x + y;  a5  = a5  * x + y;              \
+        a6 = a6 * x + y;  a7 = a7 * x + y;  a8  = a8  * x + y;              \
+        a9 = a9 * x + y;  a10 = a10 * x + y; a11 = a11 * x + y;             \
+    }                                                                       \
+    double t1 = now_s();                                                   \
+    double sink = 0.0;                                                      \
+    for (int j = 0; j < (LANES); ++j)                                       \
+        sink += (double)(a0[j]+a1[j]+a2[j]+a3[j]+a4[j]+a5[j]                \
+                       + a6[j]+a7[j]+a8[j]+a9[j]+a10[j]+a11[j]);            \
+    if (sink == 1.5e-300) printf("%f", sink);   /* defeat DCE */            \
+    /* one multiply + one add per lane per accumulator */                   \
+    double ops = (double)iters * ACCS * (double)(LANES) * 2.0;              \
+    return ops / (t1 - t0) / 1e9;                                        \
+}
+
+PEAK_FN(fp64_gflops,  double,  4, "GFLOPS")
+PEAK_FN(int8_giops,   int8_t, 32, "GIOPS")
+PEAK_FN(int16_giops,  int16_t,16, "GIOPS")
+PEAK_FN(int32_giops,  int32_t, 8, "GIOPS")
+PEAK_FN(int64_giops,  int64_t, 4, "GIOPS")
+
+int main(void) {
+    printf("BANDWIDTH_GB_S %.6f\n", bandwidth_gb_s());
+    printf("FP64_GFLOPS %.6f\n", fp64_gflops());
+    printf("INT8_GIOPS %.6f\n", int8_giops());
+    printf("INT16_GIOPS %.6f\n", int16_giops());
+    printf("INT32_GIOPS %.6f\n", int32_giops());
+    printf("INT64_GIOPS %.6f\n", int64_giops());
+    return 0;
+}
+"""
+
+ROOFLINE_KEYS = ("BANDWIDTH_GB_S", "FP64_GFLOPS", "INT8_GIOPS",
+                 "INT16_GIOPS", "INT32_GIOPS", "INT64_GIOPS")
+
+
+def run_roofline_probe(out_dir: Path, cc: str, pin_cpu: Optional[int] = 0,
+                       ) -> Dict[str, float]:
+    """Build and run the probe; returns {measurement: value}.
+
+    Never invokes `gibbon`, so it does not touch the shared RTS build
+    directory and cannot disturb (or be disturbed by) a benchmark campaign
+    running concurrently."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    csrc = out_dir / "roofline_probe.c"
+    exe = out_dir / "roofline_probe.exe"
+    csrc.write_text(ROOFLINE_SOURCE)
+    # -march=native so the compiler may use this machine's widest vectors,
+    # -ffast-math so it may contract multiply+add into FMA. Both are what
+    # make the measured ceiling "practical" rather than scalar.
+    cmd = [cc, "-O3", "-march=native", "-ffast-math", "-std=c11",
+           str(csrc), "-o", str(exe)]
+    print("  Building roofline probe: " + " ".join(cmd))
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError("roofline probe failed to build:\n" + proc.stderr[-2000:])
+    run_cmd = [str(exe)]
+    if pin_cpu is not None and shutil.which("taskset"):
+        # Pin so the run cannot migrate between core types mid-measurement.
+        run_cmd = ["taskset", "-c", str(pin_cpu)] + run_cmd
+    print("  Running roofline probe: " + " ".join(run_cmd))
+    proc = subprocess.run(run_cmd, capture_output=True, text=True, timeout=1800)
+    if proc.returncode != 0:
+        raise RuntimeError("roofline probe failed to run (rc=%d):\n%s"
+                           % (proc.returncode, proc.stderr[-2000:]))
+    results: Dict[str, float] = {}
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            try:
+                results[parts[0]] = float(parts[1])
+            except ValueError:
+                pass
+    missing = [k for k in ROOFLINE_KEYS if k not in results]
+    if missing:
+        raise RuntimeError("roofline probe printed no value for: %s\nstdout:\n%s"
+                           % (", ".join(missing), proc.stdout))
+    return results
+
+
+def roofline_ridge_points(results: Dict[str, float]) -> Dict[str, float]:
+    """Machine balance per ceiling: the arithmetic intensity (ops per byte)
+    at which a kernel stops being memory-bound and starts being
+    compute-bound. Below it bandwidth is the limit; above it the ALUs are."""
+    bw = results["BANDWIDTH_GB_S"]
+    return {k: results[k] / bw for k in results if k != "BANDWIDTH_GB_S"}
+
+
+# Human-readable names and plot styling for each measured ceiling.
+ROOFLINE_CEILINGS = [
+    ("INT8_GIOPS",  "Int8 mul-add",  "8-bit integer multiply-add"),
+    ("INT16_GIOPS", "Int16 mul-add", "16-bit integer multiply-add"),
+    ("INT32_GIOPS", "Int32 mul-add", "32-bit integer multiply-add"),
+    ("INT64_GIOPS", "Int64 mul-add", "64-bit integer multiply-add"),
+    ("FP64_GFLOPS", "FP64 FMA",      "double-precision fused multiply-add"),
+]
+
+
+PERF_DRAM_EVENTS = ("uncore_imc_free_running/data_read/",
+                    "uncore_imc_free_running/data_write/")
+
+
+def perf_dram_counters_available() -> bool:
+    """Whether this machine can report real DRAM traffic.
+
+    PAPI is the driver's usual counter path but is unusable here: on this
+    Alder Lake hybrid CPU `papi_avail` reports "Of 108 possible events, 0
+    are available", so --enable-papi/-native produce nothing. perf's uncore
+    IMC counters do work, and are a better source for a roofline anyway --
+    they measure bytes that actually crossed the memory controller."""
+    if not shutil.which("perf"):
+        return False
+    probe = subprocess.run(
+        ["perf", "stat", "-a", "-e", ",".join(PERF_DRAM_EVENTS), "-x,", "sleep", "0.2"],
+        capture_output=True, text=True)
+    return any(ev.split("/")[1] in probe.stderr for ev in PERF_DRAM_EVENTS)
+
+
+def _perf_dram_mib(exe: Path, iterations: int, cpu: int, size_param: int = 0,
+                   ) -> Optional[float]:
+    """Total system DRAM traffic (MiB) while `exe` runs, via perf.
+
+    System-wide (-a) because the IMC counters are free-running and cannot
+    be attributed to one process; the caller's differencing is what removes
+    the machine's background traffic."""
+    cmd = ["perf", "stat", "-a", "-e", ",".join(PERF_DRAM_EVENTS), "-x,", "--",
+           "taskset", "-c", str(cpu), str(exe),
+           "--size-param", str(size_param), "--iterate", str(iterations)]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+    total = 0.0
+    seen = False
+    for line in proc.stderr.splitlines():
+        parts = line.split(",")
+        if len(parts) >= 3 and any(ev in parts[2] for ev in PERF_DRAM_EVENTS):
+            try:
+                total += float(parts[0])   # perf already reports these in MiB
+                seen = True
+            except ValueError:
+                return None
+    return total if seen else None
+
+
+def measure_dram_bytes_per_iteration(exe: Path, cpu: int = 0,
+                                     low: int = 5, high: int = 15,
+                                     size_param: int = 0) -> Optional[float]:
+    """DRAM bytes attributable to ONE iteration of the program's timed pass.
+
+    Differential: the tree is built once regardless of --iterate, so
+    running at `low` and `high` and dividing the difference by (high - low)
+    removes the build's traffic AND the machine's steady background load,
+    leaving the marginal cost of one kernel pass. Verified linear on this
+    workload (5/10/20 iterations gave 1215 and 1139 MiB/iteration).
+
+    Returns None if the counters are unavailable or the difference is not
+    positive (which means the measurement was swamped by other activity --
+    better to report nothing than a number built from noise)."""
+    lo = _perf_dram_mib(exe, low, cpu, size_param)
+    hi = _perf_dram_mib(exe, high, cpu, size_param)
+    if lo is None or hi is None or high <= low:
+        return None
+    per_iter_mib = (hi - lo) / float(high - low)
+    if per_iter_mib <= 0:
+        return None
+    return per_iter_mib * 1024.0 * 1024.0
+
+
+def roofline_overlay_points(
+        arithintensity_width_results: Optional[Dict[int, Dict[str, BenchmarkResult]]],
+        leaf_count: Optional[int] = None,
+        measured_bytes: Optional[Dict[Tuple[int, str], float]] = None,
+        ) -> List[Dict]:
+    """Where Gibbon's own arithmetic-intensity kernels sit on the roofline.
+
+    y is achieved Gop/s: total kernel ops (leaves x ops-per-element) over
+    the measured median pass time. The op count is analytical BY NECESSITY
+    -- x86 has no retired-integer-op counter (only FP_ARITH_INST_RETIRED,
+    which is floating point) -- but it is also exact, being fixed by the
+    source: every Leaf gets exactly ARITH_OPS_PER_ELEMENT operations.
+
+    x is ops/byte. TWO values are recorded per point:
+      * ops_per_byte_model    -- arith_intensity_metrics: the Leaf field
+                                 loaded and stored, and nothing else.
+      * ops_per_byte_measured -- ops over DRAM bytes that actually crossed
+                                 the memory controller, when
+                                 `measured_bytes` supplies them.
+    They differ by roughly 6x on this workload, because the model counts
+    neither tags and cursors, nor 64-byte line granularity for a 4-byte
+    field, nor the fresh output tree a map allocates. The measured value is
+    the honest one and is what gets plotted; the model value is kept beside
+    it so the gap stays visible rather than being quietly replaced.
+
+    Only VERIFIED results contribute -- an unverified time is not a
+    measurement of anything."""
+    points: List[Dict] = []
+    if not arithintensity_width_results:
+        return points
+    if leaf_count is None:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent / "oracles"))
+            import arithintensity_model as _m  # noqa: WPS433
+            leaf_count = _m.leaf_count()
+        except Exception:
+            return points
+    for width in sorted(arithintensity_width_results):
+        metrics = arith_intensity_metrics(width)
+        for cfg, res in arithintensity_width_results[width].items():
+            if not prov.verified_result(res) or not res.passes:
+                continue
+            for pname, pdata in res.passes.items():
+                if is_verification_pass(pname):
+                    continue
+                t_med = pdata.get("median_time")
+                if not t_med or t_med <= 0:
+                    continue
+                total_ops = float(leaf_count) * metrics["ops_per_element"]
+                point = {
+                    "width": width,
+                    "config": cfg,
+                    "pass": pname,
+                    "ops_per_byte_model": metrics["ops_per_byte"],
+                    "ops_per_byte_measured": None,
+                    "dram_bytes_per_iteration": None,
+                    "ops_per_byte": metrics["ops_per_byte"],   # what to plot
+                    "intensity_source": "analytical model",
+                    "gops": total_ops / t_med / 1e9,
+                    "median_time": t_med,
+                    "total_ops": total_ops,
+                }
+                bytes_meas = (measured_bytes or {}).get((width, cfg))
+                if bytes_meas:
+                    point["dram_bytes_per_iteration"] = bytes_meas
+                    point["ops_per_byte_measured"] = total_ops / bytes_meas
+                    point["ops_per_byte"] = point["ops_per_byte_measured"]
+                    point["intensity_source"] = "measured DRAM traffic (perf uncore IMC)"
+                points.append(point)
+    return points
+
+
+def write_roofline_outputs(results: Dict[str, float], out_dir: Path,
+                           figures_dir: Path,
+                           overlay: Optional[List[Dict]] = None,
+                           machine: Optional[Dict[str, str]] = None) -> Path:
+    """Writes roofline.json, a standalone plot script, and (when matplotlib
+    is importable) the PNG. The script is emitted unconditionally so the
+    plot can be regenerated -- or redrawn with different styling -- on a
+    machine that has matplotlib even if this one does not."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "measurements": results,
+        "ridge_points_ops_per_byte": roofline_ridge_points(results),
+        "overlay": overlay or [],
+        "machine": machine or {},
+        "notes": {
+            "threading": "single-threaded; the Gibbon benchmarks it bounds "
+                         "are single-threaded, and an all-core ceiling would "
+                         "not bound them",
+            "bandwidth": "STREAM triad, 24 B/element (2 reads + 1 write). "
+                         "Real DRAM traffic is 32 B/element when the write "
+                         "allocates, so this UNDERSTATES achieved bandwidth",
+            "compute": "12 independent register-resident accumulators doing "
+                       "a*x+y; operands are hidden behind a volatile read so "
+                       "the multiply cannot be folded away",
+        },
+    }
+    json_path = out_dir / "roofline.json"
+    json_path.write_text(json.dumps(payload, indent=2) + "\n")
+    print("  \u2713 Roofline data \u2192 %s" % json_path)
+
+    script = figures_dir / "plot_roofline.py"
+    # Bake in this module's absolute path: --figures-dir can point anywhere,
+    # so the script cannot find gibbon_benchmark.py by walking up from its
+    # own location (an earlier version tried and failed with
+    # ModuleNotFoundError whenever the figures dir was not a direct child of
+    # the suite directory).
+    script.write_text(
+        ROOFLINE_PLOT_SCRIPT.replace("@@DRIVER_DIR@@",
+                                     str(Path(__file__).resolve().parent)))
+    print("  \u2713 Plot script  \u2192 %s" % script)
+
+    png = figures_dir / "roofline.png"
+    try:
+        _render_roofline_png(payload, png)
+        print("  \u2713 Roofline plot \u2192 %s" % png)
+    except ImportError:
+        print("  Note: matplotlib not importable \u2014 run "
+              "`python3 %s %s` to draw it" % (script, json_path))
+    return json_path
+
+
+def _render_roofline_png(payload: Dict, png: Path) -> None:
+    import numpy as np              # noqa: WPS433
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt  # noqa: WPS433
+
+    results = payload["measurements"]
+    bw = results["BANDWIDTH_GB_S"]
+    ceilings = [(k, short, results[k]) for k, short, _long in ROOFLINE_CEILINGS
+                if k in results]
+    ai = np.logspace(-2, 3, 800)
+
+    fig, ax = plt.subplots(figsize=(9.5, 6.0))
+    colors = plt.cm.viridis(np.linspace(0.05, 0.85, len(ceilings)))
+    for (key, short, peak), color in zip(ceilings, colors):
+        ax.loglog(ai, np.minimum(peak, bw * ai), lw=2.0, color=color,
+                  label="%s \u2014 %.1f G%s/s" %
+                        (short, peak, "FLOP" if "FP" in key else "op"))
+        ax.axvline(peak / bw, color=color, ls=":", alpha=0.35)
+
+    # The shared memory-bound diagonal: every ceiling rides it below its
+    # own ridge point, so drawing it once labels the bandwidth limit.
+    ax.loglog(ai, bw * ai, color="0.35", ls="--", lw=1.2,
+              label="DRAM bandwidth \u2014 %.1f GB/s" % bw)
+
+    for pt in payload.get("overlay", []):
+        ax.plot(pt["ops_per_byte"], pt["gops"], marker="o", ms=6,
+                color="crimson", zorder=5)
+        ax.annotate("Int%d %s" % (pt["width"], pt.get("config", "")),
+                    (pt["ops_per_byte"], pt["gops"]),
+                    textcoords="offset points", xytext=(6, 4), fontsize=7)
+
+    machine = payload.get("machine", {})
+    subtitle = machine.get("cpu", "")
+    ax.set_title("Empirical single-threaded roofline"
+                 + ("\n%s" % subtitle if subtitle else ""),
+                 fontsize=13, fontweight="bold")
+    ax.set_xlabel("Arithmetic intensity (ops / byte)", fontsize=11)
+    ax.set_ylabel("Attainable performance (Gop/s)", fontsize=11)
+    ax.grid(True, which="both", ls="-", alpha=0.25)
+    ax.legend(loc="lower right", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(png, dpi=200)
+    plt.close(fig)
+
+
+ROOFLINE_PLOT_SCRIPT = '''#!/usr/bin/env python3
+"""Redraw the empirical roofline from roofline.json.
+
+    python3 plot_roofline.py <roofline.json> [out.png]
+
+Emitted alongside the data so the plot can be regenerated, or restyled,
+without re-running the measurement (and on a machine that has matplotlib
+even if the measuring one did not).
+"""
+import json
+import sys
+from pathlib import Path
+
+# Absolute path to the suite directory, written in when this script was
+# generated -- --figures-dir may be anywhere, so it cannot be derived from
+# this file's own location.
+sys.path.insert(0, "@@DRIVER_DIR@@")
+from gibbon_benchmark import _render_roofline_png  # noqa: E402
+
+if __name__ == "__main__":
+    data = json.loads(Path(sys.argv[1]).read_text())
+    out = Path(sys.argv[2] if len(sys.argv) > 2 else "roofline.png")
+    _render_roofline_png(data, out)
+    print("wrote %s" % out)
+'''
+
+
+def _machine_description() -> Dict[str, str]:
+    """Enough provenance that a roofline can be attributed to a machine."""
+    info: Dict[str, str] = {}
+    try:
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("model name") and "cpu" not in info:
+                info["cpu"] = line.split(":", 1)[1].strip()
+                break
+    except Exception:
+        pass
+    info["platform"] = platform.platform() if "platform" in globals() else sys.platform
+    return info
+
+
+def _run_roofline_only(args) -> int:
+    """--roofline without a campaign: measure, write, and stop."""
+    print("\n" + "=" * 72)
+    print("EMPIRICAL ROOFLINE (single-threaded)")
+    print("=" * 72)
+    cc = resolve_cc(args.cc)
+    machine = _machine_description()
+    if machine.get("cpu"):
+        print("  CPU          : %s" % machine["cpu"])
+    print("  Compiler     : %s  (%s)" % (cc, cc_version(cc)))
+    print("  Pinned to CPU: %d" % args.roofline_cpu)
+    try:
+        results = run_roofline_probe(args.output_dir, cc, pin_cpu=args.roofline_cpu)
+    except RuntimeError as e:
+        print("  ERROR: %s" % e, file=sys.stderr)
+        return 1
+    print()
+    print("  %-24s %12.2f GB/s" % ("DRAM bandwidth", results["BANDWIDTH_GB_S"]))
+    ridges = roofline_ridge_points(results)
+    for key, short, _long in ROOFLINE_CEILINGS:
+        if key in results:
+            unit = "GFLOP/s" if "FP" in key else "Gop/s"
+            print("  %-24s %12.2f %-8s (ridge at %.2f ops/byte)"
+                  % (short, results[key], unit, ridges[key]))
+    print()
+    write_roofline_outputs(results, args.output_dir, args.figures_dir,
+                           overlay=None, machine=machine)
+    return 0
+
+
 def write_latex_tables(all_results: List[Tuple], out_file: Path,
                        all_variants_results: Optional[List[Dict]] = None,
                        include_build_pass: bool = False,
-                       show_cursor_table: bool = False):
+                       show_cursor_table: bool = False,
+                       add1tree_width_results: Optional[Dict[int, Dict[str, BenchmarkResult]]] = None,
+                       arithintensity_width_results: Optional[Dict[int, Dict[str, BenchmarkResult]]] = None,
+                       pldi_variant_results: Optional[Dict[str, Dict[str, BenchmarkResult]]] = None,
+                       simd_isa: str = DEFAULT_SIMD_ISA):
+    # Name the SIMD target in this report's captions.  One report is one ISA:
+    # the driver passes a single --simd-isa to every compile it issues.
+    set_report_simd_isa(simd_isa)
+    # Fold split families (one executable per timed pass) back into one
+    # program BEFORE any table is written, so every table below -- summary,
+    # per-program, PLDI -- sees the family exactly as it saw the old single
+    # executable, with no per-table special-casing.
+    all_results = merge_program_groups_in_pairs(all_results)
+    pldi_variant_results = merge_pldi_program_groups(pldi_variant_results)
+    seen_modes = sorted({r.arith_mode for a, s in all_results for r in (a, s)
+                        if r is not None and r.arith_mode is not None})
+    seen_no_ran = sorted({r.use_no_ran for a, s in all_results for r in (a, s)
+                         if r is not None and r.use_no_ran is not None}, key=str)
     with open(out_file, "w") as f:
         f.write("% Gibbon Benchmark Suite v3.1 – auto-generated\n")
-        f.write("% Requires: \\usepackage{booktabs} in preamble\n\n")
-        _table_summary(f, all_results, all_variants_results, include_build_pass=include_build_pass)
+        f.write("% Requires: \\usepackage{booktabs}, \\usepackage{graphicx} and "
+                "\\usepackage{xcolor} in preamble\n")
+        # Defined here rather than assumed from a palette option, so the
+        # generated file \input{}s into any document that loads xcolor.
+        f.write("\\providecommand{\\gibbondefinecolors}{}\n")
+        f.write("\\definecolor{%s}{RGB}{0,100,0}%% dark green: row-fastest\n"
+                % COLOR_FASTEST)
+        f.write("\\definecolor{%s}{RGB}{204,0,0}%% red: row-slowest\n"
+                % COLOR_SLOWEST)
+        # Half a point up from whatever size command the table selected.
+        # \f@size is the current size as a bare number, so this is relative:
+        # \small stays \small-ish, \footnotesize stays \footnotesize-ish,
+        # each just half a point larger, and the tables keep their relative
+        # sizing rather than all collapsing to one size.
+        f.write("\\makeatletter\n"
+                "\\providecommand{\\gibbonnumfont}{}\n"
+                "\\renewcommand{\\gibbonnumfont}{%%\n"
+                "  \\fontsize{\\dimexpr\\f@size pt+1.5pt\\relax}%%\n"
+                "          {\\dimexpr\\f@size pt+3.9pt\\relax}\\selectfont}\n"
+                "\\makeatother\n\n")
+        f.write(f"% Provenance: arithmetic mode(s) = "
+                f"{', '.join(seen_modes) if seen_modes else 'unknown'}"
+                f"{'  *** INCONSISTENT -- DO NOT TRUST ***' if len(seen_modes) > 1 else ''}\n")
+        f.write(f"% Provenance: no-RAN in effect = "
+                f"{', '.join(str(x) for x in seen_no_ran) if seen_no_ran else 'unknown'}\n\n")
+        _table_summary(f, all_results, all_variants_results,
+                       include_build_pass=include_build_pass,
+                       pldi_variant_results=pldi_variant_results)
+        if pldi_variant_results:
+            # The same table against STOCK Gibbon on the AoS side: what the
+            # SoA layout plus its optimizations buy over the compiler as it
+            # ships, rather than over AoS's own best configuration.
+            _table_summary(f, all_results, all_variants_results,
+                           include_build_pass=include_build_pass,
+                           pldi_variant_results=pldi_variant_results,
+                           aos_config=SUMMARY_VANILLA_AOS,
+                           label="tab:summary-vs-vanilla",
+                           lead_in=" This table repeats "
+                                   "Table~\\ref{tab:summary} with vanilla "
+                                   "Gibbon on the AoS side -- the compiler as "
+                                   "it ships, with no optimization enabled -- "
+                                   "so the speedups are what the SoA layout "
+                                   "and its optimizations buy over the stock "
+                                   "baseline rather than over AoS's own best "
+                                   "configuration.")
         _table_papi_summary(f, all_results)
         if all_variants_results and show_cursor_table:
             _table_cursor_comparison(f, all_variants_results)
@@ -2882,9 +5842,32 @@ def write_latex_tables(all_results: List[Tuple], out_file: Path,
             _table_comparison_ghc_mlton(f, all_variants_results)
         if all_variants_results and any(e.get('ghc') for e in all_variants_results):
             _table_speedup_vs_ghc(f, all_variants_results)
-        _table_per_program(f, all_results, all_variants_results)
+        if pldi_variant_results:
+            # One legend for the whole run; every per-program table below
+            # \ref{}s it rather than repeating the configuration prose.
+            _table_pldi_legend(f)
+            # Render exactly what was collected (--programs/--exclude-programs
+            # may have narrowed it, and --programs may name something outside
+            # DEFAULT_PROGRAMS), keeping the canonical order for the rest.
+            canonical = DEFAULT_PROGRAMS + PLDI_EXTRA_PROGRAMS
+            ordered = [p for p in canonical if p in pldi_variant_results]
+            ordered += [p for p in pldi_variant_results if p not in canonical]
+            _table_pldi_delta_legend(f)
+            for program in ordered:
+                # Each timing table is immediately followed by its delta
+                # companion, so the two are read together.
+                _table_pldi_fold(f, program, pldi_variant_results[program])
+                _table_pldi_fold_deltas(f, program, pldi_variant_results[program])
+                _table_pldi_map(f, program, pldi_variant_results[program])
+                _table_pldi_map_deltas(f, program, pldi_variant_results[program])
+        else:
+            _table_per_program(f, all_results, all_variants_results)
         if all_variants_results and any(e.get('ghc') for e in all_variants_results):
             _table_per_program_ghc(f, all_results, all_variants_results)
+        if add1tree_width_results:
+            _table_add1tree_widths(f, add1tree_width_results)
+        if arithintensity_width_results:
+            _table_arith_intensity(f, arithintensity_width_results)
     print(f"  ✓ LaTeX tables → {out_file}")
     if all_variants_results and show_cursor_table:
         print(f"    (includes Table 2: cursor mode comparison with {len(all_variants_results)} programs)")
@@ -2938,13 +5921,18 @@ def _merge_octree_results(all_results: List[Tuple]) -> Tuple[Optional[Tuple[Benc
             if b and b.adt_info is not None:
                 merged.adt_info = b.adt_info
 
+        contributors = []
         for prog_hs in oct_group_members:
             pair = pair_map.get(prog_hs)
             if not pair:
                 continue
             src = pair[0] if variant.startswith("aos") else pair[1]
-            if not src or not src.run_success:
+            # Only a VERIFIED source may contribute pass data to the merge --
+            # an unverified constituent silently averaged in would launder an
+            # unqualified result into an apparently-qualified one.
+            if not prov.verified_result(src):
                 continue
+            contributors.append(src)
             if merged.adt_fields is None and src.adt_fields is not None:
                 merged.adt_fields = src.adt_fields
             if merged.adt_info is None and src.adt_info is not None:
@@ -2957,6 +5945,8 @@ def _merge_octree_results(all_results: List[Tuple]) -> Tuple[Optional[Tuple[Benc
                 merged.passes[merged_name] = dict(pdata)
 
         merged.run_success = len(merged.passes) > 0
+        merged.qualification = prov.synthesize_derived_status(
+            variant, "OctTreeCombined.hs", contributors)
         return merged
 
     combined = (merge_variant("aos"), merge_variant("soa"))
@@ -2971,8 +5961,75 @@ def _merge_octree_results(all_results: List[Tuple]) -> Tuple[Optional[Tuple[Benc
     return combined, filtered
 
 
+# The two configurations the end-to-end table reports when a
+# --pldi-submission run supplies them. They REPLACE the plain
+# mutable-cursor Am/Sm columns in every one of the table's three groups
+# (end-to-end, fold, map) rather than adding a group of their own: this is
+# the AoS-vs-SoA comparison the paper makes, so it is each layout's
+# most-optimized configuration on both sides, not a recursive baseline.
+#
+# AoS: loopified, mutable cursors, C auto-vectorizer left on.
+# SoA: loopified, mutable cursors, selective buffer sharing, Gibbon SIMD
+#      vectorization and the C auto-vectorizer all on.
+#
+# Fold passes get their numbers from these same configurations. Nothing in
+# a fold is loopifiable, so the AoS fold column is in effect the recursive
+# mutable result -- which is why the per-program fold tables do not bother
+# showing these columns, even though the runs time every pass.
+SUMMARY_LOOPIFIED_AOS = "aos_loop_gccvec_on"
+# Stock Gibbon: AoS with immutable cursors and no optimization at all. The
+# second summary table contrasts SoA's best against THIS rather than
+# against AoS's best, which is the "what does the layout buy over the
+# compiler as it ships" comparison.
+SUMMARY_VANILLA_AOS = "aos_imm"
+SUMMARY_LOOPIFIED_SOA = "soa_loop_gccvec_on_sbs_on_gibvec_on"
+
+
+def _summary_loopified_total(
+        pldi_variant_results: Optional[Dict[str, Dict[str, BenchmarkResult]]],
+        program: str, config: str,
+        members: Optional[List[str]] = None,
+        pass_type: Optional[str] = None) -> Optional[float]:
+    """Pass-sum for one program in one PLDI configuration, or None.
+
+    `pass_type` restricts to "fold"/"map" exactly as total_pass_time does,
+    so the same configuration feeds all three of the table's groups. The
+    loopified configurations are run over the WHOLE program and every pass
+    is timed -- the per-program fold table simply does not display their
+    columns -- so the fold numbers here need no extra compiles.
+
+    `members` is for the synthesized OctTreeCombined row: its cell is the
+    SUM over the merged programs, and is None unless EVERY member is
+    present and verified -- a partial sum would silently understate the
+    combined row and flatter whichever layout happened to lose a member."""
+    if not pldi_variant_results:
+        return None
+    if members:
+        total = 0.0
+        for member in members:
+            sub = _summary_loopified_total(pldi_variant_results, member, config,
+                                           pass_type=pass_type)
+            if sub is None:
+                return None
+            total += sub
+        return total
+    return total_pass_time((pldi_variant_results.get(program) or {}).get(config),
+                           pass_type)
+
+
 def _table_summary(f, all_results, all_variants_results: Optional[List[Dict]] = None,
-                   include_build_pass: bool = False):
+                   include_build_pass: bool = False,
+                   pldi_variant_results: Optional[Dict[str, Dict[str, BenchmarkResult]]] = None,
+                   aos_config: str = SUMMARY_LOOPIFIED_AOS,
+                   soa_config: str = SUMMARY_LOOPIFIED_SOA,
+                   label: str = "tab:summary",
+                   lead_in: str = ""):
+    """Table 1's shape, parameterized on WHICH AoS and SoA configurations
+    fill its three groups, so the same renderer emits both the
+    best-vs-best table and the vanilla-Gibbon-vs-best one. The column
+    symbols and prose are read out of PLDI_COL_SYMBOLS/PLDI_ROW_LABELS
+    rather than written out here, so a table cannot claim a configuration
+    it is not actually reading."""
     """
     Table 1: one row per program.
     Program | ADT fields | SoA bufs | End-to-end AoS/SoA/Speedup
@@ -2989,12 +6046,24 @@ def _table_summary(f, all_results, all_variants_results: Optional[List[Dict]] = 
                 include_aos_imm = True
                 aos_imm_map[entry.get("program", "")] = ai
 
+    include_loopified = bool(pldi_variant_results)
+    # Which programs the synthesized OctTree row merges -- mirrors
+    # _merge_octree_results' own membership rule exactly, so the loopified
+    # columns sum over the same set the rest of that row reports.
+    _progs = {a.program for a, s in all_results if a and s}
+    oct_members = sorted(p for p in _progs
+                         if p.startswith("OctTree_") and p.endswith(".hs"))
+    if not oct_members and "OctTree.hs" in _progs:
+        oct_members = ["OctTree.hs"]
+    if oct_members and "ColorOctree.hs" in _progs:
+        oct_members.append("ColorOctree.hs")
+
     build_sentence = ("End-to-end includes the build pass. "
                       if include_build_pass else "")
     f.write(
         "\\caption{Pass-sum execution time (s, median per iteration; sum of pass medians, not full executable wall time) "
         "and speedup split by pass type. "
-        + build_sentence +
+        + build_sentence + simd_isa_caption_note() +
         "When present, the OctTree row includes ColorOctree passes; a separate "
         "ColorOctree row reports only those passes. "
         "ADT fields = total fields in the selected benchmark ADT "
@@ -3004,10 +6073,42 @@ def _table_summary(f, all_results, all_variants_results: Optional[List[Dict]] = 
         "plus recursively counted buffers for each non-self packed field "
         "annotated Factored; self-recursive fields add no new buffers. "
         "Speedup ${>}1{\\times}$ means the denominator is faster; "
-        "\\textbf{bold} marks ${>}1.1{\\times}$.}\n"
+        "\\textbf{bold} marks ${>}1.1{\\times}$."
+        + ("" if not include_loopified else
+           lead_in
+           + " Every group contrasts the same two configurations: %s (%s) "
+             "against %s (%s); Table~\\ref{tab:pldi-legend} lists both in "
+             "full." % (PLDI_COL_SYMBOLS.get(aos_config, aos_config),
+                        PLDI_ROW_LABELS.get(aos_config, aos_config),
+                        PLDI_COL_SYMBOLS.get(soa_config, soa_config),
+                        PLDI_ROW_LABELS.get(soa_config, soa_config))
+           + (" Nothing in a fold is loopifiable, so the fold group's AoS "
+              "column is in effect the recursive mutable-cursor result."
+              if "loop" in aos_config else "")
+           + " The OctTree row sums its merged programs, and is reported "
+             "only when every one of them verified in both configurations.")
+        + "}\n"
     )
-    f.write("\\label{tab:summary}\n\\small\n")
-    if include_aos_imm:
+    f.write("\\label{%s}\n\\small\\gibbonnumfont\n" % label)
+    if include_loopified:
+        # Same three groups as always -- the loopified pair REPLACES Am/Sm
+        # inside each one rather than adding a fourth group, and the
+        # immutable-cursor (Ai) columns drop out with them: this table
+        # states the paper's AoS-vs-SoA comparison at each layout's best
+        # configuration, and nothing else.
+        _A = PLDI_COL_SYMBOLS.get(aos_config, _tex_escape(aos_config))
+        _S = PLDI_COL_SYMBOLS.get(soa_config, _tex_escape(soa_config))
+        group_sub = f" & {_A} (s) & {_S} (s) & {_A}/{_S}"
+        f.write("\\begin{tabular}{l c c r r r r r r r r r}\n\\toprule\n")
+        f.write(
+            "\\textbf{Program} & \\textbf{ADT} & \\textbf{SoA}"
+            " & \\multicolumn{3}{c}{\\textbf{End-to-end}}"
+            " & \\multicolumn{3}{c}{\\textbf{Fold passes}}"
+            " & \\multicolumn{3}{c}{\\textbf{Map passes}} \\\\\n"
+        )
+        f.write("\\cmidrule(lr){4-6}\\cmidrule(lr){7-9}\\cmidrule(lr){10-12}\n")
+        f.write(" & fields & bufs" + group_sub * 3 + " \\\\\n")
+    elif include_aos_imm:
         f.write("\\begin{tabular}{l c c r r r r r r r r r r r r r r r}\n\\toprule\n")
         f.write(
             "\\textbf{Program} & \\textbf{ADT} & \\textbf{SoA}"
@@ -3060,23 +6161,49 @@ def _table_summary(f, all_results, all_variants_results: Optional[List[Dict]] = 
         adt_info = getattr(aos, "adt_info", None)
         bufs_str = str(adt_info["soa_total_buffers"]) if adt_info else "--"
 
+        # `total_pass_time` itself requires `prov.verified_result`, so an
+        # unverified `aos`/`soa`/`ai_res` yields None here regardless of the
+        # row-level gate above.
         at = total_pass_time(aos)
         st = total_pass_time(soa)
         ai_res = aos_imm_map.get(aos.program)
-        ait = total_pass_time(ai_res) if (ai_res and ai_res.run_success) else None
+        ait = total_pass_time(ai_res)
         af = total_pass_time(aos, "fold")
-        aif = total_pass_time(ai_res, "fold") if (ai_res and ai_res.run_success) else None
+        aif = total_pass_time(ai_res, "fold")
         sf = total_pass_time(soa, "fold")
         am = total_pass_time(aos, "map")
-        aim = total_pass_time(ai_res, "map") if (ai_res and ai_res.run_success) else None
+        aim = total_pass_time(ai_res, "map")
         sm = total_pass_time(soa, "map")
 
+        # Every operand here can now legitimately be None (an unverified
+        # result's total_pass_time), not just absent-because-run_success-was-
+        # False -- so every comparison must be None-guarded, not just truthy
+        # for the already-guarded ones.  A raw `af > 0` on a None operand
+        # crashes instead of rendering "--".
         tspd_s = _spd_cell(at / st) if at and st and st > 0 else "--"
         t_ai_sm_s = _spd_cell(ait / st) if ait and st and st > 0 else "--"
-        fspd_s = _spd_cell(af / sf) if af > 0 and sf > 0 else "--"
+        fspd_s = _spd_cell(af / sf) if af and sf and sf > 0 else "--"
         f_ai_sm_s = _spd_cell(aif / sf) if aif and sf and sf > 0 else "--"
-        mspd_s = _spd_cell(am / sm) if am > 0 and sm > 0 else "--"
+        mspd_s = _spd_cell(am / sm) if am and sm and sm > 0 else "--"
         m_ai_sm_s = _spd_cell(aim / sm) if aim and sm and sm > 0 else "--"
+
+        if include_loopified:
+            # One (AoS, SoA, ratio) triple per group, all three read off the
+            # SAME pair of most-optimized configurations -- only the
+            # pass_type filter differs.
+            members = oct_members if aos.program == "OctTreeCombined.hs" else None
+            cells = ""
+            for ptype in (None, "fold", "map"):
+                al = _summary_loopified_total(pldi_variant_results, aos.program,
+                                              aos_config, members, ptype)
+                sl = _summary_loopified_total(pldi_variant_results, aos.program,
+                                              soa_config, members, ptype)
+                spd = _spd_cell(al / sl) if al and sl and sl > 0 else "--"
+                cells += (f" & {fmt(al) if al and al > 0 else '--'}"
+                          f" & {fmt(sl) if sl and sl > 0 else '--'}"
+                          f" & {spd}")
+            f.write(f"{prog} & {adt_str} & {bufs_str}{cells} \\\\\n")
+            continue
 
         if include_aos_imm:
             f.write(
@@ -3086,14 +6213,14 @@ def _table_summary(f, all_results, all_variants_results: Optional[List[Dict]] = 
                 f" & {fmt(st) if st and st > 0 else '--'}"
                 f" & {tspd_s}"
                 f" & {t_ai_sm_s}"
-                f" & {fmt(af) if af > 0 else '--'}"
+                f" & {fmt(af) if af and af > 0 else '--'}"
                 f" & {fmt(aif) if aif and aif > 0 else '--'}"
-                f" & {fmt(sf) if sf > 0 else '--'}"
+                f" & {fmt(sf) if sf and sf > 0 else '--'}"
                 f" & {fspd_s}"
                 f" & {f_ai_sm_s}"
-                f" & {fmt(am) if am > 0 else '--'}"
+                f" & {fmt(am) if am and am > 0 else '--'}"
                 f" & {fmt(aim) if aim and aim > 0 else '--'}"
-                f" & {fmt(sm) if sm > 0 else '--'}"
+                f" & {fmt(sm) if sm and sm > 0 else '--'}"
                 f" & {mspd_s}"
                 f" & {m_ai_sm_s} \\\\\n"
             )
@@ -3103,11 +6230,11 @@ def _table_summary(f, all_results, all_variants_results: Optional[List[Dict]] = 
                 f" & {fmt(at) if at and at > 0 else '--'}"
                 f" & {fmt(st) if st and st > 0 else '--'}"
                 f" & {tspd_s}"
-                f" & {fmt(af) if af > 0 else '--'}"
-                f" & {fmt(sf) if sf > 0 else '--'}"
+                f" & {fmt(af) if af and af > 0 else '--'}"
+                f" & {fmt(sf) if sf and sf > 0 else '--'}"
                 f" & {fspd_s}"
-                f" & {fmt(am) if am > 0 else '--'}"
-                f" & {fmt(sm) if sm > 0 else '--'}"
+                f" & {fmt(am) if am and am > 0 else '--'}"
+                f" & {fmt(sm) if sm and sm > 0 else '--'}"
                 f" & {mspd_s} \\\\\n"
             )
 
@@ -3131,7 +6258,9 @@ def _collect_papi_counter_names(all_results: List[Tuple]) -> List[str]:
 
 
 def _papi_total_for_result(res: Optional[BenchmarkResult], counter: str) -> Optional[float]:
-    if not res or not res.run_success:
+    """PAPI ratios require verified executions with valid counters on both
+    sides -- `prov.verified_result`, matching `total_pass_time`'s gate."""
+    if not prov.verified_result(res):
         return None
     total = 0.0
     seen = False
@@ -3268,13 +6397,16 @@ def _table_per_program(f, all_results, all_variants_results=None):
         merged.adt_fields = None   # Mixed ADTs (Octree + ColorOctree); suppress Uses/Dead% columns.
         merged.adt_info = None
         merged.passes = {}
+        contributors = []
         for prog_hs in members:
             pair = pair_map.get(prog_hs)
             if not pair:
                 continue
             src = pair[0] if variant.startswith("aos") else pair[1]
-            if not src or not src.run_success:
+            # Only a VERIFIED source contributes -- see `_merge_octree_results`.
+            if not prov.verified_result(src):
                 continue
+            contributors.append(src)
             for pname, pdata in src.passes.items():
                 merged_name = pname
                 # If a name collision ever appears, keep both by prefixing source stem.
@@ -3286,6 +6418,8 @@ def _table_per_program(f, all_results, all_variants_results=None):
                     mp["adt_total"] = src.adt_fields
                 merged.passes[merged_name] = mp
         merged.run_success = len(merged.passes) > 0
+        merged.qualification = prov.synthesize_derived_status(
+            variant, merged_program_name, contributors)
         return merged
 
     # Build a mapping from program name to variant results
@@ -3374,8 +6508,11 @@ def _table_per_program(f, all_results, all_variants_results=None):
         include_soa_imm = (soa_imm is not None)
         show_ghc = False
         
-        # Skip if mutable cursors didn't run successfully
-        if not (aos.run_success and soa.run_success):
+        # Skip unless the core mutable AoS/SoA pair is independently verified.
+        # Every per-pass cell below reads `aos.passes`/`soa.passes` directly
+        # (not through `total_pass_time`), so this row-level gate is what
+        # keeps an unverified median out of this table.
+        if not prov.eligible_pair(aos, soa):
             continue
         
         adt      = getattr(aos, "adt_fields", None)
@@ -3393,7 +6530,8 @@ def _table_per_program(f, all_results, all_variants_results=None):
                     soa_total_bufs = oa.adt_info.get("soa_total_buffers")
                     break
         passes   = sorted(
-            set(list(aos.passes) + list(soa.passes)),
+            {p for p in (list(aos.passes) + list(soa.passes))
+             if not is_verification_pass(p)},
             key=lambda p: _pass_sort_key(p, aos, soa, aos_imm, soa_imm, ghc),
         )
         if not passes:
@@ -3566,8 +6704,8 @@ def _table_per_program(f, all_results, all_variants_results=None):
             tchar = "F" if ptype == "fold" else ("M" if ptype == "map" else "?")
             pdisp = pname.replace("_", "\\_")
 
-            uses   = ad.get("uses") or sd.get("uses")
-            dead_r = ad.get("dead_ratio") or sd.get("dead_ratio")
+            uses   = _first_present(ad.get("uses"), sd.get("uses"))
+            dead_r = _first_present(ad.get("dead_ratio"), sd.get("dead_ratio"))
             papi_cells_s = "".join(
                 f" & {_papi_pair_cell(ad, sd, counter)}"
                 for counter in papi_counter_names
@@ -3576,10 +6714,13 @@ def _table_per_program(f, all_results, all_variants_results=None):
             if show_4_variants:
                 # Get data for all 4 variants
                 def get_time_info(res, pname):
-                    """Get (display, median_time, is_oom) for a pass."""
+                    """Get (display, median_time, is_oom) for a pass.  Gated
+                    on `prov.verified_result`: a per-pass median from a
+                    result that ran but never passed its independent oracle
+                    must render as unavailable, not as a real time."""
                     if res is None:
                         return "--", None, False
-                    if not res.run_success:
+                    if not prov.verified_result(res):
                         if res.error_message == "out of memory":
                             return "\\textit{OOM}", None, True
                         return "--", None, False
@@ -3622,7 +6763,7 @@ def _table_per_program(f, all_results, all_variants_results=None):
                 
                 # Calculate speedups
                 def calc_spd(a_res, s_res, pname):
-                    if a_res and s_res and a_res.run_success and s_res.run_success:
+                    if prov.eligible_pair(a_res, s_res):
                         at = a_res.passes.get(pname, {}).get("median_time", 0.0)
                         st = s_res.passes.get(pname, {}).get("median_time", 0.0)
                         if at > 0 and st > 0:
@@ -3694,7 +6835,7 @@ def _table_per_program(f, all_results, all_variants_results=None):
                     continue
 
                 spd   = at_s / st_s if st_s > 0 else 0.0
-                ghd   = ghc.passes.get(pname, {}) if (show_ghc and ghc and ghc.run_success) else {}
+                ghd   = ghc.passes.get(pname, {}) if (show_ghc and prov.verified_result(ghc)) else {}
 
                 # median ± stderr cells
                 a_err = ad.get("stderr", 0.0)
@@ -3752,8 +6893,8 @@ def _table_per_program(f, all_results, all_variants_results=None):
                 tchar = "F" if ptype == "fold" else ("M" if ptype == "map" else "?")
                 pdisp = pname.replace("_", "\\_")
 
-                uses   = ad.get("uses") or sd.get("uses")
-                dead_r = ad.get("dead_ratio") or sd.get("dead_ratio")
+                uses   = _first_present(ad.get("uses"), sd.get("uses"))
+                dead_r = _first_present(ad.get("dead_ratio"), sd.get("dead_ratio"))
                 papi_cells_s = "".join(
                     f" & {_papi_pair_cell(ad, sd, counter)}"
                     for counter in papi_counter_names
@@ -3761,10 +6902,12 @@ def _table_per_program(f, all_results, all_variants_results=None):
 
                 if show_4_variants:
                     def get_time_info(res, pname):
-                        """Get (display, median_time, is_oom) for a pass."""
+                        """Get (display, median_time, is_oom) for a pass.
+                        Gated on `prov.verified_result`, matching the other
+                        get_time_info above."""
                         if res is None:
                             return "--", None, False
-                        if not res.run_success:
+                        if not prov.verified_result(res):
                             if res.error_message == "out of memory":
                                 return "\\textit{OOM}", None, True
                             return "--", None, False
@@ -3866,7 +7009,7 @@ def _table_per_program(f, all_results, all_variants_results=None):
                         continue
 
                     spd   = at_s / st_s if st_s > 0 else 0.0
-                    ghd   = ghc.passes.get(pname, {}) if (show_ghc and ghc and ghc.run_success) else {}
+                    ghd   = ghc.passes.get(pname, {}) if (show_ghc and prov.verified_result(ghc)) else {}
 
                     a_err = ad.get("stderr", 0.0)
                     s_err = sd.get("stderr", 0.0)
@@ -3912,10 +7055,13 @@ def _table_per_program(f, all_results, all_variants_results=None):
                     if spd_ghc_over_soa_mut:
                         speedups_ghc_over_soa_mut.append(spd_ghc_over_soa_mut)
 
-        # Totals row
+        # Totals row.  The outer row gate only guarantees aos/soa are
+        # verified -- aos_imm/soa_imm/ghc are independent operands here and
+        # must be checked on their own (the "verified mutable, unverified
+        # immutable" case): `prov.verified_result`, not `run_success`.
         def get_total(res):
-            if res and res.run_success:
-                return sum(p["median_time"] for p in res.passes.values())
+            if prov.verified_result(res):
+                return total_pass_time(res)
             return None
         
         aost_mut_tot = get_total(aos)
@@ -4017,13 +7163,13 @@ def _table_per_program(f, all_results, all_variants_results=None):
             ghc_total_suffix = ""
             if show_ghc:
                 ghc_total_suffix = (
-                    f" & {fmt(ghc_tot)}"
+                    f" & {fmt_total(ghc_tot)}"
                     f" & {_spd_cell(sp_ghc_over_aos_mut_tot) if sp_ghc_over_aos_mut_tot else '--'}"
                     f" & {_spd_cell(sp_ghc_over_soa_mut_tot) if sp_ghc_over_soa_mut_tot else '--'}"
                 )
             f.write("\\midrule\n")
             f.write(f"\\textbf{{Total}} & {extra_cols}"
-                    f"& {fmt(aost_mut_tot)} & {fmt(soat_mut_tot)} & {_spd_cell(sp_mut_tot)}"
+                    f"& {fmt_total(aost_mut_tot)} & {fmt_total(soat_mut_tot)} & {_spd_cell(sp_mut_tot) if sp_mut_tot else '--'}"
                     f"{ghc_total_suffix}"
                     f"{papi_empty_suffix} \\\\\n")
             if speedups_mut:
@@ -4067,6 +7213,12 @@ def _table_per_program_papi_one_pair(
     counters: List[str], pair_label: str, label_suffix: str
 ) -> None:
     if not counters:
+        return
+    # Self-defending: a caller-side filter alone is not the contract.
+    # `aos`/`soa` happen to be pre-filtered by the caller's row gate, but
+    # `aos_imm`/`soa_imm` are not -- so this function enforces its own
+    # eligibility regardless of which pair it was handed.
+    if not prov.eligible_pair(left, right):
         return
     f.write(f"% -- Table: {prog} PAPI {pair_label} --\n")
     f.write("\\begin{table}[t]\n\\centering\n")
@@ -4164,14 +7316,17 @@ def _table_per_program_ghc(f, all_results, all_variants_results):
             res.run_success = True
             res.passes = {}
 
+        contributors = {"aos": [], "soa": [], "ghc": []}
         for prog_hs in member_programs:
             pair = pair_map.get(prog_hs)
             row = variants_map.get(prog_hs, {})
             if not pair:
                 continue
             for variant_name, src in (("aos", pair[0]), ("soa", pair[1]), ("ghc", row.get("ghc"))):
-                if not src or not src.run_success:
+                # Only a VERIFIED source contributes -- see `_merge_octree_results`.
+                if not prov.verified_result(src):
                     continue
+                contributors[variant_name].append(src)
                 dst = aos_m if variant_name == "aos" else (soa_m if variant_name == "soa" else ghc_m)
                 for pname, pdata in src.passes.items():
                     out_name = pname
@@ -4182,6 +7337,9 @@ def _table_per_program_ghc(f, all_results, all_variants_results):
         aos_m.run_success = len(aos_m.passes) > 0
         soa_m.run_success = len(soa_m.passes) > 0
         ghc_m.run_success = len(ghc_m.passes) > 0
+        aos_m.qualification = prov.synthesize_derived_status("aos", merged_name, contributors["aos"])
+        soa_m.qualification = prov.synthesize_derived_status("soa", merged_name, contributors["soa"])
+        ghc_m.qualification = prov.synthesize_derived_status("ghc", merged_name, contributors["ghc"])
         return aos_m, soa_m, ghc_m
 
     oct_split_programs = sorted(
@@ -4204,7 +7362,8 @@ def _table_per_program_ghc(f, all_results, all_variants_results):
     grouped_rows: List[Tuple[str, BenchmarkResult, BenchmarkResult, BenchmarkResult]] = []
     if oct_group_members:
         aos_m, soa_m, ghc_m = _merge_passes(oct_group_members, "OctTreeCombined.hs")
-        if aos_m.run_success and soa_m.run_success and ghc_m.run_success:
+        if (prov.verified_result(aos_m) and prov.verified_result(soa_m)
+                and prov.verified_result(ghc_m)):
             grouped_rows.append(("OctTree", aos_m, soa_m, ghc_m))
 
     for aos, soa in all_results:
@@ -4214,7 +7373,7 @@ def _table_per_program_ghc(f, all_results, all_variants_results):
         if prog_hs in skip_program_tables:
             continue
         ghc = variants_map.get(prog_hs, {}).get("ghc")
-        if not (aos.run_success and soa.run_success and ghc and ghc.run_success):
+        if not (prov.eligible_pair(aos, soa) and prov.verified_result(ghc)):
             continue
         grouped_rows.append((prog_hs.replace(".hs", ""), aos, soa, ghc))
 
@@ -4308,11 +7467,35 @@ def _table_per_program_ghc(f, all_results, all_variants_results):
 
 def compile_latex_preview(tex_file: Path, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
+    # This document is nothing BUT tables, and LaTeX floats do not survive
+    # that.  Two failures, both reproduced at a full run's scale (~150
+    # tables):
+    #
+    #   * \\textfraction reserves 20% of every page for body text, and with no
+    #     body text LaTeX defers every `[t]` table -- leaving a BLANK first
+    #     page and flushing the tables after it.
+    #   * The float queue holds ~18 deferred floats.  Past that, pdflatex
+    #     reports "Too many unprocessed floats" and then "Fatal error
+    #     occurred, no output PDF file produced" -- the preview silently
+    #     produced NO pdf at all for a full campaign.
+    #
+    # So the preview renders the tables in place rather than as floats.
+    # `\\@captype` keeps \\caption numbering them as tables, so captions,
+    # \\label and \\ref all behave exactly as before.
+    #
+    # Preview-only: the generated .tex keeps `[t]`, which is the correct
+    # placement when it is \\input into a real paper that does have text.
     wrapper = (
         "\\documentclass{article}\n"
         "\\usepackage{booktabs}\n"
         "\\usepackage{graphicx}\n"
+        "\\usepackage{xcolor}\n"
         "\\usepackage[margin=0.5in,a3paper]{geometry}\n"
+        "\\makeatletter\n"
+        "\\renewenvironment{table}[1][]%\n"
+        "  {\\par\\medskip\\noindent\\begin{minipage}{\\linewidth}\\def\\@captype{table}}%\n"
+        "  {\\end{minipage}\\par\\medskip}\n"
+        "\\makeatother\n"
         "\\begin{document}\\pagestyle{empty}\n"
         f"\\input{{{tex_file.name}}}\n"
         "\\end{document}\n"
@@ -4322,13 +7505,25 @@ def compile_latex_preview(tex_file: Path, out_dir: Path):
     if tex_file.parent.resolve() != out_dir.resolve():
         shutil.copy(tex_file, out_dir / tex_file.name)
     try:
-        subprocess.run(
-            ["pdflatex", "-interaction=nonstopmode",
-             "-output-directory", str(out_dir), str(tmp)],
-            capture_output=True, timeout=60,
-        )
+        # TWO passes: \ref{} (the per-program tables all cite the
+        # configuration legend) resolves out of the .aux file written by the
+        # previous run, so a single pass renders every cross-reference as
+        # "??" in the caption. The second pass is what fills them in.
+        for _ in range(2):
+            subprocess.run(
+                ["pdflatex", "-interaction=nonstopmode",
+                 "-output-directory", str(out_dir), str(tmp)],
+                capture_output=True, timeout=60,
+            )
         pdf = out_dir / "table_preview.pdf"
         print(f"  {'✓ Table PDF → ' + str(pdf) if pdf.exists() else 'Note: pdflatex produced no PDF'}")
+        log = out_dir / "table_preview.log"
+        if log.exists():
+            undefined = sorted({m for m in re.findall(
+                r"Reference `([^']+)' on page \d+ undefined", log.read_text(errors="replace"))})
+            if undefined:
+                print("  ⚠ still-undefined LaTeX references (will render as '??'): "
+                      + ", ".join(undefined))
     except FileNotFoundError:
         print("  Note: pdflatex not found – skipping PDF preview")
     except Exception as e:
@@ -4346,8 +7541,21 @@ def write_text_report(all_results: List[Tuple], out_file: Path,
 
     mismatch_details: List[Tuple[str, Dict]] = []
 
+    # State the campaign-wide arithmetic mode / no-RAN policy in the report
+    # itself, and verify every result actually agrees with it -- a
+    # mixed-mode report must never be presented as one configuration.
+    seen_modes = {r.arith_mode for a, s in all_results for r in (a, s)
+                  if r is not None and r.arith_mode is not None}
+    seen_no_ran = {r.use_no_ran for a, s in all_results for r in (a, s)
+                   if r is not None and r.use_no_ran is not None}
+    arith_line = (", ".join(sorted(seen_modes)) if seen_modes else "unknown")
+    if len(seen_modes) > 1:
+        arith_line += "  *** INCONSISTENT ACROSS RESULTS -- DO NOT TRUST AGGREGATES ***"
+    no_ran_line = (", ".join(str(x) for x in sorted(seen_no_ran, key=str)) if seen_no_ran else "unknown")
     lines = ["=" * 72, "GIBBON BENCHMARK REPORT v3.1",
-             "=" * 72, f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}", ""]
+             "=" * 72, f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+             f"Arithmetic mode (--c-arithmetic): {arith_line}",
+             f"No-RAN (--no-ran) in effect: {no_ran_line}", ""]
     for aos, soa in all_results:
         if not aos or not soa:
             continue
@@ -4365,8 +7573,12 @@ def write_text_report(all_results: List[Tuple], out_file: Path,
             if not res.run_success:
                 lines.append(f"  {tag}: FAILED – {res.error_message}")
                 continue
-            total = sum(p["median_time"] for p in res.passes.values())
-            lines.append(f"  {tag}: {total:.4f}s total")
+            if not prov.verified_result(res):
+                lines.append(f"  {tag}: UNVERIFIED -- {prov.rejection_reason(res)} "
+                             "(no qualified timing; ran but not independently verified)")
+                continue
+            total = total_pass_time(res) or 0.0
+            lines.append(f"  {tag}: {total:.4f}s total  [VERIFIED]")
             for pname, pd in res.passes.items():
                 t     = pd["pass_type"][0].upper() if pd["pass_type"] != "unknown" else "?"
                 uses  = pd.get("uses")
@@ -4382,10 +7594,12 @@ def write_text_report(all_results: List[Tuple], out_file: Path,
                     f"    [{t}] {pname}: median={med:.4f}s  "
                     f"mean={mean:.4f}s  95%CI=±{fmt_ci95(ci95)}  (n={n_it}){ann}"
                 )
-        if aos.run_success and soa.run_success:
-            at = sum(p["median_time"] for p in aos.passes.values())
-            st = sum(p["median_time"] for p in soa.passes.values())
-            lines.append(f"  Speedup: {at/st:.3f}×" if st > 0 else "  Speedup: N/A")
+        if prov.eligible_pair(aos, soa):
+            speedup, _reason = prov.safe_speedup(aos, soa, total_pass_time)
+            lines.append(f"  Speedup: {speedup:.3f}×" if speedup is not None else "  Speedup: N/A")
+        else:
+            lines.append("  Speedup: N/A -- unverified "
+                         f"(aos: {prov.rejection_reason(aos)}; soa: {prov.rejection_reason(soa)})")
 
         ventry = variants_map.get(aos.program)
         if ventry is not None:
@@ -4439,8 +7653,50 @@ def write_text_report(all_results: List[Tuple], out_file: Path,
                 for ln in out_lines:
                     lines.append(f"    {ln}")
 
-    out_file.write_text("\n".join(lines))
+    prov.atomic_write_text(out_file, "\n".join(lines))
     print(f"  ✓ Text report → {out_file}")
+
+
+def _ser_result(r: Optional[BenchmarkResult]) -> Optional[Dict]:
+    """Serialize one variant's result.  Diagnostic/provenance fields
+    (compile/run status, error, ADT/buffer/PAPI-file metadata) are always
+    present -- a status/provenance report may retain a labelled row for an
+    ineligible result.  `passes` (the raw per-pass numeric timing data) is
+    populated ONLY when `prov.verified_result(r)` is true; otherwise it is
+    `None` with `passes_omitted_reason` explaining why, so nothing downstream
+    can mistake an absent value for a real one.  `qualification` carries the
+    full QualificationStatus (oracle status/detail, cross-variant status,
+    codegen evidence, `verified`, `eligible_for_reporting`, semantic output)."""
+    if r is None:
+        return None
+    adt_info = getattr(r, "adt_info", None)
+    verified = prov.verified_result(r)
+    rec = {
+        "compile_success":  r.compile_success,
+        "run_success":      r.run_success,
+        "error":            r.error_message,
+        "verified":         verified,
+        "arith_mode":       getattr(r, "arith_mode", None),
+        "use_no_ran":       getattr(r, "use_no_ran", None),
+        "qualification":    r.qualification.as_dict() if r.qualification else None,
+        "adt_fields":       getattr(r, "adt_fields", None),
+        "adt_type":         adt_info["type_name"] if adt_info else None,
+        "aos_buffers":      1,
+        "soa_total_buffers": adt_info["soa_total_buffers"] if adt_info else None,
+        "nonrec_field_slots": adt_info["nonrec_field_slots"] if adt_info else None,
+        "papi_file":        getattr(r, "papi_file", None),
+        "papi_counters":    getattr(r, "papi_counters", []),
+        "papi_regions_total": getattr(r, "papi_regions_total", 0),
+        "papi_regions_used": getattr(r, "papi_regions_used", 0),
+    }
+    if verified:
+        rec["passes"] = {k: {kk: vv for kk, vv in v.items() if kk != "iter_times"}
+                         for k, v in r.passes.items()}
+        rec["passes_omitted_reason"] = None
+    else:
+        rec["passes"] = None
+        rec["passes_omitted_reason"] = prov.rejection_reason(r)
+    return rec
 
 
 def write_json_results(all_results: List[Tuple], out_file: Path,
@@ -4454,29 +7710,13 @@ def write_json_results(all_results: List[Tuple], out_file: Path,
     for aos, soa in all_results:
         if not aos or not soa:
             continue
-        def ser(r: BenchmarkResult) -> Dict:
-            adt_info = getattr(r, "adt_info", None)
-            return {
-                "compile_success":  r.compile_success,
-                "run_success":      r.run_success,
-                "error":            r.error_message,
-                "adt_fields":       getattr(r, "adt_fields", None),
-                "adt_type":         adt_info["type_name"] if adt_info else None,
-                "aos_buffers":      1,
-                "soa_total_buffers": adt_info["soa_total_buffers"] if adt_info else None,
-                "nonrec_field_slots": adt_info["nonrec_field_slots"] if adt_info else None,
-                "papi_file":        getattr(r, "papi_file", None),
-                "papi_counters":    getattr(r, "papi_counters", []),
-                "papi_regions_total": getattr(r, "papi_regions_total", 0),
-                "papi_regions_used": getattr(r, "papi_regions_used", 0),
-                "passes": {k: {kk: vv for kk, vv in v.items()
-                               if kk != "iter_times"}
-                           for k, v in r.passes.items()},
-            }
         rec = {
             "program": aos.program,
-            "aos": ser(aos),
-            "soa": ser(soa),
+            "aos": _ser_result(aos),
+            "soa": _ser_result(soa),
+            # Diagnostic only -- AoS/SoA agreeing is NOT an oracle and must
+            # never be read as a qualified/verified claim.  See "verified"
+            # and "qualification" above for the real gate.
             "output_match": outputs_match(aos, soa),  # backwards-compatible: mutable AoS vs SoA
             "output_match_mutable": outputs_match(aos, soa),
         }
@@ -4486,10 +7726,10 @@ def write_json_results(all_results: List[Tuple], out_file: Path,
             soa_imm = ventry.get("soa_imm")
             ghc_res = ventry.get("ghc")
             mlton_res = ventry.get("mlton")
-            rec["aos_imm"] = ser(aos_imm) if aos_imm else None
-            rec["soa_imm"] = ser(soa_imm) if soa_imm else None
-            rec["ghc"] = ser(ghc_res) if ghc_res else None
-            rec["mlton"] = ser(mlton_res) if mlton_res else None
+            rec["aos_imm"] = _ser_result(aos_imm)
+            rec["soa_imm"] = _ser_result(soa_imm)
+            rec["ghc"] = _ser_result(ghc_res)
+            rec["mlton"] = _ser_result(mlton_res)
             rec["output_match_all_variants"] = outputs_match_all([
                 ventry.get("aos"),
                 aos_imm,
@@ -4499,7 +7739,30 @@ def write_json_results(all_results: List[Tuple], out_file: Path,
                 mlton_res,
             ])
         data.append(rec)
-    out_file.write_text(json.dumps(data, indent=2))
+    # Campaign-wide arithmetic-mode/no-RAN provenance, plus a mechanical
+    # check that this report never silently mixes artifacts built under
+    # different arithmetic-mode policies (a report is not one configuration
+    # if the results inside it disagree about what that configuration was).
+    flat_records = [rv for rec in data for k, rv in rec.items()
+                     if k in ("aos", "soa", "aos_imm", "soa_imm") and rv is not None]
+    consistency_error = check_arithmetic_mode_consistency(flat_records)
+    modes_present = sorted({rv.get("arith_mode") for rv in flat_records
+                            if rv.get("arith_mode") is not None})
+    no_ran_present = sorted({rv.get("use_no_ran") for rv in flat_records
+                             if rv.get("use_no_ran") is not None}, key=str)
+    report = {
+        "report_schema": prov.REPORT_SCHEMA,
+        "generated_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+        "campaign": {
+            "c_arithmetic_modes_present": modes_present,
+            "no_ran_values_present": no_ran_present,
+            "arithmetic_mode_consistency_error": consistency_error,
+        },
+        "results": data,
+    }
+    if consistency_error:
+        print(f"  *** WARNING: {consistency_error} ***")
+    prov.atomic_write_text(out_file, json.dumps(report, indent=2))
     print(f"  ✓ JSON → {out_file}")
 
 # ---------------------------------------------------------------------------
@@ -4812,12 +8075,15 @@ def _fig_breakdown(good: List, out: Path):
 def generate_all_figures(all_results: List[Tuple], out_dir: Path):
     _pub_rc()
     out_dir.mkdir(parents=True, exist_ok=True)
-    good = [(a, s) for a, s in all_results
-            if a and s and a.run_success and s.run_success]
+    # Every figure plots only independently VERIFIED pairs -- no artist/data
+    # point may be emitted for a result that merely compiled and ran.
+    good = [(a, s) for a, s in all_results if prov.eligible_pair(a, s)]
     if not good:
-        print("  No successful results to plot.")
+        print("  No verified results to plot (all results are unverified, "
+              "failed, or lack an independent oracle).")
         return
-    print("\nGenerating figures ...")
+    print(f"\nGenerating figures ... ({len(good)} verified program(s) of "
+          f"{len(all_results)} attempted)")
     _fig_speedup_fold_map(good, out_dir / "speedup_comparison")
     _fig_per_program(good, out_dir)
     _fig_dead_vs_speedup(good, out_dir / "dead_vs_speedup")
@@ -4828,7 +8094,323 @@ def generate_all_figures(all_results: List[Tuple], out_dir: Path):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-def main():
+# ---------------------------------------------------------------------------
+# Correctness / provenance qualification mode
+# ---------------------------------------------------------------------------
+
+VARIANT_FAMILY_LAYOUT = {"aos": ("Linear", "AOS-LINEAR-SOURCE-MARKER"),
+                         "soa": ("Factored", "SOA-FACTORED-SOURCE-MARKER")}
+
+
+def _imported_module_texts(source: Path) -> List[str]:
+    """Text of every locally-resolvable `import Foo` module used by `source`,
+    read from Foo.hs alongside it.  A program like the OctTree_* family
+    declares its ADT (and layout annotation) in a shared module -- e.g.
+    `import OctTreeBase` -- rather than in the file itself, so a check that
+    only reads `source` never sees the annotation at all."""
+    try:
+        text = Path(source).read_text(errors="replace")
+    except OSError:
+        return []
+    out = []
+    for m in re.finditer(r"^\s*import\s+([A-Za-z][A-Za-z0-9_.']*)", text, re.MULTILINE):
+        mod_file = Path(source).parent / (m.group(1) + ".hs")
+        try:
+            out.append(mod_file.read_text(errors="replace"))
+        except OSError:
+            pass
+    return out
+
+
+def _source_layout_evidence(source: Path, variant: str) -> Tuple[bool, str]:
+    """Read back the source we recorded and confirm it is the layout family the
+    variant claims.  This is what detects a swapped AoS/SoA input: the check
+    consults the file at the recorded absolute path, not the variant name.
+
+    The layout annotation is looked for in `source` itself AND in any module
+    it locally imports (see `_imported_module_texts`), since some programs
+    (e.g. the OctTree_* family) declare their ADT in a shared module."""
+    fam = "aos" if variant.startswith("aos") else ("soa" if variant.startswith("soa") else None)
+    if fam is None:
+        return True, "layout check not applicable to %s" % variant
+    want_ann, want_marker = VARIANT_FAMILY_LAYOUT[fam]
+    try:
+        text = Path(source).read_text(errors="replace")
+    except OSError as e:
+        return False, "cannot read recorded source: %s" % e
+    text = "\n".join([text] + _imported_module_texts(source))
+    ann_ok = ('"%s"' % want_ann) in text
+    # The explicit source marker is opt-in: only programs that declare one (the
+    # qualification fixture does) are held to it.  Requiring it universally
+    # would falsely condemn every existing benchmark source.
+    declares_marker = any(m in text for _, m in VARIANT_FAMILY_LAYOUT.values())
+    marker_ok = (want_marker in text) if declares_marker else True
+    if ann_ok and marker_ok:
+        detail = 'annotation "%s"' % want_ann
+        if declares_marker:
+            detail += " and %s" % want_marker
+        return True, detail + " present"
+    missing = []
+    if not ann_ok:
+        missing.append('annotation "%s"' % want_ann)
+    if declares_marker and not marker_ok:
+        missing.append(want_marker)
+    return False, "recorded source is not %s: missing %s" % (fam.upper(), ", ".join(missing))
+
+
+def _codegen_evidence(c_file: Optional[Path], variant: str,
+                      expect_vectorization: bool) -> Tuple[str, List[str]]:
+    """Structural evidence from the generated C.  Recorded SEPARATELY from
+    semantic correctness and from timing -- it never makes a wrong answer look
+    acceptable."""
+    notes: List[str] = []
+    if c_file is None or not Path(c_file).exists():
+        return "MISSING", ["generated C not found"]
+    try:
+        txt = Path(c_file).read_text(errors="replace")
+    except OSError as e:
+        return "MISSING", ["generated C unreadable: %s" % e]
+    is_soa = variant.startswith("soa")
+    # A FullyFactored SoA layout passes one cursor PER BUFFER, so it emits
+    # cursor ARRAYS (`GibCursor x[N]`).  A plain `GibCursor *` appears in AoS
+    # too, so counting it would make this check vacuous.
+    arrays = len(re.findall(r"GibCursor\s+\**\w+\[\d+\]", txt))
+    narrow = len(re.findall(r"\bGibInt8\b", txt))
+    notes.append("cursor-array (SoA) declarations: %d" % arrays)
+    notes.append("GibInt8 (narrow width) uses: %d" % narrow)
+    if is_soa and arrays == 0:
+        return "FAIL", notes + ["SoA variant emitted no cursor-array declarations"]
+    if narrow == 0:
+        return "FAIL", notes + ["fixture declares Int8 but no GibInt8 appears in generated C"]
+    if expect_vectorization:
+        simd = sorted(set(re.findall(r"gib_vec_[a-z0-9_]+|_mm_[a-z0-9_]+", txt)))
+        notes.append("SIMD helpers: %s" % (", ".join(simd[:4]) if simd else "none"))
+        if not simd:
+            return "FAIL", notes + ["vectorization requested but no SIMD helper emitted"]
+    return "OK", notes
+
+
+_ORACLE_MANIFEST: Optional["prov.OracleManifest"] = None
+
+
+def default_oracle_manifest() -> "prov.OracleManifest":
+    """THE oracle manifest for this process.  Loaded once so full benchmark
+    mode and --correctness-only consult the identical entries."""
+    global _ORACLE_MANIFEST
+    if _ORACLE_MANIFEST is None:
+        _ORACLE_MANIFEST = prov.OracleManifest.load_default(Path(__file__).resolve().parent)
+    return _ORACLE_MANIFEST
+
+
+def qualify_variant(program: str, variant: str, source: Optional[Path],
+                    compile_ok: bool, compile_err: Optional[str],
+                    exec_ok: bool, exec_err: Optional[str],
+                    raw_stdout: Optional[str],
+                    manifest: Optional["prov.OracleManifest"] = None,
+                    allow_unverified: bool = False,
+                    c_file: Optional[Path] = None,
+                    expect_vectorization: bool = False,
+                    check_layout: bool = True) -> "prov.QualificationStatus":
+    """Build a QualificationStatus.  THE single oracle-check code path: full
+    benchmark mode (`benchmark_program`) and `--correctness-only`
+    (`run_correctness_qualification`) both call this, so there is exactly one
+    place that decides "did this variant pass an independent oracle" -- never
+    a second, parallel implementation that could drift from it.
+
+    Layout and codegen evidence are recorded here too (when `source`/`c_file`
+    are given) because a swapped AoS/SoA source or missing SoA structural
+    evidence is exactly the kind of thing that must sink the oracle verdict,
+    not just decorate it -- see `_source_layout_evidence`/`_codegen_evidence`.
+    """
+    st = prov.QualificationStatus(variant, str(source) if source else program)
+    st.allow_unverified = bool(allow_unverified)
+    st.compile_status = prov.COMPILE_OK if compile_ok else prov.COMPILE_FAIL
+    if not compile_ok:
+        st.notes.append("compile failed: %s" % (compile_err or "")[:400])
+        return st
+
+    st.exec_status = prov.EXEC_OK if exec_ok else prov.EXEC_FAIL
+    if not exec_ok:
+        st.notes.append("run failed: %s" % (exec_err or "")[:300])
+        return st
+
+    st.semantic_output = prov.semantic_output(raw_stdout or "")
+    st.timing_status = "PRESENT" if re.search(r"^\s*SELFTIMED:", raw_stdout or "", re.M) else "ABSENT"
+    manifest = manifest if manifest is not None else default_oracle_manifest()
+    # Always ask for a real oracle.  `allow_unverified` is an escape applied
+    # AFTER the fact (QualificationStatus.allow_unverified), so the result is
+    # labelled UNVERIFIED and `verified` stays False -- it must not be
+    # recoloured as "not required" and silently treated as a pass.
+    st.oracle_status, st.oracle_detail = manifest.check(program, raw_stdout or "", required=True)
+
+    lay_ok = True
+    if check_layout and source is not None and Path(source).exists():
+        lay_ok, lay_why = _source_layout_evidence(source, variant)
+        st.notes.append("layout: %s" % lay_why)
+        if not lay_ok:
+            st.oracle_status = prov.ORACLE_FAIL
+            st.oracle_detail = lay_why
+
+    if c_file is not None:
+        cg_status, cg_notes = _codegen_evidence(c_file, variant, expect_vectorization)
+        # A layout mismatch (wrong source swapped in) makes the codegen
+        # evidence meaningless too -- it is evidence about the WRONG program.
+        st.codegen_status = cg_status if lay_ok else "FAIL"
+        st.notes.extend(cg_notes)
+
+    return st
+
+
+def run_correctness_qualification(args) -> int:
+    """Compile + run each selected variant ONCE, check an independent oracle,
+    record full provenance, and emit no performance claim.
+
+    Deliberately uses the same compile_one/run_exe construction as full
+    benchmark mode -- a parallel test-only path would prove nothing about the
+    driver that actually measures.
+    """
+    here = Path(__file__).resolve().parent
+    programs_dir = Path(args.programs_dir).resolve() if args.programs_dir else here / "programs"
+    out_dir = Path(args.output_dir).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest = prov.OracleManifest.load_default(here)
+    program = args.correctness_only
+    stem = Path(program).stem
+
+    variants = args.variants or ["aos_mut", "soa_mut"]
+    res = resolve_gibbon()
+    cc_info = prov.cc_identity(resolve_cc())
+
+    print("=" * 78)
+    print("CORRECTNESS / PROVENANCE QUALIFICATION  (no timing is produced)")
+    print("=" * 78)
+    print(f"  program      : {stem}")
+    print(f"  gibbon       : {res.path}  [origin={res.origin} sha256={(res.sha256 or '')[:16]}]")
+    print(f"  C compiler   : {cc_info['path']}  ({cc_info.get('version')})")
+    print(f"  oracle       : {manifest.path}")
+    print(f"  output dir   : {out_dir}")
+    print(f"  size-param   : {args.size_param}   iterations: 1   warmups: 0   cooldown: 0")
+    print(f"  arithmetic   : {getattr(args, 'c_arithmetic', DEFAULT_C_ARITH_MODE)}  (--c-arithmetic)")
+    print()
+
+    statuses: List[prov.QualificationStatus] = []
+    records: List[Dict] = []
+
+    for variant in variants:
+        src_dir = "AOS" if variant.startswith("aos") else "SOA"
+        source = (programs_dir / src_dir / f"{stem}.hs").resolve()
+        rec: Dict = {"variant": variant, "source": str(source)}
+        print(f"--- {variant} ---")
+        if not source.exists():
+            st = qualify_variant(stem, variant, source, False, "source not found",
+                                 False, None, None, manifest=manifest,
+                                 allow_unverified=args.allow_unverified_output)
+            st.notes.append("source not found: %s" % source)
+            print(f"  source NOT FOUND: {source}")
+            statuses.append(st); records.append(rec); continue
+        print(f"  source       : {source}")
+
+        opt = dict(store_scalar_field_counts=args.store_scalar_field_counts,
+                   enable_loopification=args.enable_loopification,
+                   enable_loop_fusion=args.enable_loop_fusion,
+                   enable_selective_buffer_sharing=args.enable_selective_buffer_sharing,
+                   enable_vectorization=args.enable_vectorization,
+                   use_sse41=getattr(args, 'use_sse41', False),
+                   use_no_gcc_vec=getattr(args, 'use_no_gcc_vec', False))
+        ok, secs, err = compile_one(source, variant, out_dir, args.force_recompile,
+                                    use_mutable_cursors=True,
+                                    c_arith_mode=getattr(args, "c_arithmetic", DEFAULT_C_ARITH_MODE),
+                                    simd_isa=getattr(args, "simd_isa", DEFAULT_SIMD_ISA),
+                                    **opt)
+        if not ok:
+            st = qualify_variant(stem, variant, source, False, err, False, None, None,
+                                 manifest=manifest, allow_unverified=args.allow_unverified_output)
+            print(f"  COMPILE FAILED")
+            statuses.append(st); records.append(rec); continue
+
+        exe = out_dir / f"{stem}.{variant}.exe"
+        c_file = out_dir / f"{stem}.{variant}.c"
+        bi = out_dir / f"{stem}.{variant}.buildinfo.json"
+        try:
+            meta = json.loads(bi.read_text())
+        except Exception:
+            meta = {}
+        rec["compile_argv"] = (meta.get("fingerprint") or {}).get("argv")
+        rec["compiler"] = (meta.get("fingerprint") or {}).get("compiler")
+        rec["cc"] = (meta.get("fingerprint") or {}).get("cc")
+        rec["artifacts"] = meta.get("artifacts")
+        rec["repo"] = meta.get("repo")
+        rec["c_arithmetic"] = meta.get("c_arithmetic")
+        rec["use_no_ran"] = meta.get("use_no_ran")
+
+        argv_log: List[List[str]] = []
+        rok, elapsed, out, rerr, rc = run_exe(exe, 1, use_iterate_flag=False,
+                                              size_param=args.size_param,
+                                              record_argv=argv_log)
+        rec["run_argv"] = argv_log[0] if argv_log else None
+        rec["returncode"] = rc
+        if not rok:
+            st = qualify_variant(stem, variant, source, True, None, False,
+                                 "rc=%s: %s" % (rc, rerr), None,
+                                 manifest=manifest, allow_unverified=args.allow_unverified_output)
+            print(f"  RUN FAILED (rc={rc})")
+            statuses.append(st); records.append(rec); continue
+
+        st = qualify_variant(stem, variant, source, True, None, True, None, out,
+                             manifest=manifest, allow_unverified=args.allow_unverified_output,
+                             c_file=c_file, expect_vectorization=args.enable_vectorization)
+
+        rec["semantic_output"] = st.semantic_output
+        rec["oracle"] = {"status": st.oracle_status, "detail": st.oracle_detail}
+        rec["codegen"] = {"status": st.codegen_status, "notes": st.notes}
+        print(f"  compile argv : {' '.join(rec['compile_argv'] or [])}")
+        print(f"  run argv     : {' '.join(rec['run_argv'] or [])}")
+        print(f"  semantic out : {st.semantic_output!r}")
+        print(f"  oracle       : {st.oracle_status}  ({st.oracle_detail})")
+        print(f"  codegen      : {st.codegen_status}")
+        for note in st.notes:
+            print(f"  note         : {note}")
+        statuses.append(st); records.append(rec)
+
+    xv = prov.cross_variant_check(statuses)
+    for st in statuses:
+        st.cross_variant_status = xv
+    print()
+    print("--- summary ---")
+    for st in statuses:
+        print(f"  {st.variant:<16} {st.label:<14} oracle={st.oracle_status:<12} "
+              f"codegen={st.codegen_status} eligible={st.eligible_for_reporting}")
+    print(f"  cross-variant : {xv}")
+    code = prov.campaign_exit_code(statuses)
+    if xv == prov.XVAR_DISAGREE:
+        code = 1
+    print(f"  VERDICT       : {'QUALIFIED' if code == 0 else 'NOT QUALIFIED'}  (exit {code})")
+    print("  NOTE: this mode makes no performance claim.")
+
+    report = {"mode": "correctness-only",
+              "program": stem,
+              "gibbon": res.as_dict(),
+              "cc": cc_info,
+              "size_param": args.size_param,
+              "iterations": 1, "warmups": 0, "cooldown": 0,
+              "c_arithmetic": getattr(args, "c_arithmetic", DEFAULT_C_ARITH_MODE),
+              "cross_variant_status": xv,
+              "exit_code": code,
+              "results": [dict(r, status=s.as_dict())
+                          for r, s in zip(records, statuses)]}
+    prov.atomic_write_text(out_dir / f"{stem}.qualification.json",
+                           json.dumps(report, indent=2, sort_keys=True))
+    print(f"  wrote {out_dir / (stem + '.qualification.json')}")
+    return code
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The CLI, built separately from `main` so it can be exercised without
+    running a campaign.
+
+    Flag DEFAULTS are load-bearing here -- `--pin-cpu` decides whether the
+    driver touches CPU affinity at all -- and a default nobody can reach in
+    a test is a default nobody checks."""
     ap = argparse.ArgumentParser(
         description="Gibbon Benchmark Suite v3.1",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -4856,7 +8438,32 @@ def main():
                     help="--iterate value used for each warmup launch. Default: 1.")
     ap.add_argument("--cooldown-seconds", type=float, default=3.0,
                     help="Sleep between variant executions to reduce carryover. Default: 3.0; use 0 to disable.")
-    ap.add_argument("--programs",       nargs="+")
+    ap.add_argument("--programs",       nargs="+",
+                    help="Run only these benchmarks instead of the full default list. "
+                         "Names may be given as `Trie`, `Trie.hs`, or a path.")
+    ap.add_argument("--exclude-programs", nargs="+", default=[], metavar="PATTERN",
+                    help="Drop these benchmarks from the run -- the full default list, "
+                         "or whatever --programs selected. Use it to leave a broken or "
+                         "slow benchmark out of a full evaluation without retyping every "
+                         "other name. Each entry is a shell-style glob matched "
+                         "case-insensitively against the program names, so a whole "
+                         "family comes out in one entry -- e.g. '*oct*ree*' drops all "
+                         "nine octree benchmarks (OctTree_*.hs is spelled Oct+Tree, "
+                         "ColorOctree.hs is Color+Octree, so 'OctTree*' alone leaves the "
+                         "latter in). Quote patterns so your shell does not expand them "
+                         "first. Matching is anchored to the whole name, so a plain name "
+                         "still matches only itself. "
+                         "Applies to the main AoS/SoA campaign and to the "
+                         "--pldi-submission variant matrix; the opt-in width families "
+                         "(--add1tree-widths / --arithintensity-widths) have their own "
+                         "fixed program lists and are unaffected. A pattern that matches "
+                         "no program in the run is an error, not a silent no-op.")
+    ap.add_argument("--cc", default=None,
+                    help=f"C compiler Gibbon shells out to (passed as `gibbon --cc`). "
+                         f"Default: {PREFERRED_CC} if present, else gcc. Pinned deliberately: "
+                         f"GCC 15 fails to register-promote SoA traversal cursors and inflates "
+                         f"SoA fold times by ~2.7x; GCC 16 does not. The chosen compiler and its "
+                         f"version are recorded in the report.")
     ap.add_argument("--clean",          action="store_true",
                     help="Force recompile every program regardless of mtime")
     ap.add_argument("--generate-paper", action="store_true")
@@ -4883,6 +8490,107 @@ def main():
                     help="Also compile and benchmark GHC variant (programs/GHC/*.hs).")
     ap.add_argument("--benchmark-mlton", action="store_true",
                     help="Also compile and benchmark MLton variant (programs/MLTON/*.sml).")
+    ap.add_argument("--add1tree-widths", action="store_true",
+                    help="Also run the four-width add1Tree family "
+                         "(ADD1TREE_WIDTH_PROGRAMS) and emit the 'Integer-width add1Tree "
+                         "vectorization' table. Narrow opt-in, same pattern as "
+                         "--benchmark-ghc/--benchmark-mlton: not part of DEFAULT_PROGRAMS, "
+                         "does not affect any other table or aggregate.")
+    ap.add_argument("--arithintensity-widths", action="store_true",
+                    help="Also run the four-width "
+                         "high-arithmetic-intensity family (ARITHINTENSITY_WIDTH_PROGRAMS) "
+                         "and emit the 'Integer-width high-arithmetic-intensity "
+                         "vectorization' table. Narrow opt-in, same pattern as "
+                         "--add1tree-widths. Width 64's Gibbon-SIMD column is always N/A "
+                         "(unsupported packed multiply -- see BUGS.md); this flag never "
+                         "enables Gibbon vectorization for the W64 variant.")
+    ap.add_argument("--roofline", action="store_true",
+                    help="Measure this machine's PRACTICAL roofline and plot it: "
+                         "single-threaded DRAM bandwidth (STREAM triad past LLC) "
+                         "and the peak multiply-add rate for FP64 and for 8/16/32/64-bit "
+                         "integers, which is what actually bounds Gibbon's kernels. "
+                         "Compiled -O3 -march=native -ffast-math so the ceiling is the "
+                         "vectorized one, and pinned to one core. Writes roofline.json, "
+                         "a standalone plot script, and roofline.png. Independent of the "
+                         "benchmark campaign -- it never invokes gibbon, so it cannot "
+                         "disturb a run in progress.")
+    ap.add_argument("--roofline-overlay", action="store_true",
+                    help="With --roofline, also plot Gibbon's own ArithmeticIntensity "
+                         "kernels as points on the roofline, using the suite's existing "
+                         "ops/byte metric and the measured pass times. Implies "
+                         "--arithintensity-widths, since it needs those measurements.")
+    ap.add_argument("--roofline-cpu", type=int, default=0, metavar="N",
+                    help="Which CPU to pin the roofline probe to (default: 0). On a "
+                         "hybrid CPU choose a performance core; an efficiency core "
+                         "measures a genuinely lower ceiling.")
+    ap.add_argument("--pldi-submission", action="store_true",
+                    help="For every DEFAULT_PROGRAMS entry, compile and run the full AoS/SoA "
+                         "variant matrix (recursive immutable/mutable/mutable-no-TCO, plus "
+                         "loopified gcc-vec on/off, plus for SoA selective-buffer-sharing and "
+                         "Gibbon-vectorization on/off -- up to 13 configs per program) and emit "
+                         "one separate fold-pass table and one separate map-pass table per "
+                         "program, replacing the combined per-program table for this run. Every "
+                         "loopified config uses --opt-loopification alone (no "
+                         "--auto-loopification): every curated map function already carries an "
+                         "explicit OPT:MayVectorize annotation. Substantially more compiles than "
+                         "a normal run; narrow opt-in, same pattern as --add1tree-widths.")
+    ap.add_argument("-v", "--verbose", dest="verbose", action="store_true",
+                    help="Print the full per-compile log (paths, mtimes, per-variant "
+                         "status) and disable the pinned progress display. Use this "
+                         "when investigating one specific compile; the default is a "
+                         "two-line progress display with warnings and failures still "
+                         "printed in full.")
+    ap.add_argument("--no-progress", dest="no_progress", action="store_true",
+                    help="Disable the pinned progress display without turning the "
+                         "full per-compile log back on. Implied when stdout is not a "
+                         "terminal, so redirecting to a file never writes escape "
+                         "sequences.")
+    ap.add_argument("--pin-cpu", dest="pin_cpu", nargs="?",
+                    default="none", const="auto", metavar="auto|N|none",
+                    help="OPT-IN. Pin every timed run to one CPU so a measurement "
+                         "cannot migrate between cores mid-run, and keep the driver "
+                         "and the compiles off that CPU. OMIT THIS FLAG and nothing "
+                         "is pinned and no affinity is set anywhere -- runs are "
+                         "scheduled by the kernel exactly as they were before "
+                         "pinning existed. Bare `--pin-cpu` picks a performance "
+                         "core automatically, avoiding CPU 0 and its SMT siblings "
+                         "because CPU 0 carries most interrupt work; `--pin-cpu N` "
+                         "pins to CPU N; `--pin-cpu none` is the same as omitting "
+                         "it. Pinning is off by default because it is not free: "
+                         "confining every run to a single core also confines it to "
+                         "that core's private L1/L2 and to one SMT sibling's share "
+                         "of the shared units, and on this suite it made some "
+                         "benchmarks measurably WORSE rather than merely quieter. "
+                         "Turn it on when run-to-run variance is what you are "
+                         "fighting, and compare against an unpinned baseline before "
+                         "trusting either.")
+    ap.add_argument("--simd-isa", dest="simd_isa",
+                    choices=list(SIMD_ISA_CHOICES), default=DEFAULT_SIMD_ISA,
+                    help="SIMD instruction set EVERY configuration is compiled for -- "
+                         "both Gibbon's own vectorizer (which takes its register width "
+                         "from it) and the C compiler's auto-vectorizer (which gets the "
+                         "matching -m flag). Passed explicitly to every compile so all "
+                         "columns of a comparison target the same hardware. "
+                         f"Driver default: {DEFAULT_SIMD_ISA}. "
+                         "`sse2` = 128-bit, no -m flag (the x86-64 baseline). "
+                         "`avx2` = 256-bit, -mavx2. `native` = 256-bit for Gibbon, "
+                         "-march=native for the C compiler -- avoid it for comparisons "
+                         "on an AVX-512 machine, where it lets the C compiler go wider "
+                         "than Gibbon's vectorizer can.")
+    ap.add_argument("--c-arithmetic", dest="c_arithmetic",
+                    choices=list(C_ARITH_MODES), default=DEFAULT_C_ARITH_MODE,
+                    help="Scalar C arithmetic mode passed EXPLICITLY as "
+                         "gibbon --c-arithmetic=<mode> for every Gibbon compile "
+                         "this driver issues -- never left to Gibbon's own "
+                         "compiler default (which is `portable`). Driver default: "
+                         f"{DEFAULT_C_ARITH_MODE}. "
+                         "`portable` = deterministic RTS-helper add/sub/mul, no C "
+                         "flag needed. `wrapv` = native C operators + Gibbon's own "
+                         "-fwrapv on every C compile/link path it controls. "
+                         "`unsafe` = native C operators, NO -fwrapv or equivalent -- "
+                         "an artifact compiled under one mode is never reused under "
+                         "another (the mode is part of the content-addressed build "
+                         "fingerprint).")
 
     ap.add_argument("--enable-papi", action="store_true",
                     help="Compile with --enable-papi, export PAPI_EVENTS, parse papi_hl_output JSON, "
@@ -4894,34 +8602,183 @@ def main():
     ap.add_argument("--store-scalar-field-counts", action="store_true",
                     help="Enable scalar-count footer metadata for SoA builders annotated with OPT:StoreScalarCounts. "
                          "This flag is not passed to AoS variants.")
-    ap.add_argument("--enable-loopification", action="store_true",
-                    help="Enable map-traversal loopification. The benchmark harness also passes "
-                         "--auto-loopification, so supported maps no longer require manual "
-                         "OPT:CanVectorize annotations.")
-    ap.add_argument("--auto-loopification", "--infer-can-vectorize",
-                    dest="auto_loopification", action="store_true",
-                    help=argparse.SUPPRESS)
-    ap.add_argument("--enable-loop-fusion", action="store_true",
-                    help="Enable post-loopification loop fusion for fully factored SoA scalar-buffer loops. "
-                         "This flag is not passed to AoS variants.")
-    ap.add_argument("--enable-selective-buffer-sharing", action="store_true",
-                    help="Enable post-loopification selective sharing for unchanged fully factored SoA buffers. "
-                         "This flag is not passed to AoS variants.")
-    ap.add_argument("--enable-vectorization", action="store_true",
-                    help="Enable SIMD vectorization for supported loopified fully factored SoA scalar-buffer loops. "
-                         "This flag is not passed to AoS variants.")
-    ap.add_argument("--int32", "--gibbon-int32", dest="use_int32", action="store_true",
-                    help="Compile Gibbon variants with 32-bit GibInt payloads. This is passed to both AoS and SoA Gibbon variants.")
+    ap.add_argument("--opt-loopification", dest="enable_loopification", action="store_true",
+                    help="Enable map-traversal loopification. The benchmark harness always also "
+                         "passes --auto-loopification when this is on, so supported maps loopify "
+                         "structurally -- no manual OPT:MayVectorize annotation is required for "
+                         "these driver-driven compiles. For an SoA target this requires "
+                         "--store-scalar-field-counts (the compiler exits with an error otherwise, "
+                         "whenever an SoA candidate exists); AoS flat-map loopification has no such "
+                         "requirement.")
+    ap.add_argument("--opt-loop-fusion", dest="enable_loop_fusion", action="store_true",
+                    help="Enable post-loopification loop fusion for fully factored SoA scalar-buffer "
+                         "loops. Requires --opt-loopification to also be on (the compiler exits with "
+                         "an error otherwise). This flag is not passed to AoS variants.")
+    ap.add_argument("--opt-selective-buffer-sharing", dest="enable_selective_buffer_sharing", action="store_true",
+                    help="Enable post-loopification selective sharing for unchanged fully factored SoA "
+                         "buffers. Requires --opt-loopification to also be on (the compiler exits with "
+                         "an error otherwise). This flag is not passed to AoS variants.")
+    ap.add_argument("--opt-vectorization", dest="enable_vectorization", action="store_true",
+                    help="Enable SIMD vectorization for supported loopified fully factored SoA "
+                         "scalar-buffer loops. Requires --opt-loopification to also be on (the "
+                         "compiler exits with an error otherwise). This flag is not passed to AoS "
+                         "variants.")
+    # Tombstone for the removed whole-program width mode.  Recognized ONLY so it
+    # can be rejected with an actionable message; it is suppressed from --help,
+    # stores nothing, and never reaches configuration.  Integer width is a
+    # property of the source program (`Int8`/`Int16`/`Int32`/`Int64`; bare `Int`
+    # is `Int64`), not of a benchmark run, and a mixed-width program has no
+    # single width for a flag to select.
+    # --- correctness / provenance qualification -------------------------------
+    ap.add_argument("--variants", nargs="+", default=None,
+                    help="Variants to qualify with --correctness-only "
+                         "(default: aos_mut soa_mut).")
+    ap.add_argument("--force-recompile", action="store_true",
+                    help="Recompile even when the content-addressed fingerprint says "
+                         "the artifacts are current.")
+    ap.add_argument("--correctness-only", metavar="PROGRAM", default=None,
+                    help="Qualify PROGRAM for correctness and provenance instead of "
+                         "benchmarking it: compile the selected variants, run each once "
+                         "with no warmup or cooldown, check an INDEPENDENT oracle, record "
+                         "compiler/artifact/codegen provenance, and emit no performance "
+                         "claim.  Exits nonzero on any compile, run, oracle or "
+                         "cross-variant failure.")
+    ap.add_argument("--allow-unverified-output", action="store_true",
+                    help="Permit a program with no independent oracle to proceed.  The "
+                         "result is labelled UNVERIFIED and is excluded from "
+                         "correctness-qualified performance tables; it is NOT treated as "
+                         "a pass.")
+    ap.add_argument("--size-param", type=int, default=0,
+                    help="Value passed to each executable as --size-param. "
+                         "Default 0, which is the historical driver behaviour.")
+    ap.add_argument("--int32", "--gibbon-int32", dest="removed_int32_mode",
+                    action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--sse4.1", "--gibbon-sse41", dest="use_sse41", action="store_true",
+                    help="Compile Gibbon variants with --sse4.1 (adds -msse4.1 to the generated C). "
+                         "Deliberately INDEPENDENT of --opt-vectorization: -msse4.1 affects the whole "
+                         "translation unit, including the scalar tail and GCC's own auto-vectorizer, so a "
+                         "scalar baseline must be compiled at the same ISA for the comparison to isolate "
+                         "the effect of Gibbon's vectorizer. Gibbon emits its own verified SSE2 W32 "
+                         "multiply sequence either way; a C compiler may recognise it under "
+                         "-msse4.1, but that is not a Gibbon codegen choice. "
+                         "and 64-bit compare (_mm_cmpeq_epi64), which are scalarized at baseline SSE2.")
+    ap.add_argument("--no-gcc-vectorize", dest="use_no_gcc_vec", action="store_true",
+                    help="Compile Gibbon variants with --no-gcc-vectorize (disables the C compiler's "
+                         "own loop AND SLP auto-vectorization on the generated C only, not the RTS -- "
+                         "gcc gets -fno-tree-loop-vectorize -fno-tree-slp-vectorize, clang gets "
+                         "-fno-vectorize -fno-slp-vectorize). Leaves explicit SIMD intrinsics intact, "
+                         "which is what isolates Gibbon's own vectorizer from the C compiler's. Without "
+                         "this, a run with --opt-vectorization off is still auto-vectorized by the C "
+                         "compiler and is NOT a scalar baseline.")
+    ap.add_argument("--reclaim-iterate-regions", dest="reclaim_iterate_regions",
+                    action="store_true",
+                    help="Compile EVERY variant with Gibbon's "
+                         "--reclaim-iterate-regions, so the region chunks each "
+                         "--iterate iteration grows are freed instead of stranded. "
+                         "Without it, memory grows by one whole output value per "
+                         "iteration (929 MB/iteration for a 100M-element list -- an "
+                         "OOM kill at --iterate 101), which puts a hard ceiling on "
+                         "how many iterations a large benchmark can run. Applied "
+                         "uniformly to every configuration in the run: a campaign "
+                         "where some columns reclaim and others do not is not "
+                         "comparable. Expect large benchmarks to get FASTER as well "
+                         "as smaller -- the un-fixed loop makes the kernel supply "
+                         "fresh zeroed pages for memory it has leaked, and that cost "
+                         "is an artifact of the leak, not of the workload.")
     ap.add_argument("--use-ran", "--enable-ran", dest="use_ran", action="store_true",
                     help="Compile Gibbon variants with random-access nodes enabled by omitting --no-ran. Does not add GHC/MLton variants.")
+    return ap
+
+
+def resolve_pin_cpu_arg(raw) -> Optional[int]:
+    """Turn the raw --pin-cpu value into a CPU number, or None for "do not
+    pin". None is what the flag resolves to when it is OMITTED, and it must
+    mean NO affinity call anywhere -- see `reserve_pin_cpu`, which returns
+    early on None rather than narrowing the driver's own mask."""
+    if raw is None:
+        return None
+    text = str(raw).strip().lower()
+    if text in ("none", "off", ""):
+        return None
+    if text == "auto":
+        return default_pin_cpu()
+    return int(text)
+
+
+def main():
+    ap = build_parser()
     args = ap.parse_args()
+    # Set BEFORE anything reads it -- the run banner and every compile do.
+    # This lived further down and the banner, printed above it, always reported
+    # "off" even when the flag was given.
+    set_reclaim_iterate_regions(args.reclaim_iterate_regions)
+
+    if getattr(args, "correctness_only", None):
+        return run_correctness_qualification(args)
+
+    # Reject the removed whole-program width mode before ANY status output,
+    # output-directory creation or compilation happens.
+    if getattr(args, "removed_int32_mode", False):
+        print("error: --int32/--gibbon-int32 has been removed; use explicit Int32 "
+              "source types.\n"
+              "       Integer width is declared by the source program (Int8/Int16/"
+              "Int32/Int64;\n"
+              "       bare Int means Int64), so a benchmark flag can no longer "
+              "reinterpret it.\n"
+              "       Write an explicit-width source variant instead.",
+              file=sys.stderr)
+        return 2
+
+    global SELECTED_CC
+    SELECTED_CC = resolve_cc(args.cc)
+    print(f"  C compiler   : {SELECTED_CC}  ({cc_version(SELECTED_CC)})")
 
     if args.enable_papi and args.enable_papi_native:
         ap.error("Choose only one mode: --enable-papi OR --enable-papi-native")
     if args.benchmark_immutable and args.benchmark_baseline_gibbon:
         ap.error("Choose only one mode: --benchmark-imm OR --bencmark-baseline-gibbon")
 
-    programs_to_run = args.programs or DEFAULT_PROGRAMS
+    try:
+        programs_to_run = resolve_program_selection(args.programs, args.exclude_programs,
+                                                    programs_dir=args.programs_dir)
+    except ProgramSelectionError as e:
+        ap.error(str(e))
+
+    # --verbose restores the full log AND turns the bar off: the two are
+    # alternatives, since a two-line bar is unreadable beside a scrolling log.
+    import bench_progress
+    _display = bench_progress.ProgressDisplay(
+        enabled=not (args.verbose or args.no_progress))
+    set_progress(_display)
+    # Quiet ONLY while the bar is actually visible. If the display is off --
+    # output redirected to a file, --no-progress, or a dumb terminal -- the
+    # log is the only progress signal there is, so it stays in full.
+    set_verbosity(bool(args.verbose) or not _display.enabled)
+    # Phase totals are registered up front so the bar shows overall
+    # completion, not just progress through whichever phase is running.
+    _n_variants = 4 if (args.benchmark_immutable or args.benchmark_baseline_gibbon) else 2
+    _display.add_phase("campaign", "campaign",
+                       len(programs_to_run) * _n_variants)
+    if args.pldi_submission:
+        try:
+            _pldi_n = len(resolve_program_selection(
+                args.programs, args.exclude_programs,
+                default_programs=DEFAULT_PROGRAMS + PLDI_EXTRA_PROGRAMS,
+                programs_dir=args.programs_dir))
+        except ProgramSelectionError:
+            _pldi_n = len(programs_to_run)
+        _display.add_phase(
+            "pldi", "variant matrix",
+            _pldi_n * sum(len(v) for v in PLDI_MAP_CONFIGS.values()))
+    # Writing tables and running pdflatex takes seconds, nothing like a
+    # benchmark unit, so it is shown as a phase but excluded from the estimate.
+    _display.add_phase("report", "tables", 1, estimate=False)
+    _display.install()
+    _display.start_phase("campaign")
+
+    if args.roofline and not (args.roofline_overlay or args.generate_paper):
+        # Standalone: measure, write, done. No compiles, no campaign.
+        return _run_roofline_only(args)
 
     print("\n" + "=" * 72)
     print("GIBBON BENCHMARK SUITE v3.1")
@@ -4932,17 +8789,48 @@ def main():
     print(f"  Warmup       : {args.warmup_runs} run(s) × --iterate {args.warmup_iterations}")
     print(f"  Cooldown     : {args.cooldown_seconds:g}s between variants")
     print(f"  Programs     : {len(programs_to_run)}")
+    if args.exclude_programs:
+        # Report the programs actually dropped, not the raw patterns -- with
+        # globs allowed, `OctTree*` alone does not say which eight it took.
+        kept = set(programs_to_run)
+        dropped = [normalize_program_name(p)
+                   for p in (args.programs or DEFAULT_PROGRAMS)
+                   if normalize_program_name(p) not in kept]
+        print(f"  Excluded     : {len(dropped)} ({', '.join(dropped)})")
     print(f"  Force recomp : {'YES  (--clean)' if args.clean else 'no  (smart mtime check)'}")
     print(f"  Paper mode   : {'YES' if args.generate_paper else 'no'}")
     print(f"  Dump raw     : {'YES → benchmark_output/raw_output/' if args.dump_raw else 'no'}")
     print(f"  Build pass   : {'YES (included in totals/tables)' if args.include_build_pass else 'no'}")
     print(f"  Scalar counts: {'enabled for SoA (--store-scalar-field-counts)' if args.store_scalar_field_counts else 'off'}")
-    print(f"  Loopification: {'enabled (--enable-loopification + --auto-loopification)' if args.enable_loopification else 'off'}")
-    print(f"  Loop fusion  : {'enabled for SoA (--enable-loop-fusion)' if args.enable_loop_fusion else 'off'}")
-    print(f"  Selective sh.: {'enabled for SoA (--enable-selective-buffer-sharing)' if args.enable_selective_buffer_sharing else 'off'}")
-    print(f"  Vectorization: {'enabled for SoA (--enable-vectorization)' if args.enable_vectorization else 'off'}")
-    print(f"  Int width    : {'32-bit (--int32)' if args.use_int32 else '64-bit default'}")
+    print(f"  Loopification: {'enabled (--opt-loopification + --auto-loopification)' if args.enable_loopification else 'off'}")
+    print(f"  Loop fusion  : {'enabled for SoA (--opt-loop-fusion)' if args.enable_loop_fusion else 'off'}")
+    print(f"  Selective sh.: {'enabled for SoA (--opt-selective-buffer-sharing)' if args.enable_selective_buffer_sharing else 'off'}")
+    print(f"  Vectorization: {'enabled for SoA (--opt-vectorization)' if args.enable_vectorization else 'off'}")
+    # Width is a source property, and a mixed-width program has none globally, so
+    # the suite header states the rule rather than a value.
+    print(f"  Int width    : declared by each source (bare Int = Int64)")
+    print(f"  SSE4.1       : {'enabled (--sse4.1)' if args.use_sse41 else 'off (baseline SSE2)'}")
+    print(f"  GCC autovec  : {'DISABLED (--no-gcc-vectorize)' if args.use_no_gcc_vec else 'enabled (default -O3)'}")
     print(f"  RAN          : {'enabled (omit --no-ran)' if args.use_ran else 'disabled (--no-ran)'}")
+    print(f"  Region reclaim: "
+          + ("ON (--reclaim-iterate-regions; per-iteration chunks freed, "
+             "peak memory flat in iteration count)"
+             if RECLAIM_ITERATE_REGIONS else
+             "off (default; memory grows one output value per --iterate "
+             "iteration -- pass --reclaim-iterate-regions)"))
+    args.pin_cpu = resolve_pin_cpu_arg(args.pin_cpu)
+    _reserved = reserve_pin_cpu(args.pin_cpu)
+    print(f"  Pinned CPU   : "
+          + (f"{args.pin_cpu} (--pin-cpu; timed runs cannot migrate between cores"
+             + ("; reserved -- driver and compiles excluded from it)" if _reserved
+                else "; NOT reserved -- driver may share it)")
+             if args.pin_cpu is not None
+             else "none (default: no affinity set; runs may migrate between "
+                  "P- and E-cores -- pass --pin-cpu to pin)"))
+    print(f"  SIMD ISA     : {args.simd_isa}  (--simd-isa; driver default: {DEFAULT_SIMD_ISA}; "
+          f"Gibbon vectorizer and C auto-vectorizer both target it)")
+    print(f"  Arithmetic   : {args.c_arithmetic}  (--c-arithmetic; driver default: {DEFAULT_C_ARITH_MODE}; "
+          f"{'no -fwrapv' if args.c_arithmetic == 'unsafe' else ('Gibbon adds -fwrapv' if args.c_arithmetic == 'wrapv' else 'RTS-helper calls')})")
     if args.benchmark_immutable:
         imm_s = "YES  (4 variants: aos, aos_imm, soa, soa_imm)"
     elif args.benchmark_baseline_gibbon:
@@ -4957,14 +8845,22 @@ def main():
     print(f"  CPU cores    : {multiprocessing.cpu_count()}")
     
     # Show which gibbon compiler will be used and its mtime
-    for comp in ["gibbon", "ghc", "mlton"]:
+    _res = resolve_gibbon()
+    if _res.path is not None:
+        print(f"  Gibbon       : {_res.path}")
+        vprint(f"                 origin={_res.origin} sha256={(_res.sha256 or '')[:16]}")
+    else:
+        print(f"  Gibbon       : NOT RESOLVED (set GIBBON_EXE or build gibbon)")
+    _cc = prov.cc_identity(resolve_cc())
+    print(f"  C compiler   : {_cc['path']}")
+    vprint(f"                 {_cc.get('version') or 'version unknown'}")
+    for comp in ["ghc", "mlton"]:
         if comp == "ghc" and not args.benchmark_ghc: continue
         if comp == "mlton" and not args.benchmark_mlton: continue
         info = get_compiler_info(comp)
         if info:
             path, t = info
-            dt = datetime.datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M:%S")
-            print(f"  Compiler     : {path} ({dt})")
+            print(f"  Compiler     : {path}")
         else:
             print(f"  Compiler     : {comp} NOT FOUND in PATH")
 
@@ -4994,9 +8890,11 @@ def main():
 
     all_results: List[Tuple] = []
     for prog in programs_to_run:
+        progress().item(prog.replace(".hs", ""), "campaign")
         aos, soa = benchmark_program(
             prog, args.programs_dir, args.output_dir,
             args.iterations, args.clean, source_cls_all,
+            pin_cpu=args.pin_cpu,
             dump_raw=args.dump_raw,
             include_build_pass=args.include_build_pass,
             benchmark_immutable=args.benchmark_immutable,
@@ -5010,15 +8908,20 @@ def main():
             enable_loop_fusion=args.enable_loop_fusion,
             enable_selective_buffer_sharing=args.enable_selective_buffer_sharing,
             enable_vectorization=args.enable_vectorization,
-            use_int32=args.use_int32,
+            use_sse41=args.use_sse41,
+            use_no_gcc_vec=args.use_no_gcc_vec,
             use_ran=args.use_ran,
             warmup_runs=args.warmup_runs,
             warmup_iterations=args.warmup_iterations,
             cooldown_seconds=args.cooldown_seconds,
+            allow_unverified_output=args.allow_unverified_output,
+            c_arith_mode=args.c_arithmetic,
         )
+        progress().advance(2)   # one AoS + one SoA variant
         all_results.append((aos, soa))
 
     extended_results = getattr(benchmark_program, '_all_variants_results', [])
+    verified_count = sum(1 for a, s in all_results if prov.eligible_pair(a, s))
 
     if args.benchmark_immutable:
         ok = sum(
@@ -5072,6 +8975,19 @@ def main():
         print(f"DONE  –  {ok}/{len(all_results)} succeeded (baseline variants)  |  {match}/{match_den} output matches (successful variants)")
     else:
         print(f"DONE  –  {ok}/{len(all_results)} succeeded  |  {match}/{match_den} output matches")
+    # "succeeded"/"output matches" above are run-health/cross-variant
+    # diagnostics -- compiling, running, and two variants agreeing with EACH
+    # OTHER is not an oracle and is not a performance claim. This is the ONE
+    # line that says how many programs may contribute a number to any
+    # table, plot, or report below.
+    if verified_count == 0:
+        print(f"VERIFIED (independent oracle PASS, mutable AoS/SoA) – 0/{len(all_results)}: "
+              "NO VERIFIED RESULTS. No speedup, aggregate, plot, or qualified "
+              "table entry will be produced; see the JSON report's "
+              "'qualification'/'passes_omitted_reason' fields for why each "
+              "program was rejected.")
+    else:
+        print(f"VERIFIED (independent oracle PASS, mutable AoS/SoA) – {verified_count}/{len(all_results)}")
     print(f"{'='*72}")
 
     print("\nWriting reports ...")
@@ -5082,15 +8998,104 @@ def main():
         print(f"\n{'='*72}")
         print("Generating conference paper materials ...")
         print(f"{'='*72}")
+        add1tree_width_results = None
+        if args.add1tree_widths:
+            print("  Collecting Add1TreeIntN.hs width results ...")
+            add1tree_width_results = collect_add1tree_width_results(
+                args.programs_dir, args.output_dir, resolve_cc(args.cc),
+                args.force_recompile, gibbon_exe=None, c_arith_mode=args.c_arithmetic,
+                simd_isa=args.simd_isa, pin_cpu=args.pin_cpu)
+        arithintensity_width_results = None
+        if args.arithintensity_widths or args.roofline_overlay:
+            print("  Collecting ArithmeticIntensityIntN.hs width results ...")
+            arithintensity_width_results = collect_arithintensity_width_results(
+                args.programs_dir, args.output_dir, resolve_cc(args.cc),
+                args.force_recompile, gibbon_exe=None, c_arith_mode=args.c_arithmetic,
+                simd_isa=args.simd_isa, pin_cpu=args.pin_cpu)
+        if args.roofline:
+            # After the campaign, so the overlay has measurements to place.
+            print("  Measuring the machine's empirical roofline ...")
+            try:
+                rl = run_roofline_probe(args.output_dir, resolve_cc(args.cc),
+                                        pin_cpu=args.roofline_cpu)
+                measured_bytes = None
+                if args.roofline_overlay and arithintensity_width_results:
+                    measured_bytes = {}
+                    if perf_dram_counters_available():
+                        print("  Measuring real DRAM traffic per kernel "
+                              "(perf uncore IMC, differential) ...")
+                        for width, cfgs in sorted(arithintensity_width_results.items()):
+                            for cfg, res in cfgs.items():
+                                if not prov.verified_result(res):
+                                    continue
+                                exe = (args.output_dir /
+                                       ("ArithmeticIntensityInt%d.%s.exe" % (width, cfg)))
+                                if not exe.exists():
+                                    continue
+                                b = measure_dram_bytes_per_iteration(
+                                    exe, cpu=args.roofline_cpu)
+                                if b:
+                                    measured_bytes[(width, cfg)] = b
+                                    vprint("      Int%-2d %-12s %8.1f MB/iteration"
+                                          % (width, cfg, b / 1e6))
+                    else:
+                        print("  Note: no usable DRAM counters (PAPI reports 0 "
+                              "available events on this CPU and perf's uncore "
+                              "IMC events are absent) -- the overlay will use "
+                              "the ANALYTICAL byte count, which understates "
+                              "real traffic several-fold.")
+                write_roofline_outputs(
+                    rl, args.output_dir, args.figures_dir,
+                    overlay=(roofline_overlay_points(
+                        arithintensity_width_results,
+                        measured_bytes=measured_bytes)
+                             if args.roofline_overlay else None),
+                    machine=_machine_description())
+            except RuntimeError as e:
+                print("  ⚠ roofline measurement failed: %s" % e, file=sys.stderr)
+        pldi_variant_results = None
+        if args.pldi_submission:
+            # The campaign list PLUS the width-sweep extras, run through the
+            # same selection logic so --programs / --exclude-programs narrow
+            # this matrix too (rather than silently re-running everything at
+            # 13 configs apiece). An explicit --programs still wins outright.
+            try:
+                pldi_programs = resolve_program_selection(
+                    args.programs, args.exclude_programs,
+                    default_programs=DEFAULT_PROGRAMS + PLDI_EXTRA_PROGRAMS,
+                    programs_dir=args.programs_dir)
+            except ProgramSelectionError as e:
+                ap.error(str(e))
+            progress().finish_phase()
+            progress().start_phase("pldi")
+            print("  Collecting PLDI submission fold/map variant matrix "
+                  f"({len(pldi_programs)} programs x up to 13 configs each) ...")
+            pldi_variant_results = collect_pldi_variant_results(
+                args.programs_dir, args.output_dir, resolve_cc(args.cc),
+                args.force_recompile, gibbon_exe=None, iterations=args.iterations,
+                c_arith_mode=args.c_arithmetic, simd_isa=args.simd_isa,
+                pin_cpu=args.pin_cpu, programs=pldi_programs)
+            report_pldi_qualification_warnings(pldi_variant_results)
         # Get extended results if they were collected
+        progress().finish_phase()
+        progress().start_phase("report")
+        progress().item("LaTeX tables and PDF preview", "writing")
         write_latex_tables(
             all_results,
             args.latex_table,
             extended_results,
             include_build_pass=args.include_build_pass,
             show_cursor_table=(args.benchmark_immutable or args.benchmark_baseline_gibbon),
+            add1tree_width_results=add1tree_width_results,
+            arithintensity_width_results=arithintensity_width_results,
+            pldi_variant_results=pldi_variant_results,
+            simd_isa=args.simd_isa,
         )
         compile_latex_preview(args.latex_table, args.figures_dir)
+        # Release the terminal before the closing summary, so the final
+        # report is plain scrollback rather than sitting above a live bar.
+        progress().finish_phase()
+        progress().close()
         if HAS_PLOT_LIBS:
             generate_all_figures(all_results, args.figures_dir)
         else:
@@ -5101,4 +9106,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Propagate main()'s return value.  It already returned 2 on a fatal
+    # configuration error, but the status was discarded, so a caller could not
+    # tell a rejected configuration from a successful run.
+    sys.exit(main())

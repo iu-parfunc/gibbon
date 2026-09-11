@@ -1,0 +1,29 @@
+#lang gibbon
+
+;; VW-23 regression (first root cause).  Correctness-only, NOT a benchmark.
+;;
+;; `(size-param)` is a nullary primitive, so flattening leaves a scalar `let`
+;; inside the timed region, before the packed call.  Cursorize's PrimAppE case
+;; combined only its children's cursor environments -- and a nullary primitive
+;; has no children -- so both mutable-location environments were erased.  The
+;; packed `let` could then no longer find the saved start-of-output cursor and
+;; bound the tree to the *advanced* cursor, one past the data it had built.
+;;
+;; The leaves are deliberately distinct: correct is 12, "left subtree lost" is
+;; 11, "right subtree lost" is 1 and "read past the tree" was 0.
+
+(data Tree [Leaf Int] [Node Tree Tree])
+
+(define (mk [n : Int] [k : Int]) : Tree
+  (if (= n 0)
+      (Leaf k)
+      (let ([m : Int (- n 1)])
+        (Node (mk m k) (mk m (+ k 10))))))
+
+(define (sumtree [tr : Tree]) : Int
+  (case tr
+    [(Leaf n) n]
+    [(Node x y) (+ (sumtree x) (sumtree y))]))
+
+(let ([t : Tree (time (mk (size-param) 1))])
+  (sumtree t))

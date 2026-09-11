@@ -34,7 +34,7 @@ lenP xs =
     PNil -> 0
     PCons a f b rst -> 1 + lenP rst
 
-{-# ANN add1P "OPT:CanVectorize" #-}
+{-# ANN add1P "OPT:MayVectorize" #-}
 add1P :: PList -> PList
 add1P xs =
   case xs of

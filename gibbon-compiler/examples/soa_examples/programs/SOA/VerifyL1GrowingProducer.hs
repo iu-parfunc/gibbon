@@ -1,8 +1,6 @@
--- VARIANT of the L1 defect: instead of a SHRINKING producer, a producer that
--- DUPLICATES elements.  Same ABI as a map, same unsound reasoning:
--- stamping the input's per-chunk counts onto a LONGER output makes the counts
--- too small (silently truncated result), and the reverse mapping (an input
--- count used as an output trip count) is equally unjustified.
+-- VerifyL1GrowingProducer: List (Factored).
+-- Functions: mkList, dupAll, add1, sumList.
+-- Annotated: MayVectorize on add1; StoreScalarCounts on mkList.
 data List = Cons Int List | Nil
 {-# ANN type List "Factored" #-}
 
@@ -20,7 +18,7 @@ dupAll lst = case lst of
                Cons i rst -> let r = dupAll rst
                               in Cons i (Cons i r)
 
-{-# ANN add1 "OPT:CanVectorize" #-}
+{-# ANN add1 "OPT:MayVectorize" #-}
 add1 :: List -> List
 add1 lst = case lst of
              Nil -> Nil

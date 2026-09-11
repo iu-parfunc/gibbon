@@ -147,7 +147,7 @@ tagDataCons ddefs = go allCons
        ------------boilerplate------------
        VarE{}          -> pure ex
        LitSymE{}       -> pure ex
-       LitE _          -> pure ex
+       LitE{}          -> pure ex
        CharE _         -> pure ex
        FloatE _        -> pure ex
        PrimAppE p ls   -> PrimAppE p <$> mapM (go cons) ls
@@ -276,7 +276,7 @@ if a thing is a type variable or a data constructor.
 
 typ :: Sexp -> Ty0
 typ s = case s of
-         (A _ "Int")  -> IntTy
+         (A _ "Int")  -> (IntTy W64)
          (A _ "Sym")  -> SymTy0
          (A _ "SymSet") -> SymSetTy
          (A _ "SymHash") -> SymHashTy
@@ -379,13 +379,13 @@ exp se =
 
    -- Any other naked symbol is a variable:
    A l v          -> pure $ Ext $ L (toLoc l) $ VarE (textToVar v)
-   G l (HSInt n)  -> pure $ Ext $ L (toLoc l) $ LitE (fromIntegral n)
+   G l (HSInt n)  -> pure $ Ext $ L (toLoc l) $ mkLitE64 (fromIntegral n)
    G l (HSString txt) -> do
      vec <- gensym (toVar "vec")
      let n = T.length txt
-         init_vec = LetE (vec,[],VectorTy CharTy, PrimAppE (VAllocP CharTy) [LitE n])
+         init_vec = LetE (vec,[],VectorTy CharTy, PrimAppE (VAllocP CharTy) [mkLitE64 n])
          fn i c b = LetE ("_",[],VectorTy CharTy,
-                          PrimAppE (InplaceVUpdateP CharTy) [VarE vec, LitE i, CharE c])
+                          PrimAppE (InplaceVUpdateP CharTy) [VarE vec, mkLitE64 i, CharE c])
                     b
          add_chars = foldr (\(i,chr) acc -> fn i chr acc) (VarE vec)
                        (reverse $ zip [0..n-1] (T.unpack txt))
@@ -656,28 +656,30 @@ isPrim p = S.member p (M.keysSet primMap)
 
 -- ^ A map between SExp-frontend prefix function names, and Gibbon
 -- abstract Primops.
+-- The s-expression frontend builds L1 directly, bypassing L0 inference, so
+-- its integer operators are concrete (W64) from the start.
 primMap :: M.Map T.Text (Prim d)
 primMap = M.fromList
-  [ ("+", AddP)
-  , ("-", SubP)
-  , ("*", MulP)
-  , ("div", DivP)
-  , ("mod", ModP)
-  , ("exp", ExpP)
+  [ ("+", addP64)
+  , ("-", subP64)
+  , ("*", mulP64)
+  , ("div", divP64)
+  , ("mod", modP64)
+  , ("exp", expP64)
   , ("rand", RandP)
   , ("eqsym", EqSymP)
-  , ("=", EqIntP)
-  , ("<", LtP)
-  , (">", GtP)
-  , ("<=", LtEqP)
-  , (">=", GtEqP)
+  , ("=", eqIntP64)
+  , ("<", ltP64)
+  , (">", gtP64)
+  , ("<=", ltEqP64)
+  , (">=", gtEqP64)
   , ("or" , OrP)
   , ("and", AndP)
   , ("size-param", SizeParam)
   , ("True", MkTrue)
   , ("False", MkFalse)
   , ("gensym", Gensym)
-  , ("printint", PrintInt)
+  , ("printint", printIntP64)
   , ("printchar", PrintChar)
   , ("printfloat", PrintFloat)
   , ("printbool", PrintBool)
@@ -691,6 +693,15 @@ primMap = M.fromList
   , ("sym-hash-lookup", SymHashLookup)
   , ("sym-hash-contains", SymHashLookup)
   , ("is-big", IsBig)
+    -- Deliberate: this frontend builds L1 directly and has no inference, so
+    -- an unannotated integer operand is CONCRETELY W64 here rather than an
+    -- unresolved node that would leak past L0's ICE check.  An s-expression
+    -- program that wants a narrow source must convert to it first.
+  , ("to-int8",  IntConvertP (IntPrimWidth W64) W8)
+  , ("to-int16", IntConvertP (IntPrimWidth W64) W16)
+  , ("to-int32", IntConvertP (IntPrimWidth W64) W32)
+  , ("to-int64", IntConvertP (IntPrimWidth W64) W64)
+  , ("int-to-float", IntToFloatP (IntPrimWidth W64))
   ]
 
 prim :: T.Text -> Prim Ty0

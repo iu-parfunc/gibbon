@@ -4,6 +4,7 @@ module LoopifyTraversals
   ( loopifyTraversalsTests
   ) where
 
+import qualified Data.List as L
 import qualified Data.Map as M
 
 import Test.Tasty
@@ -14,11 +15,13 @@ import Gibbon.Common
 import Gibbon.DynFlags
 import Gibbon.Language
 import Gibbon.L3.Syntax
+import Gibbon.L2.Syntax (Modality(..))
 import Gibbon.L3.Typecheck (tcProg)
 import qualified Gibbon.L4.Syntax as T
 import Gibbon.Passes.Lower (lower)
 import Gibbon.Passes.LoopifyTraversals
 import Gibbon.Passes.LoopifiedTraversalFusion
+import Gibbon.Passes.VectorizeTraversals (vectorizeTraversals)
 
 runner :: Prog3 -> Prog3
 runner prg = fst $ defaultPackedRunPassM $ loopifyTraversals prg
@@ -90,7 +93,7 @@ mixedProg :: Prog3
 mixedProg =
   Prog
     (M.fromList [("List", listDDef FullyFactored), ("Tree", treeDDef FullyFactored)])
-    (M.fromList [("mix", mixedFun [CanVectorize])])
+    (M.fromList [("mix", mixedFun [MayVectorize])])
     Nothing
 
 loopIrProg :: Prog3
@@ -106,6 +109,238 @@ cursorizedLoopifyProg =
     (M.fromList [("List", cursorizedListDDef)])
     (M.fromList [("fastAdd1List", cursorizedLoopifyFun)])
     Nothing
+
+-- | The cursorized loop body above, with the Int field's write RHS replaced by
+-- an arbitrary expression over the field value @i@.  Used to feed the real
+-- 'loopifyTraversals' a GUARDED PARTIAL operation and then check, structurally,
+-- where the resulting binding ended up.
+cursorizedGuardedBodyFor :: Var -> Exp3 -> Exp3
+cursorizedGuardedBodyFor selfName scalarRhs =
+  mkLets
+    [ ("in_dcon_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "inCurs" 0))
+    , ("out_dcon_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "outCurs" 0))
+    , ("in_int_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "inCurs" 1))
+    , ("out_int_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "outCurs" 1))
+    , ("in_float_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "inCurs" 2))
+    , ("out_float_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "outCurs" 2))
+    , ("dcur", [], CursorTy, Ext $ DerefMutCursor "in_dcon_loc")
+    ]
+    (CaseE
+      (VarE "dcur")
+      [ ("Nil", [], mutableNilBranch "Nil")
+      , ("Cons", [], recBranch)
+      ])
+  where
+    recBranch =
+      mkLets
+        [ ("in_int_cur", [], CursorTy, Ext $ DerefMutCursor "in_int_loc")
+        , ("read_int_pair", [], ProdTy [IntTy W64, CursorTy], Ext $ ReadScalar intS64 "in_int_cur")
+        , ("i", [], IntTy W64, ProjE 0 (VarE "read_int_pair"))
+        , ("guarded", [], IntTy W64, scalarRhs)
+        , ("out_int_cur", [], CursorTy, Ext $ DerefMutCursor "out_int_loc")
+        , ("write_int", [], CursorTy, Ext $ WriteScalar intS64 "out_int_cur" (VarE "guarded"))
+        , ("bump_int_in", [], ProdTy [], Ext $ BumpCursorMutable "in_int_loc" (mkLitE64 8))
+        , ("bump_int_out", [], ProdTy [], Ext $ BumpCursorMutable "out_int_loc" (mkLitE64 8))
+        , ("in_float_cur", [], CursorTy, Ext $ DerefMutCursor "in_float_loc")
+        , ("read_float_pair", [], ProdTy [FloatTy, CursorTy], Ext $ ReadScalar FloatS "in_float_cur")
+        , ("f", [], FloatTy, ProjE 0 (VarE "read_float_pair"))
+        , ("out_float_cur", [], CursorTy, Ext $ DerefMutCursor "out_float_loc")
+        , ("write_float", [], CursorTy, Ext $ WriteScalar FloatS "out_float_cur" (VarE "f"))
+        , ("bump_float_in", [], ProdTy [], Ext $ BumpCursorMutable "in_float_loc" (mkLitE64 4))
+        , ("bump_float_out", [], ProdTy [], Ext $ BumpCursorMutable "out_float_loc" (mkLitE64 4))
+        , ("out_dcon_cur", [], CursorTy, Ext $ DerefMutCursor "out_dcon_loc")
+        , ("write_tag", [], CursorTy, Ext $ WriteTag "Cons" "out_dcon_cur")
+        , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (mkLitE64 1))
+        , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (mkLitE64 1))
+        , ("recur", [], ProdTy [], AppE selfName TailModuloCons [] [VarE "inEnds", VarE "outEnds", VarE "outCurs", VarE "inCurs"])
+        ]
+        (MkProdE [])
+
+-- | The same cursorized SoA program, but with an extra binding in the branch
+-- that is never used.  This is the shape of the source-level defect: the
+-- binding is a SIBLING of the scalar write, not nested inside its right-hand
+-- side, so the scalar-expression grammar never sees it and the synthesized loop
+-- simply omits it.
+deadSiblingProg :: Exp3 -> Prog3
+deadSiblingProg deadRhs =
+  withCountedProducer "List" $
+    Prog
+      (M.fromList [("List", cursorizedListDDef)])
+      (M.fromList [("fastAdd1ListMut", fd)])
+      Nothing
+  where
+    fd =
+      FunDef
+        "fastAdd1ListMut"
+        ["inEnds", "outEnds", "outCurs", "inCurs"]
+        ([CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3], ProdTy [])
+        (insertDead (cursorizedGuardedBodyFor "fastAdd1ListMut"
+                       (PrimAppE addP64 [VarE "i", mkLitE64 1])))
+        (FunMeta TailRec NoInline False [MayVectorize])
+    -- Splice the dead binding in immediately after `i` is read, so it is in
+    -- scope exactly where a source-level one would be.
+    insertDead ex =
+      case ex of
+        LetE b@(v, _, _, _) bod
+          | v == "i" -> LetE b (LetE ("dead_sib", [], IntTy W64, deadRhs) (insertDead bod))
+          | otherwise -> LetE b (insertDead bod)
+        CaseE scrt brs -> CaseE scrt [ (dc, vs, insertDead r) | (dc, vs, r) <- brs ]
+        _ -> ex
+
+loopifiedDeadSiblingBody :: Exp3 -> Exp3
+loopifiedDeadSiblingBody deadRhs =
+  let Prog{fundefs = fds} = runnerWithCounts (deadSiblingProg deadRhs)
+  in funBody (fds M.! "fastAdd1ListMut")
+
+guardedProg :: Exp3 -> Prog3
+guardedProg scalarRhs =
+  withCountedProducer "List" $
+    Prog
+      (M.fromList [("List", cursorizedListDDef)])
+      (M.fromList [("fastAdd1ListMut", fd)])
+      Nothing
+  where
+    fd =
+      FunDef
+        "fastAdd1ListMut"
+        ["inEnds", "outEnds", "outCurs", "inCurs"]
+        ([CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3], ProdTy [])
+        (cursorizedGuardedBodyFor "fastAdd1ListMut" scalarRhs)
+        (FunMeta TailRec NoInline False [MayVectorize])
+
+-- @if i == 0 then 7 else 100 / i@
+guardedDivRhs :: Exp3
+guardedDivRhs =
+  IfE (PrimAppE eqIntP64 [VarE "i", mkLitE64 0])
+      (mkLitE64 7)
+      (PrimAppE divP64 [mkLitE64 100, VarE "i"])
+
+-- @if i == 0 then 7 else if i == 1 then 100 / i else 60 / i@
+nestedGuardedDivRhs :: Exp3
+nestedGuardedDivRhs =
+  IfE (PrimAppE eqIntP64 [VarE "i", mkLitE64 0])
+      (mkLitE64 7)
+      (IfE (PrimAppE eqIntP64 [VarE "i", mkLitE64 1])
+           (PrimAppE divP64 [mkLitE64 100, VarE "i"])
+           (PrimAppE divP64 [mkLitE64 60, VarE "i"]))
+
+-- @if i == 0 then 7 else 100 / (i * 2)@ -- a CHAIN of dependent temporaries in
+-- one arm, all of which must stay inside it.
+chainedGuardedDivRhs :: Exp3
+chainedGuardedDivRhs =
+  IfE (PrimAppE eqIntP64 [VarE "i", mkLitE64 0])
+      (mkLitE64 7)
+      (PrimAppE divP64 [mkLitE64 100, PrimAppE mulP64 [VarE "i", mkLitE64 2]])
+
+-- @if i == 0 then i + 1 else i - 1@ -- TOTAL, nothing partial anywhere.
+totalCondRhs :: Exp3
+totalCondRhs =
+  IfE (PrimAppE eqIntP64 [VarE "i", mkLitE64 0])
+      (PrimAppE addP64 [VarE "i", mkLitE64 1])
+      (PrimAppE subP64 [VarE "i", mkLitE64 1])
+
+-- | Let-bound variables whose RHS mentions a partial primitive, split by
+-- whether the binding sits inside a conditional arm.
+--
+-- This is the dominance property stated directly: after loopification, a
+-- division that the source only reached under a guard must be bound INSIDE the
+-- arm.  A binding outside every arm would run the partial primitive
+-- unconditionally, which is the bug this test guards against.
+partialBindingSites :: Exp3 -> ([Var], [Var])   -- ^ (inside an arm, outside every arm)
+partialBindingSites = go False
+  where
+    go inArm ex =
+      case ex of
+        LetE (v, _, _, rhs) bod ->
+          let here = if mentionsPartial rhs
+                     then (if inArm then ([v], []) else ([], [v]))
+                     else ([], [])
+          in here <> go inArm rhs <> go inArm bod
+        IfE a b c -> go inArm a <> go True b <> go True c
+        AppE _ _ _ args -> mconcat (map (go inArm) args)
+        PrimAppE _ args -> mconcat (map (go inArm) args)
+        ProjE _ e -> go inArm e
+        MkProdE es -> mconcat (map (go inArm) es)
+        CaseE scrt brs -> go inArm scrt <> mconcat [ go inArm r | (_, _, r) <- brs ]
+        DataConE _ _ es -> mconcat (map (go inArm) es)
+        TimeIt e _ _ -> go inArm e
+        WithArenaE _ e -> go inArm e
+        SpawnE _ _ args -> mconcat (map (go inArm) args)
+        SyncE -> ([], [])
+        MapE (_, _, e1) e2 -> go inArm e1 <> go inArm e2
+        FoldE (_, _, e1) (_, _, e2) e3 -> mconcat (map (go inArm) [e1, e2, e3])
+        -- The loopified body sits inside a WhileCursor/ForE nest, so every
+        -- Ext form that can carry an expression has to be walked; stopping at
+        -- the outermost one silently finds nothing and passes vacuously.
+        Ext (ForE _ bound bod) -> go inArm bound <> go inArm bod
+        Ext (WhileCursor _ bod) -> go inArm bod
+        Ext (WriteScalar _ _ rhs) -> go inArm rhs
+        Ext (WriteTaggedCursor _ rhs) -> go inArm rhs
+        Ext (WriteCursorMutable _ rhs) -> go inArm rhs
+        Ext (WriteList _ rhs _) -> go inArm rhs
+        Ext (WriteVector _ rhs _) -> go inArm rhs
+        Ext (AddCursor _ rhs) -> go inArm rhs
+        Ext (BumpCursorMutable _ rhs) -> go inArm rhs
+        Ext (AddrOfCursor rhs) -> go inArm rhs
+        Ext (LetAvail _ bod) -> go inArm bod
+        Ext (Assert rhs) -> go inArm rhs
+        Ext _ -> ([], [])
+        _ -> ([], [])
+
+    -- Does THIS binding's own right-hand side evaluate a partial operation
+    -- unconditionally?  Deliberately does NOT descend through `IfE` or `LetE`:
+    -- a binding like `conditional_write = if c then .. else 100 / i` does not
+    -- itself divide -- the division is guarded inside it, which is the whole
+    -- point.  Counting such enclosing bindings would report a violation for
+    -- correct output.
+    mentionsPartial ex =
+      case ex of
+        PrimAppE p args -> isPartial p || any mentionsPartial args
+        ProjE _ e -> mentionsPartial e
+        _ -> False
+    isPartial p = case p of
+                    DivP{} -> True
+                    ModP{} -> True
+                    FDivP  -> True
+                    _      -> False
+
+-- | Every let-bound variable in an expression, in order (duplicates kept).
+allLetBinders :: Exp3 -> [Var]
+allLetBinders ex =
+  case ex of
+    LetE (v, _, _, rhs) bod -> v : allLetBinders rhs ++ allLetBinders bod
+    IfE a b c -> concatMap allLetBinders [a, b, c]
+    AppE _ _ _ args -> concatMap allLetBinders args
+    PrimAppE _ args -> concatMap allLetBinders args
+    ProjE _ e -> allLetBinders e
+    MkProdE es -> concatMap allLetBinders es
+    CaseE scrt brs -> allLetBinders scrt ++ concat [ allLetBinders r | (_, _, r) <- brs ]
+    DataConE _ _ es -> concatMap allLetBinders es
+    TimeIt e _ _ -> allLetBinders e
+    WithArenaE _ e -> allLetBinders e
+    SpawnE _ _ args -> concatMap allLetBinders args
+    SyncE -> []
+    MapE (_, _, e1) e2 -> allLetBinders e1 ++ allLetBinders e2
+    FoldE (_, _, e1) (_, _, e2) e3 -> concatMap allLetBinders [e1, e2, e3]
+    Ext (ForE _ bound bod) -> allLetBinders bound ++ allLetBinders bod
+    Ext (WhileCursor _ bod) -> allLetBinders bod
+    Ext (WriteScalar _ _ rhs) -> allLetBinders rhs
+    Ext (WriteTaggedCursor _ rhs) -> allLetBinders rhs
+    Ext (WriteCursorMutable _ rhs) -> allLetBinders rhs
+    Ext (WriteList _ rhs _) -> allLetBinders rhs
+    Ext (WriteVector _ rhs _) -> allLetBinders rhs
+    Ext (AddCursor _ rhs) -> allLetBinders rhs
+    Ext (BumpCursorMutable _ rhs) -> allLetBinders rhs
+    Ext (AddrOfCursor rhs) -> allLetBinders rhs
+    Ext (LetAvail _ bod) -> allLetBinders bod
+    Ext (Assert rhs) -> allLetBinders rhs
+    Ext _ -> []
+    _ -> []
+
+loopifiedGuardedBody :: Exp3 -> Exp3
+loopifiedGuardedBody rhs =
+  let Prog{fundefs = fds} = runnerWithCounts (guardedProg rhs)
+  in funBody (fds M.! "fastAdd1ListMut")
 
 cursorizedMutableLoopifyProg :: Prog3
 cursorizedMutableLoopifyProg =
@@ -149,7 +384,7 @@ listDDef layout =
     , tyArgs = []
     , dataCons =
         [ ("Nil", [])
-        , ("Cons", [(False, IntTy), (True, PackedTy "List" ())])
+        , ("Cons", [(False, IntTy W64), (True, PackedTy "List" ())])
         ]
     , memLayout = layout
     }
@@ -160,7 +395,7 @@ treeDDef layout =
     { tyName = "Tree"
     , tyArgs = []
     , dataCons =
-        [ ("Leaf", [(False, IntTy)])
+        [ ("Leaf", [(False, IntTy W64)])
         , ("Node", [(True, PackedTy "Tree" ()), (True, PackedTy "Tree" ())])
         ]
     , memLayout = layout
@@ -173,7 +408,7 @@ cursorizedListDDef =
     , tyArgs = []
     , dataCons =
         [ ("Nil", [])
-        , ("Cons", [(False, IntTy), (False, FloatTy), (True, PackedTy "List" ())])
+        , ("Cons", [(False, IntTy W64), (False, FloatTy), (True, PackedTy "List" ())])
         ]
     , memLayout = FullyFactored
     }
@@ -185,7 +420,7 @@ cursorizedRuntimeListDDef =
     , tyArgs = []
     , dataCons =
         [ ("Nil", [])
-        , ("Cons", [(False, IntTy), (False, FloatTy), (True, PackedTy "List" ())])
+        , ("Cons", [(False, IntTy W64), (False, FloatTy), (True, PackedTy "List" ())])
         , ("INDIRECTION_0", [(False, CursorArrayTy 3)])
         , ("REDIRECTION_1", [(False, CursorTy)])
         ]
@@ -225,7 +460,7 @@ countedBuilderFun tycon =
     "countedBuilder"
     ["footer"]
     ([CursorTy], ProdTy [])
-    (Ext $ ScalarCountBump dcon ["footer"])
+    (Ext $ ScalarCountBump dcon [("footer", 0)])
     (FunMeta Rec NoInline False [StoreScalarCounts])
   where
     dcon = case tycon of
@@ -240,7 +475,7 @@ cursorizedLoopifyFun =
     ["inEnds", "outEnds", "outCurs", "inCurs"]
     ([CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3], ProdTy [CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, ProdTy [CursorArrayTy 3, CursorArrayTy 3]])
     cursorizedLoopifyBody
-    (FunMeta TailRec NoInline False [CanVectorize])
+    (FunMeta TailRec NoInline False [MayVectorize])
 
 cursorizedMutableLoopifyFun :: FunDef3
 cursorizedMutableLoopifyFun =
@@ -249,7 +484,7 @@ cursorizedMutableLoopifyFun =
     ["inEnds", "outEnds", "outCurs", "inCurs"]
     ([CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3], ProdTy [])
     cursorizedMutableLoopifyBody
-    (FunMeta TailRec NoInline False [CanVectorize])
+    (FunMeta TailRec NoInline False [MayVectorize])
 
 cursorizedMutableLoopifyExtraCursorFun :: FunDef3
 cursorizedMutableLoopifyExtraCursorFun =
@@ -258,7 +493,7 @@ cursorizedMutableLoopifyExtraCursorFun =
     ["inEnds", "outEnds", "outCurs", "inCurs", "spareCursors"]
     ([CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 1], ProdTy [])
     (cursorizedMutableLoopifyBodyFor "fastAdd1ListMutExtra")
-    (FunMeta TailRec NoInline False [CanVectorize])
+    (FunMeta TailRec NoInline False [MayVectorize])
 
 cursorizedMutableParentChildDependentFun :: FunDef3
 cursorizedMutableParentChildDependentFun =
@@ -267,7 +502,7 @@ cursorizedMutableParentChildDependentFun =
     ["inEnds", "outEnds", "outCurs", "inCurs"]
     ([CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3], ProdTy [])
     cursorizedMutableParentChildDependentBody
-    (FunMeta TailRec NoInline False [CanVectorize])
+    (FunMeta TailRec NoInline False [MayVectorize])
 
 cursorizedMutableTreeLoopifyFun :: FunDef3
 cursorizedMutableTreeLoopifyFun =
@@ -276,7 +511,7 @@ cursorizedMutableTreeLoopifyFun =
     ["inEnds", "outEnds", "outCurs", "inCurs"]
     ([CursorArrayTy 2, CursorArrayTy 2, CursorArrayTy 2, CursorArrayTy 2], ProdTy [])
     cursorizedMutableTreeLoopifyBody
-    (FunMeta TailRec NoInline False [CanVectorize])
+    (FunMeta TailRec NoInline False [MayVectorize])
 
 cursorizedRealisticMutableLoopifyFun :: FunDef3
 cursorizedRealisticMutableLoopifyFun =
@@ -285,7 +520,7 @@ cursorizedRealisticMutableLoopifyFun =
     ["inEnds", "outEnds", "outCurs", "inCurs"]
     ([CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3], ProdTy [])
     cursorizedRealisticMutableLoopifyBody
-    (FunMeta TailRec NoInline False [CanVectorize])
+    (FunMeta TailRec NoInline False [MayVectorize])
 
 listBody :: Exp3
 listBody =
@@ -310,11 +545,11 @@ loopProbeBody =
   LetE
     ("first", [], CursorTy, Ext $ ReadScalarCountFirstFooter "footer")
     (LetE
-      ("count", [], IntTy, Ext $ ReadScalarCount "first")
+      ("count", [], IntTy W64, Ext $ ReadScalarCount "first")
       (LetE
         ("next", [], CursorTy, Ext $ ReadScalarCountNextFooter "first")
         (LetE
-          ("nextCount", [], IntTy, Ext $ ReadScalarCount "next")
+          ("nextCount", [], IntTy W64, Ext $ ReadScalarCount "next")
           (LetE
             ("_loop", [], ProdTy [], Ext $ ForE "i" (VarE "count") (MkProdE []))
             (MkProdE [])))))
@@ -330,7 +565,7 @@ cursorizedLoopifyBody =
     , ("float_out_loc", [], CursorTy, Ext $ IndexCursorArray "outCurs" 2)
     , ( "_bounds"
       , []
-      , IntTy
+      , IntTy W64
       , Ext $ BoundsCheckVector [(13, "float_out_end", "float_out_loc", ("float_out_end", "float_out_loc"))
                                 ,(17, "int_out_end", "int_out_loc", ("int_out_end", "int_out_loc"))
                                 ,(34, "dout_end", "dout_loc", ("dout_end", "dout_loc"))]
@@ -347,7 +582,7 @@ cursorizedLoopifyBody =
     nilBranch =
       mkLets
         [ ("writetag_nil", [], CursorTy, Ext $ WriteTag "Nil" "dout_loc")
-        , ("after_tag_nil", [], CursorTy, Ext $ AddCursor "dout_loc" (LitE 1))
+        , ("after_tag_nil", [], CursorTy, Ext $ AddCursor "dout_loc" (mkLitE64 1))
         , ("aft_nil", [], CursorArrayTy 3, Ext $ MakeCursorArray 3 ["after_tag_nil", "int_out_loc", "float_out_loc"])
         , ("packed_nil", [], ProdTy [CursorArrayTy 3, CursorArrayTy 3], MkProdE [VarE "outCurs", VarE "aft_nil"])
         ]
@@ -356,21 +591,21 @@ cursorizedLoopifyBody =
     recBranch =
       mkLets
         [ ("in_int_cur", [], CursorTy, Ext $ IndexCursorArray "inCurs" 1)
-        , ("read_int_pair", [], ProdTy [IntTy, CursorTy], Ext $ ReadScalar IntS "in_int_cur")
-        , ("i", [], IntTy, ProjE 0 (VarE "read_int_pair"))
-        , ("plus1", [], IntTy, PrimAppE AddP [VarE "i", LitE 1])
+        , ("read_int_pair", [], ProdTy [IntTy W64, CursorTy], Ext $ ReadScalar intS64 "in_int_cur")
+        , ("i", [], IntTy W64, ProjE 0 (VarE "read_int_pair"))
+        , ("plus1", [], IntTy W64, PrimAppE addP64 [VarE "i", mkLitE64 1])
         , ("out_int_cur", [], CursorTy, Ext $ IndexCursorArray "outCurs" 1)
-        , ("write_int", [], CursorTy, Ext $ WriteScalar IntS "out_int_cur" (VarE "plus1"))
+        , ("write_int", [], CursorTy, Ext $ WriteScalar intS64 "out_int_cur" (VarE "plus1"))
         , ("in_float_cur", [], CursorTy, Ext $ IndexCursorArray "inCurs" 2)
         , ("read_float_pair", [], ProdTy [FloatTy, CursorTy], Ext $ ReadScalar FloatS "in_float_cur")
         , ("f", [], FloatTy, ProjE 0 (VarE "read_float_pair"))
         , ("out_float_cur", [], CursorTy, Ext $ IndexCursorArray "outCurs" 2)
         , ("write_float", [], CursorTy, Ext $ WriteScalar FloatS "out_float_cur" (VarE "f"))
-        , ("dcon_next", [], CursorTy, Ext $ AddCursor "dcur" (LitE 1))
+        , ("dcon_next", [], CursorTy, Ext $ AddCursor "dcur" (mkLitE64 1))
         , ("next_in", [], CursorArrayTy 3, Ext $ MakeCursorArray 3 ["dcon_next", "in_int_cur", "in_float_cur"])
-        , ("next_out_dcon", [], CursorTy, Ext $ AddCursor "dout_loc" (LitE 1))
-        , ("next_out_int", [], CursorTy, Ext $ AddCursor "int_out_loc" (LitE 8))
-        , ("next_out_float", [], CursorTy, Ext $ AddCursor "float_out_loc" (LitE 4))
+        , ("next_out_dcon", [], CursorTy, Ext $ AddCursor "dout_loc" (mkLitE64 1))
+        , ("next_out_int", [], CursorTy, Ext $ AddCursor "int_out_loc" (mkLitE64 8))
+        , ("next_out_float", [], CursorTy, Ext $ AddCursor "float_out_loc" (mkLitE64 4))
         , ("next_out", [], CursorArrayTy 3, Ext $ MakeCursorArray 3 ["next_out_dcon", "next_out_int", "next_out_float"])
         , ("writetag_cons", [], CursorTy, Ext $ WriteTag "Cons" "dout_loc")
         , ("recur", [], ProdTy [CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, ProdTy [CursorArrayTy 3, CursorArrayTy 3]], AppE "fastAdd1List" TailModuloCons [] [VarE "inEnds", VarE "overwrite_reg", VarE "next_out", VarE "next_in"])
@@ -385,8 +620,8 @@ mutableNilBranch dcon =
   mkLets
     [ ("nil_out_dcon_cur", [], CursorTy, Ext $ DerefMutCursor "out_dcon_loc")
     , ("nil_write_tag", [], CursorTy, Ext $ WriteTag dcon "nil_out_dcon_cur")
-    , ("nil_bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (LitE 1))
-    , ("nil_bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (LitE 1))
+    , ("nil_bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (mkLitE64 1))
+    , ("nil_bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (mkLitE64 1))
     ]
     (MkProdE [])
 
@@ -415,27 +650,99 @@ cursorizedMutableLoopifyBodyFor selfName =
     recBranch =
       mkLets
         [ ("in_int_cur", [], CursorTy, Ext $ DerefMutCursor "in_int_loc")
-        , ("read_int_pair", [], ProdTy [IntTy, CursorTy], Ext $ ReadScalar IntS "in_int_cur")
-        , ("i", [], IntTy, ProjE 0 (VarE "read_int_pair"))
-        , ("plus1", [], IntTy, PrimAppE AddP [VarE "i", LitE 1])
+        , ("read_int_pair", [], ProdTy [IntTy W64, CursorTy], Ext $ ReadScalar intS64 "in_int_cur")
+        , ("i", [], IntTy W64, ProjE 0 (VarE "read_int_pair"))
+        , ("plus1", [], IntTy W64, PrimAppE addP64 [VarE "i", mkLitE64 1])
         , ("out_int_cur", [], CursorTy, Ext $ DerefMutCursor "out_int_loc")
-        , ("write_int", [], CursorTy, Ext $ WriteScalar IntS "out_int_cur" (VarE "plus1"))
-        , ("bump_int_in", [], ProdTy [], Ext $ BumpCursorMutable "in_int_loc" (LitE 8))
-        , ("bump_int_out", [], ProdTy [], Ext $ BumpCursorMutable "out_int_loc" (LitE 8))
+        , ("write_int", [], CursorTy, Ext $ WriteScalar intS64 "out_int_cur" (VarE "plus1"))
+        , ("bump_int_in", [], ProdTy [], Ext $ BumpCursorMutable "in_int_loc" (mkLitE64 8))
+        , ("bump_int_out", [], ProdTy [], Ext $ BumpCursorMutable "out_int_loc" (mkLitE64 8))
         , ("in_float_cur", [], CursorTy, Ext $ DerefMutCursor "in_float_loc")
         , ("read_float_pair", [], ProdTy [FloatTy, CursorTy], Ext $ ReadScalar FloatS "in_float_cur")
         , ("f", [], FloatTy, ProjE 0 (VarE "read_float_pair"))
         , ("out_float_cur", [], CursorTy, Ext $ DerefMutCursor "out_float_loc")
         , ("write_float", [], CursorTy, Ext $ WriteScalar FloatS "out_float_cur" (VarE "f"))
-        , ("bump_float_in", [], ProdTy [], Ext $ BumpCursorMutable "in_float_loc" (LitE 4))
-        , ("bump_float_out", [], ProdTy [], Ext $ BumpCursorMutable "out_float_loc" (LitE 4))
+        , ("bump_float_in", [], ProdTy [], Ext $ BumpCursorMutable "in_float_loc" (mkLitE64 4))
+        , ("bump_float_out", [], ProdTy [], Ext $ BumpCursorMutable "out_float_loc" (mkLitE64 4))
         , ("out_dcon_cur", [], CursorTy, Ext $ DerefMutCursor "out_dcon_loc")
         , ("write_tag", [], CursorTy, Ext $ WriteTag "Cons" "out_dcon_cur")
-        , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (LitE 1))
-        , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (LitE 1))
+        , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (mkLitE64 1))
+        , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (mkLitE64 1))
         , ("recur", [], ProdTy [], AppE selfName TailModuloCons [] [VarE "inEnds", VarE "outEnds", VarE "outCurs", VarE "inCurs"])
         ]
         (MkProdE [])
+
+-- | A partial binding on the branch body's SPINE, consumed by TWO different
+-- scalar writes.
+--
+-- This is the shape `touchHotObjects` has, and the one `multiUsePartialRhs`
+-- does NOT: there the whole `let` is a single write's right-hand side, which
+-- the 'ScalarExpr' grammar admits directly (it includes `LetE`), so it already
+-- loopifies.  A binding that has to cross PLAN boundaries is the case
+-- 'collectPureBindings' decides, and the case this pass now handles.
+--
+-- The float write is conditional on the shared value on purpose: the residual
+-- must be attached ABOVE that `IfE`, dominating both arms, because the source
+-- evaluated it unconditionally.
+sharedPartialBodyFor :: Var -> Exp3
+sharedPartialBodyFor selfName =
+  mkLets
+    [ ("in_dcon_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "inCurs" 0))
+    , ("out_dcon_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "outCurs" 0))
+    , ("in_int_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "inCurs" 1))
+    , ("out_int_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "outCurs" 1))
+    , ("in_float_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "inCurs" 2))
+    , ("out_float_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "outCurs" 2))
+    , ("dcur", [], CursorTy, Ext $ DerefMutCursor "in_dcon_loc")
+    ]
+    (CaseE
+      (VarE "dcur")
+      [ ("Nil", [], mutableNilBranch "Nil")
+      , ("Cons", [], recBranch)
+      ])
+  where
+    recBranch =
+      mkLets
+        [ ("in_int_cur", [], CursorTy, Ext $ DerefMutCursor "in_int_loc")
+        , ("read_int_pair", [], ProdTy [IntTy W64, CursorTy], Ext $ ReadScalar intS64 "in_int_cur")
+        , ("i", [], IntTy W64, ProjE 0 (VarE "read_int_pair"))
+        -- the shared partial, unconditional, used by both writes below
+        , ("q_sh", [], IntTy W64, PrimAppE divP64 [mkLitE64 100, VarE "i"])
+        , ("plus_q", [], IntTy W64, PrimAppE addP64 [VarE "i", VarE "q_sh"])
+        , ("out_int_cur", [], CursorTy, Ext $ DerefMutCursor "out_int_loc")
+        , ("write_int", [], CursorTy, Ext $ WriteScalar intS64 "out_int_cur" (VarE "plus_q"))
+        , ("bump_int_in", [], ProdTy [], Ext $ BumpCursorMutable "in_int_loc" (mkLitE64 8))
+        , ("bump_int_out", [], ProdTy [], Ext $ BumpCursorMutable "out_int_loc" (mkLitE64 8))
+        , ("in_float_cur", [], CursorTy, Ext $ DerefMutCursor "in_float_loc")
+        , ("read_float_pair", [], ProdTy [FloatTy, CursorTy], Ext $ ReadScalar FloatS "in_float_cur")
+        , ("f", [], FloatTy, ProjE 0 (VarE "read_float_pair"))
+        , ("out_float_cur", [], CursorTy, Ext $ DerefMutCursor "out_float_loc")
+        , ("write_float", [], CursorTy, Ext $ WriteScalar FloatS "out_float_cur"
+              (IfE (PrimAppE eqIntP64 [VarE "q_sh", mkLitE64 0]) (VarE "f") (VarE "f")))
+        , ("bump_float_in", [], ProdTy [], Ext $ BumpCursorMutable "in_float_loc" (mkLitE64 4))
+        , ("bump_float_out", [], ProdTy [], Ext $ BumpCursorMutable "out_float_loc" (mkLitE64 4))
+        , ("out_dcon_cur", [], CursorTy, Ext $ WriteTag "Cons" "out_dcon_cur")
+        , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (mkLitE64 1))
+        , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (mkLitE64 1))
+        , ("recur", [], ProdTy [], AppE selfName TailModuloCons [] [VarE "inEnds", VarE "outEnds", VarE "outCurs", VarE "inCurs"])
+        ]
+        (MkProdE [])
+
+sharedPartialProg :: Prog3
+sharedPartialProg =
+  withCountedProducer "List" $
+    Prog
+      (M.fromList [("List", cursorizedListDDef)])
+      (M.fromList [("fastAdd1ListMut", fd)])
+      Nothing
+  where
+    fd =
+      FunDef
+        "fastAdd1ListMut"
+        ["inEnds", "outEnds", "outCurs", "inCurs"]
+        ([CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3], ProdTy [])
+        (sharedPartialBodyFor "fastAdd1ListMut")
+        (FunMeta TailRec NoInline False [MayVectorize])
 
 cursorizedMutableParentChildDependentBody :: Exp3
 cursorizedMutableParentChildDependentBody =
@@ -457,23 +764,23 @@ cursorizedMutableParentChildDependentBody =
     recBranch =
       mkLets
         [ ("in_int_cur", [], CursorTy, Ext $ DerefMutCursor "in_int_loc")
-        , ("read_int_pair", [], ProdTy [IntTy, CursorTy], Ext $ ReadScalar IntS "in_int_cur")
-        , ("i", [], IntTy, ProjE 0 (VarE "read_int_pair"))
+        , ("read_int_pair", [], ProdTy [IntTy W64, CursorTy], Ext $ ReadScalar intS64 "in_int_cur")
+        , ("i", [], IntTy W64, ProjE 0 (VarE "read_int_pair"))
         , ("out_int_cur", [], CursorTy, Ext $ DerefMutCursor "out_int_loc")
-        , ("write_int", [], CursorTy, Ext $ WriteScalar IntS "out_int_cur" (VarE "i"))
-        , ("bump_int_in", [], ProdTy [], Ext $ BumpCursorMutable "in_int_loc" (LitE 8))
-        , ("bump_int_out", [], ProdTy [], Ext $ BumpCursorMutable "out_int_loc" (LitE 8))
+        , ("write_int", [], CursorTy, Ext $ WriteScalar intS64 "out_int_cur" (VarE "i"))
+        , ("bump_int_in", [], ProdTy [], Ext $ BumpCursorMutable "in_int_loc" (mkLitE64 8))
+        , ("bump_int_out", [], ProdTy [], Ext $ BumpCursorMutable "out_int_loc" (mkLitE64 8))
         , ("in_float_cur", [], CursorTy, Ext $ DerefMutCursor "in_float_loc")
         , ("read_float_pair", [], ProdTy [FloatTy, CursorTy], Ext $ ReadScalar FloatS "in_float_cur")
         , ("f", [], FloatTy, ProjE 0 (VarE "read_float_pair"))
         , ("out_float_cur", [], CursorTy, Ext $ DerefMutCursor "out_float_loc")
         , ("write_float", [], CursorTy, Ext $ WriteScalar FloatS "out_float_cur" (VarE "f"))
-        , ("bump_float_in", [], ProdTy [], Ext $ BumpCursorMutable "in_float_loc" (LitE 4))
-        , ("bump_float_out", [], ProdTy [], Ext $ BumpCursorMutable "out_float_loc" (LitE 4))
+        , ("bump_float_in", [], ProdTy [], Ext $ BumpCursorMutable "in_float_loc" (mkLitE64 4))
+        , ("bump_float_out", [], ProdTy [], Ext $ BumpCursorMutable "out_float_loc" (mkLitE64 4))
         , ("out_dcon_cur", [], CursorTy, Ext $ DerefMutCursor "out_dcon_loc")
         , ("write_tag", [], CursorTy, Ext $ WriteTag "Cons" "out_dcon_cur")
-        , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (LitE 1))
-        , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (LitE 1))
+        , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (mkLitE64 1))
+        , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (mkLitE64 1))
         , ("child_cond", [], BoolTy, AppE "badParentChildMut" TailModuloCons [] [VarE "inEnds", VarE "outEnds", VarE "outCurs", VarE "inCurs"])
         ]
         (IfE (VarE "child_cond") (MkProdE []) (MkProdE []))
@@ -496,17 +803,17 @@ cursorizedMutableTreeLoopifyBody =
     leafBranch =
       mkLets
         [ ("in_int_cur", [], CursorTy, Ext $ DerefMutCursor "in_int_loc")
-        , ("read_int_pair", [], ProdTy [IntTy, CursorTy], Ext $ ReadScalar IntS "in_int_cur")
-        , ("i", [], IntTy, ProjE 0 (VarE "read_int_pair"))
-        , ("plus1", [], IntTy, PrimAppE AddP [VarE "i", LitE 1])
+        , ("read_int_pair", [], ProdTy [IntTy W64, CursorTy], Ext $ ReadScalar intS64 "in_int_cur")
+        , ("i", [], IntTy W64, ProjE 0 (VarE "read_int_pair"))
+        , ("plus1", [], IntTy W64, PrimAppE addP64 [VarE "i", mkLitE64 1])
         , ("out_int_cur", [], CursorTy, Ext $ DerefMutCursor "out_int_loc")
-        , ("write_int", [], CursorTy, Ext $ WriteScalar IntS "out_int_cur" (VarE "plus1"))
+        , ("write_int", [], CursorTy, Ext $ WriteScalar intS64 "out_int_cur" (VarE "plus1"))
         , ("out_dcon_cur", [], CursorTy, Ext $ DerefMutCursor "out_dcon_loc")
         , ("write_tag_leaf", [], CursorTy, Ext $ WriteTag "Leaf" "out_dcon_cur")
-        , ("bump_int_in", [], ProdTy [], Ext $ BumpCursorMutable "in_int_loc" (LitE 8))
-        , ("bump_int_out", [], ProdTy [], Ext $ BumpCursorMutable "out_int_loc" (LitE 8))
-        , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (LitE 1))
-        , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (LitE 1))
+        , ("bump_int_in", [], ProdTy [], Ext $ BumpCursorMutable "in_int_loc" (mkLitE64 8))
+        , ("bump_int_out", [], ProdTy [], Ext $ BumpCursorMutable "out_int_loc" (mkLitE64 8))
+        , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (mkLitE64 1))
+        , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (mkLitE64 1))
         ]
         (MkProdE [])
 
@@ -514,8 +821,8 @@ cursorizedMutableTreeLoopifyBody =
       mkLets
         [ ("out_dcon_cur", [], CursorTy, Ext $ DerefMutCursor "out_dcon_loc")
         , ("write_tag_node", [], CursorTy, Ext $ WriteTag "Node" "out_dcon_cur")
-        , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (LitE 1))
-        , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (LitE 1))
+        , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (mkLitE64 1))
+        , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (mkLitE64 1))
         ]
         (MkProdE [])
 
@@ -539,9 +846,9 @@ cursorizedRealisticMutableLoopifyBody =
     recBranch =
       mkLets
         [ ("in_int_cur", [], CursorTy, Ext $ DerefMutCursor "in_int_loc")
-        , ("read_int_pair", [], ProdTy [IntTy, CursorTy], Ext $ ReadScalar IntS "in_int_cur")
-        , ("i", [], IntTy, ProjE 0 (VarE "read_int_pair"))
-        , ("plus1", [], IntTy, PrimAppE AddP [VarE "i", LitE 1])
+        , ("read_int_pair", [], ProdTy [IntTy W64, CursorTy], Ext $ ReadScalar intS64 "in_int_cur")
+        , ("i", [], IntTy W64, ProjE 0 (VarE "read_int_pair"))
+        , ("plus1", [], IntTy W64, PrimAppE addP64 [VarE "i", mkLitE64 1])
         , ("in_float_cur", [], CursorTy, Ext $ DerefMutCursor "in_float_loc")
         , ("read_float_pair", [], ProdTy [FloatTy, CursorTy], Ext $ ReadScalar FloatS "in_float_cur")
         , ("f", [], FloatTy, ProjE 0 (VarE "read_float_pair"))
@@ -552,15 +859,15 @@ cursorizedRealisticMutableLoopifyBody =
               [ ("out_dcon_cur", [], CursorTy, Ext $ DerefMutCursor "out_dcon_loc")
               , ("write_tag", [], CursorTy, Ext $ WriteTag "Cons" "out_dcon_cur")
               , ("out_int_cur", [], CursorTy, Ext $ DerefMutCursor "out_int_loc")
-              , ("write_int", [], CursorTy, Ext $ WriteScalar IntS "out_int_cur" (VarE "plus1"))
+              , ("write_int", [], CursorTy, Ext $ WriteScalar intS64 "out_int_cur" (VarE "plus1"))
               , ("out_float_cur", [], CursorTy, Ext $ DerefMutCursor "out_float_loc")
               , ("write_float", [], CursorTy, Ext $ WriteScalar FloatS "out_float_cur" (VarE "f"))
-              , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (LitE 1))
-              , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (LitE 1))
-              , ("bump_int_in", [], ProdTy [], Ext $ BumpCursorMutable "in_int_loc" (LitE 8))
-              , ("bump_int_out", [], ProdTy [], Ext $ BumpCursorMutable "out_int_loc" (LitE 8))
-              , ("bump_float_in", [], ProdTy [], Ext $ BumpCursorMutable "in_float_loc" (LitE 4))
-              , ("bump_float_out", [], ProdTy [], Ext $ BumpCursorMutable "out_float_loc" (LitE 4))
+              , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (mkLitE64 1))
+              , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (mkLitE64 1))
+              , ("bump_int_in", [], ProdTy [], Ext $ BumpCursorMutable "in_int_loc" (mkLitE64 8))
+              , ("bump_int_out", [], ProdTy [], Ext $ BumpCursorMutable "out_int_loc" (mkLitE64 8))
+              , ("bump_float_in", [], ProdTy [], Ext $ BumpCursorMutable "in_float_loc" (mkLitE64 4))
+              , ("bump_float_out", [], ProdTy [], Ext $ BumpCursorMutable "out_float_loc" (mkLitE64 4))
               ]
               (MkProdE [])
           )
@@ -634,6 +941,55 @@ containsLoopAlts alts =
   case alts of
     T.TagAlts ls -> any (containsForLoop . snd) ls
     T.IntAlts ls -> any (containsForLoop . snd) ls
+
+-- | Count the 'E3Ext' nodes satisfying a predicate, anywhere in an expression.
+-- Used by the VW-07 structural tests below.
+countExt :: (E3Ext () Ty3 -> Bool) -> Exp3 -> Int
+countExt p = go
+  where
+    go ex = case ex of
+      VarE{} -> 0
+      LitE{} -> 0
+      CharE{} -> 0
+      FloatE{} -> 0
+      LitSymE{} -> 0
+      AppE _ _ _ args -> sum (map go args)
+      PrimAppE _ args -> sum (map go args)
+      LetE (_, _, _, rhs) bod -> go rhs + go bod
+      ProjE _ e -> go e
+      IfE a b c -> go a + go b + go c
+      MkProdE ls -> sum (map go ls)
+      CaseE scrt brs -> go scrt + sum [go rhs | (_, _, rhs) <- brs]
+      DataConE _ _ args -> sum (map go args)
+      TimeIt e _ _ -> go e
+      WithArenaE _ e -> go e
+      SpawnE _ _ args -> sum (map go args)
+      SyncE -> 0
+      MapE (_, _, e1) e2 -> go e1 + go e2
+      FoldE (_, _, e1) (_, _, e2) e3 -> go e1 + go e2 + go e3
+      Ext ext -> (if p ext then 1 else 0) + goExt ext
+
+    goExt ext = case ext of
+      WriteScalar _ _ rhs -> go rhs
+      AddCursor _ rhs -> go rhs
+      BumpCursorMutable _ rhs -> go rhs
+      AddrOfCursor rhs -> go rhs
+      RetE ls -> sum (map go ls)
+      LetAvail _ bod -> go bod
+      ForE _ n bod -> go n + go bod
+      WhileCursor _ bod -> go bod
+      _ -> 0
+
+isForE', isWhileCursor', isScalarCountSet', isGrowRegion', isBoundsCheckLike
+  :: E3Ext () Ty3 -> Bool
+isForE' e          = case e of ForE{}          -> True; _ -> False
+isWhileCursor' e   = case e of WhileCursor{}   -> True; _ -> False
+isScalarCountSet' e = case e of ScalarCountSet{} -> True; _ -> False
+isGrowRegion' e    = case e of GrowRegion{}    -> True; _ -> False
+isBoundsCheckLike e = case e of
+                        BoundsCheck{}       -> True
+                        BoundsCheckVector{} -> True
+                        _                   -> False
 
 containsL3For :: Exp3 -> Bool
 containsL3For ex =
@@ -857,9 +1213,9 @@ containsWriteTagPacked ex =
     MapE (_, _, e1) e2 -> containsWriteTagPacked e1 || containsWriteTagPacked e2
     FoldE (_, _, e1) (_, _, e2) e3 -> any containsWriteTagPacked [e1, e2, e3]
 
-case_detects_fully_factored_can_vectorize_candidate :: Assertion
-case_detects_fully_factored_can_vectorize_candidate =
-  let prg = listProg FullyFactored [CanVectorize]
+case_detects_fully_factored_may_vectorize_candidate :: Assertion
+case_detects_fully_factored_may_vectorize_candidate =
+  let prg = listProg FullyFactored [MayVectorize]
       fd = (fundefs prg) M.! "add1List"
    in Just (LoopifyCandidate "add1List" "List" ["Nil", "Cons"]) @=?
         loopifyCandidateInfo (ddefs prg) fd
@@ -891,7 +1247,7 @@ case_auto_loopification_rewrites_unannotated_cursorized_fast_path =
       fd = fds M.! "fastAdd1ListMut"
    in do
         assertBool "expected auto loopification to emit ForE" (containsL3For (funBody fd))
-        assertBool "expected auto loopification to stamp CanVectorize metadata" (CanVectorize `elem` funOpt (funMeta fd))
+        assertBool "expected auto loopification to stamp Loopified metadata" (Loopified `elem` funOpt (funMeta fd))
 
 case_auto_loopification_requires_counted_producer :: Assertion
 case_auto_loopification_requires_counted_producer =
@@ -903,7 +1259,7 @@ case_auto_loopification_requires_counted_producer =
 
 case_requires_fully_factored_layout :: Assertion
 case_requires_fully_factored_layout =
-  let prg = listProg Linear [CanVectorize]
+  let prg = listProg Linear [MayVectorize]
       fd = (fundefs prg) M.! "add1List"
    in Nothing @=? loopifyCandidateInfo (ddefs prg) fd
 
@@ -914,7 +1270,7 @@ case_rejects_mixed_tycons =
 
 case_first_milestone_is_identity :: Assertion
 case_first_milestone_is_identity =
-  let prg = listProg FullyFactored [CanVectorize]
+  let prg = listProg FullyFactored [MayVectorize]
    in prg @=? runner prg
 
 case_rewrites_supported_cursorized_fast_path :: Assertion
@@ -967,9 +1323,9 @@ case_detects_parent_child_dependency_in_primitive_rhs :: Assertion
 case_detects_parent_child_dependency_in_primitive_rhs =
   let body =
         LetE
-          ("child_sum", [], IntTy, AppE "sumList" TailModuloCons [] [VarE "inEnds", VarE "outEnds", VarE "outCurs", VarE "inCurs"])
+          ("child_sum", [], IntTy W64, AppE "sumList" TailModuloCons [] [VarE "inEnds", VarE "outEnds", VarE "outCurs", VarE "inCurs"])
           (LetE
-             ("total", [], IntTy, PrimAppE AddP [VarE "child_sum", LitE 1])
+             ("total", [], IntTy W64, PrimAppE addP64 [VarE "child_sum", mkLitE64 1])
              (VarE "total"))
    in assertBool "expected primitive use of child result to be rejected" $
         hasParentChildDependency "sumList" body
@@ -1012,6 +1368,681 @@ case_lower_supports_footer_counts_and_for_loops =
         assertBool "expected first-footer primitive" (T.ScalarCountFirstFooter `elem` prims)
         assertBool "expected next-footer primitive" (T.ScalarCountNextFooter `elem` prims)
         assertBool "expected lowered for-loop tail" (containsForLoop (T.funBody fd))
+
+-- | Invariant: a binding created for an `IfE` arm stays inside
+-- that arm.  Before the fix, `anfScalarExpr` returned the condition's, the
+-- then-arm's and the else-arm's bindings CONCATENATED to a caller that spliced
+-- them above the `IfE`, so `if i == 0 then 7 else 100 / i` evaluated the
+-- division for every element -- a division by zero on exactly the elements the
+-- guard existed to exclude.
+case_guarded_division_stays_inside_its_arm :: Assertion
+case_guarded_division_stays_inside_its_arm =
+  let body = loopifiedGuardedBody guardedDivRhs
+      (inside, outside) = partialBindingSites body
+   in do
+        assertBool "expected the traversal to be loopified" (containsL3For body)
+        assertEqual "no partial binding may sit outside the conditional" [] outside
+        assertEqual "the division must be bound inside the arm" 1 (length inside)
+
+-- Nested conditionals must keep their nesting AND their bindings: each of the
+-- two divisions belongs to its own inner arm.
+case_nested_guards_keep_their_own_bindings :: Assertion
+case_nested_guards_keep_their_own_bindings =
+  let body = loopifiedGuardedBody nestedGuardedDivRhs
+      (inside, outside) = partialBindingSites body
+   in do
+        assertBool "expected the traversal to be loopified" (containsL3For body)
+        assertEqual "no partial binding may sit outside the conditionals" [] outside
+        assertEqual "both divisions must be bound inside their arms" 2 (length inside)
+
+-- A chain of dependent temporaries in one arm: `100 / (i * 2)` ANFs to two
+-- bindings, and BOTH must stay in the arm -- lifting only the outermost would
+-- still evaluate the multiply unconditionally.
+case_chained_arm_bindings_stay_inside :: Assertion
+case_chained_arm_bindings_stay_inside =
+  let body = loopifiedGuardedBody chainedGuardedDivRhs
+      (inside, outside) = partialBindingSites body
+   in do
+        assertBool "expected the traversal to be loopified" (containsL3For body)
+        assertEqual "no partial binding may sit outside the conditional" [] outside
+        assertEqual "the division must be bound inside the arm" 1 (length inside)
+
+-- Branch-local bindings must not collide: the fresh counter still threads
+-- through the condition and both arms even though they are now separate scopes.
+-- Branch-local bindings must not collide.  The bindings ANF creates now live in
+-- separate scopes (condition, then-arm, else-arm), so a counter that restarted
+-- per branch would produce two `anf0`s; the counter still threads through all
+-- three, and this pins that.
+--
+-- Scoped to the ANF-generated names on purpose: an ordinary Gibbon program
+-- legitimately reuses a binder name in disjoint scopes (the Nil and Cons
+-- branches, the fast and general paths), so asserting global uniqueness over
+-- every binder would fail for reasons that have nothing to do with this fix.
+case_branch_local_binders_are_unique :: Assertion
+case_branch_local_binders_are_unique =
+  sequence_
+    [ let anfs = [ v | v <- allLetBinders (loopifiedGuardedBody rhs)
+                     , "anf" `L.isInfixOf` fromVar v ]
+      in do assertBool (lbl ++ ": expected ANF bindings to exist") (not (null anfs))
+            assertEqual (lbl ++ ": every ANF binder must be distinct")
+                        (length anfs) (length (L.nub anfs))
+    | (lbl, rhs) <- [ ("guarded", guardedDivRhs)
+                    , ("nested", nestedGuardedDivRhs)
+                    , ("chained", chainedGuardedDivRhs)
+                    , ("total", totalCondRhs) ]
+    ]
+
+-- The fix must not be "refuse to loopify conditionals": a TOTAL conditional
+-- still loopifies, and has no partial binding anywhere to place.
+case_total_conditional_still_loopifies :: Assertion
+case_total_conditional_still_loopifies =
+  let body = loopifiedGuardedBody totalCondRhs
+      (inside, outside) = partialBindingSites body
+   in do
+        assertBool "a total conditional must still loopify" (containsL3For body)
+        assertEqual "a total conditional has no partial bindings" ([], []) (inside, outside)
+
+-- | Loopify, then vectorize, exactly as the production pipeline does.
+vectorizedGuardedBody :: Exp3 -> Exp3
+vectorizedGuardedBody rhs =
+  -- Loop fusion runs between loopification and vectorization in the real
+  -- pipeline, and the vectorizer matches the FUSED unit-valued loop body, so
+  -- leaving it out here would make every one of these tests report "did not
+  -- vectorize" for the wrong reason.
+  let cfg = defaultConfig
+              {dynflags = gopt_set Opt_EnableVectorization
+                            (gopt_set Opt_EnableLoopFusion loopifyDFlags)}
+      (prg', _) =
+        runPassM cfg 0
+          (loopifyTraversals (guardedProg rhs)
+             >>= fuseLoopifiedTraversals
+             >>= vectorizeTraversals)
+      Prog{fundefs = fds} = prg'
+  in funBody (fds M.! "fastAdd1ListMut")
+
+-- | Names of the L3 vector extension nodes present, as rendered constructor
+-- tags.  Structural enough for "did this loop vectorize, and with what".
+vecNodeCount :: String -> Exp3 -> Int
+vecNodeCount tag ex = length (filter (L.isPrefixOf tag) (L.tails (show ex)))
+
+-- A guarded partial operation must NOT be speculated into a vector select.
+--
+-- This is the half of the fix that could regress silently: `matchScalarDag` now
+-- looks THROUGH the branch-local administrative lets the loopifier emits, and
+-- if that transparency were applied without the partial-operation check still
+-- seeing the division underneath, the loop would vectorize both arms and
+-- divide by zero for every element -- the original bug, moved one pass later.
+case_guarded_partial_does_not_vectorize :: Assertion
+case_guarded_partial_does_not_vectorize =
+  let body = vectorizedGuardedBody guardedDivRhs
+   in do
+        assertEqual "a guarded division must not become a packed divide"
+                    0 (vecNodeCount "VecDiv" body)
+        assertEqual "a guarded division must not become a packed select"
+                    0 (vecNodeCount "VecSelect" body)
+        assertBool "the loop itself must still be loopified" (containsL3For body)
+
+case_guarded_nested_partial_does_not_vectorize :: Assertion
+case_guarded_nested_partial_does_not_vectorize =
+  let body = vectorizedGuardedBody nestedGuardedDivRhs
+   in do
+        assertEqual "nested guarded divisions must not become packed divides"
+                    0 (vecNodeCount "VecDiv" body)
+        assertEqual "nested guarded divisions must not become packed selects"
+                    0 (vecNodeCount "VecSelect" body)
+
+-- ...while a TOTAL conditional still becomes a comparison mask plus a select.
+-- The fix for guarded partial operations must not regress to "stop
+-- vectorizing conditionals" -- total conditionals must keep vectorizing.
+case_total_conditional_still_vectorizes :: Assertion
+case_total_conditional_still_vectorizes =
+  let body = vectorizedGuardedBody totalCondRhs
+   in do
+        assertBool "a total conditional must still produce a packed select"
+                   (vecNodeCount "VecSelect" body > 0)
+        assertBool "a total conditional must still produce a packed comparison"
+                   (vecNodeCount "VecCmp" body > 0)
+
+-- 'ErrorP' passes the loopifier's scalar-expression whitelist (which admits any
+-- `PrimAppE`), so the guarantee that it is never speculated has to come from
+-- somewhere.  It comes from the vectorizer: `ErrorP` has no vector operation,
+-- so the DAG match fails and the whole loop stays scalar.  Recorded as a test
+-- rather than assumed.
+case_error_prim_keeps_the_loop_scalar :: Assertion
+case_error_prim_keeps_the_loop_scalar =
+  let rhs = IfE (PrimAppE eqIntP64 [VarE "i", mkLitE64 0])
+                (PrimAppE (ErrorP "boom" (IntTy W64)) [])
+                (VarE "i")
+      body = vectorizedGuardedBody rhs
+   in do
+        assertEqual "ErrorP must never be speculated into a select"
+                    0 (vecNodeCount "VecSelect" body)
+        assertEqual "ErrorP must not become any packed operation"
+                    0 (vecNodeCount "VecAdd" body + vecNodeCount "VecDiv" body)
+
+--------------------------------------------------------------------------------
+-- Scoped LetE in loopifiable scalar expressions
+--------------------------------------------------------------------------------
+
+-- @if i == 0 then 7 else (let y = 100 / i in y + 1)@ -- a guarded partial
+-- operation behind a let INSIDE the arm.  Both the binding and the division
+-- must stay in that arm.
+letPartialInArmRhs :: Exp3
+letPartialInArmRhs =
+  IfE (PrimAppE eqIntP64 [VarE "i", mkLitE64 0])
+      (mkLitE64 7)
+      (LetE ("y_arm", [], IntTy W64, PrimAppE divP64 [mkLitE64 100, VarE "i"])
+            (PrimAppE addP64 [VarE "y_arm", mkLitE64 1]))
+
+-- A chain of dependent lets, ending in a division whose divisor is 2*i.
+letChainRhs :: Exp3
+letChainRhs =
+  LetE ("a_c", [], IntTy W64, PrimAppE mulP64 [VarE "i", mkLitE64 2])
+    (LetE ("b_c", [], IntTy W64, PrimAppE addP64 [VarE "a_c", VarE "i"])
+      (LetE ("c_c", [], IntTy W64, PrimAppE subP64 [VarE "b_c", VarE "i"])
+        (PrimAppE addP64 [VarE "c_c", mkLitE64 1])))
+
+-- A let-bound value referenced TWICE, whose RHS is partial.  Inlining it would
+-- perform two divisions where the source performs one.
+multiUsePartialRhs :: Exp3
+multiUsePartialRhs =
+  LetE ("q_m", [], IntTy W64, PrimAppE divP64 [mkLitE64 100, VarE "i"])
+       (PrimAppE addP64 [VarE "q_m", VarE "q_m"])
+
+-- A strict binding whose RHS traps and whose value is never used.
+unusedTrappingRhs :: Exp3
+unusedTrappingRhs =
+  LetE ("dead_t", [], IntTy W64, PrimAppE divP64 [mkLitE64 100, VarE "i"])
+       (mkLitE64 7)
+
+-- Same shape, but the dead binding is total: dropping it is unobservable.
+unusedTotalRhs :: Exp3
+unusedTotalRhs =
+  LetE ("dead_ok", [], IntTy W64, PrimAppE addP64 [VarE "i", mkLitE64 1])
+       (mkLitE64 7)
+
+-- A total multi-let conditional: no partial operation anywhere.
+totalMultiLetCondRhs :: Exp3
+totalMultiLetCondRhs =
+  LetE ("t0", [], IntTy W64, PrimAppE addP64 [VarE "i", mkLitE64 1])
+    (IfE (PrimAppE eqIntP64 [VarE "t0", mkLitE64 0])
+         -- add, not multiply: this fixture exists to exercise the
+         -- CONDITIONAL (packed select) path, and W64 multiply is deliberately
+         -- not SIMD-capable, so a multiply here would make the loop stay
+         -- scalar and the test would be asserting nothing.
+         (LetE ("t1", [], IntTy W64, PrimAppE addP64 [VarE "t0", mkLitE64 3])
+               (PrimAppE addP64 [VarE "t1", mkLitE64 2]))
+         (PrimAppE subP64 [VarE "t0", mkLitE64 1]))
+
+-- An unsupported effectful primitive inside an otherwise fine scalar shape.
+errorInLetRhs :: Exp3
+errorInLetRhs =
+  LetE ("e_v", [], IntTy W64, PrimAppE (ErrorP "boom" (IntTy W64)) [])
+       (PrimAppE addP64 [VarE "e_v", mkLitE64 1])
+
+-- | Look up the type recorded for a binder in the loopified body.
+binderTypeIn :: Var -> Exp3 -> Maybe Ty3
+binderTypeIn want = go
+  where
+    go ex =
+      case ex of
+        LetE (v, _, ty, rhs) bod
+          | v == want -> Just ty
+          | otherwise -> go rhs `orElse` go bod
+        IfE a b c -> foldr (orElse . go) Nothing [a, b, c]
+        PrimAppE _ args -> foldr (orElse . go) Nothing args
+        AppE _ _ _ args -> foldr (orElse . go) Nothing args
+        ProjE _ e -> go e
+        MkProdE es -> foldr (orElse . go) Nothing es
+        CaseE scrt brs -> foldr (orElse . go) Nothing (scrt : [ r | (_, _, r) <- brs ])
+        Ext (ForE _ bound bod) -> go bound `orElse` go bod
+        Ext (WhileCursor _ bod) -> go bod
+        Ext (WriteScalar _ _ rhs) -> go rhs
+        Ext (LetAvail _ bod) -> go bod
+        _ -> Nothing
+    orElse (Just x) _ = Just x
+    orElse Nothing y = y
+
+-- | Occurrences of a rendered constructor tag, e.g. "DivP".
+tagCount :: String -> Exp3 -> Int
+tagCount tag ex = length (filter (L.isPrefixOf tag) (L.tails (show ex)))
+
+-- A `let` written inside a conditional arm must stay inside it, exactly as a
+-- bare operation does.  Before scoped-let support, the arm's `LetE` was
+-- rejected by the scalar-expression grammar and the traversal was never
+-- loopified at all.
+case_arm_local_let_stays_in_its_arm :: Assertion
+case_arm_local_let_stays_in_its_arm =
+  let body = loopifiedGuardedBody letPartialInArmRhs
+      (inside, outside) = partialBindingSites body
+   in do
+        assertBool "a let-bearing arm must now loopify" (containsL3For body)
+        assertEqual "no partial binding may sit outside the conditional" [] outside
+        assertEqual "the division must be bound inside the arm" 1 (length inside)
+        assertEqual "the division must appear exactly once" 1 (tagCount "DivP" body)
+
+-- A dependent chain keeps its order and each binder keeps its declared type.
+case_let_chain_keeps_order_and_types :: Assertion
+case_let_chain_keeps_order_and_types =
+  let body = loopifiedGuardedBody letChainRhs
+      binders = allLetBinders body
+      positionOf v = L.elemIndex v binders
+   in do
+        assertBool "a dependent let chain must loopify" (containsL3For body)
+        assertEqual "binder a_c keeps its type" (Just (IntTy W64)) (binderTypeIn "a_c" body)
+        assertEqual "binder b_c keeps its type" (Just (IntTy W64)) (binderTypeIn "b_c" body)
+        assertEqual "binder c_c keeps its type" (Just (IntTy W64)) (binderTypeIn "c_c" body)
+        assertBool "a_c must be bound before b_c" (positionOf "a_c" < positionOf "b_c")
+        assertBool "b_c must be bound before c_c" (positionOf "b_c" < positionOf "c_c")
+        -- Each source operation appears exactly once: nothing was duplicated by
+        -- substituting a binding at its uses.
+        assertEqual "one multiply" 1 (tagCount "MulP" body)
+
+-- A non-trivial RHS referenced twice must not be evaluated twice.  Either the
+-- binding survives as a binding (one division), or the traversal stays scalar.
+case_multi_use_partial_is_not_duplicated :: Assertion
+case_multi_use_partial_is_not_duplicated =
+  let body = loopifiedGuardedBody multiUsePartialRhs
+   in if containsL3For body
+      then assertEqual "a shared division must not be duplicated"
+                       1 (tagCount "DivP" body)
+      else assertEqual "if it did not loopify, no division may have leaked in"
+                       0 (tagCount "DivP" body)
+
+-- A multiply-used partial that already loopified must be undisturbed.
+--
+-- Measured: this fixture loopifies with the flag off too, because the whole
+-- `let` is a single write's right-hand side and the 'ScalarExpr' grammar
+-- admits `LetE` directly -- it never reaches the environment/residual decision
+-- the flag changes.  (An earlier reading of this test had it staying scalar by
+-- default; it does not.  'sharedPartialProg' is the fixture that actually
+-- exercises the shared-across-writes path.)  What matters here is that the
+-- division is still bound once and not duplicated.
+case_multi_use_partial_loopifies :: Assertion
+case_multi_use_partial_loopifies =
+  let body = loopifiedGuardedBody multiUsePartialRhs
+   in do
+        assertBool "a multiply-used partial must loopify under the flag"
+                   (containsL3For body)
+        assertEqual "and the division must not be duplicated within the plan"
+                    1 (tagCount "DivP" body)
+
+-- ...and without the flag it must still refuse, so the flag is what changed
+-- the outcome rather than something else drifting.
+-- THE case this handles: a partial bound on the branch body's spine and
+-- consumed by TWO scalar writes, so it has to cross plan boundaries.
+--
+-- Note this is NOT what 'multiUsePartialRhs' tests.  There the whole `let` is a
+-- single write's right-hand side, which the 'ScalarExpr' grammar admits
+-- directly, so it loopifies with or without the flag.  Only a binding shared
+-- BETWEEN writes goes through the environment/residual decision.
+case_shared_partial_loopifies :: Assertion
+case_shared_partial_loopifies =
+  let Prog{fundefs = fds} = runnerWithCounts sharedPartialProg
+      body = funBody (fds M.! "fastAdd1ListMut")
+   in do
+        assertEqual "it must loopify: one loop per buffer (dcon, int, float)"
+                    3 (countL3For body)
+        -- Two consuming plans, and production emits one loop per scalar buffer
+        -- with no shared per-element scope, so the division is evaluated once
+        -- per consuming loop.  Pure, so the value is unchanged; and re-trapping
+        -- is indistinguishable from trapping once.  Pinned here so the cost is
+        -- a decision on record rather than a surprise.
+        assertEqual "recomputed once per consuming plan, not more"
+                    2 (tagCount "DivP" body)
+
+-- The residual must dominate the conditional write, not sit inside an arm:
+-- the source evaluated it unconditionally, so skipping it on one branch would
+-- skip a trap the source would have taken.
+case_shared_partial_dominates_the_conditional_write :: Assertion
+case_shared_partial_dominates_the_conditional_write =
+  let Prog{fundefs = fds} = runnerWithCounts sharedPartialProg
+      body = funBody (fds M.! "fastAdd1ListMut")
+      (inside, _outside) = partialBindingSites body
+   in assertEqual "no part of the shared division may be bound inside an arm"
+                  [] inside
+
+-- A partial the source GUARDED must never be promoted.
+--
+-- This is the whole safety argument: only bindings on the branch body's
+-- unconditional spine are promoted.  Hoisting a guarded division above its
+-- guard would make it trap on elements the source never divided -- the logged
+-- `if d == 0 then 7 else 100 / d` regression.
+case_guarded_partial_is_never_hoisted :: Assertion
+case_guarded_partial_is_never_hoisted =
+  let body = loopifiedGuardedBody letPartialInArmRhs
+      (inside, outside) = partialBindingSites body
+   in do
+        assertEqual "no partial binding may sit outside the conditional" [] outside
+        assertEqual "the division must stay bound inside the arm" 1 (length inside)
+        assertEqual "and appear exactly once" 1 (tagCount "DivP" body)
+
+-- A dead trapping binding must STILL block loopification under the flag: the
+-- synthesized loop reproduces only the plans, so the trap would vanish.
+case_dead_trap_is_never_resurrected :: Assertion
+case_dead_trap_is_never_resurrected =
+  let body = loopifiedGuardedBody unusedTrappingRhs
+   in assertBool "a dropped trapping computation must still block loopification"
+                 (not (containsL3For body))
+
+-- Gibbon's `let` is strict.  A dead binding whose RHS traps must not be dropped:
+-- the synthesized loop reproduces only the extracted plans, so such a branch
+-- must not be loopified at all.
+case_unused_trapping_binding_is_not_dropped :: Assertion
+case_unused_trapping_binding_is_not_dropped =
+  let body = loopifiedGuardedBody unusedTrappingRhs
+   in assertBool "a branch that would drop a trapping computation must stay scalar"
+                 (not (containsL3For body))
+
+-- ...while a dead TOTAL binding is unobservable, so it must not block the
+-- optimization.  Without this control, the guard above could be satisfied by
+-- refusing to loopify anything with an unused binding.
+case_unused_total_binding_still_loopifies :: Assertion
+case_unused_total_binding_still_loopifies =
+  let body = loopifiedGuardedBody unusedTotalRhs
+   in assertBool "a dead total binding must not prevent loopification"
+                 (containsL3For body)
+
+-- An unclassified/effectful primitive must keep the traversal scalar rather
+-- than being treated as arithmetic.  `ErrorP` used to pass the whitelist,
+-- because it accepted any `PrimAppE`.
+case_error_prim_blocks_loopification :: Assertion
+case_error_prim_blocks_loopification =
+  let body = loopifiedGuardedBody errorInLetRhs
+   in assertBool "an effectful primitive must keep the traversal scalar"
+                 (not (containsL3For body))
+
+-- Total multi-let conditionals must both loopify and vectorize: admitting
+-- `LetE` is pointless if the result stops being SIMD-eligible.
+case_total_multi_let_conditional_loopifies :: Assertion
+case_total_multi_let_conditional_loopifies =
+  let body = loopifiedGuardedBody totalMultiLetCondRhs
+      (inside, outside) = partialBindingSites body
+   in do
+        assertBool "a total multi-let conditional must loopify" (containsL3For body)
+        assertEqual "it has no partial bindings" ([], []) (inside, outside)
+
+case_total_multi_let_conditional_vectorizes :: Assertion
+case_total_multi_let_conditional_vectorizes =
+  let body = vectorizedGuardedBody totalMultiLetCondRhs
+   in do
+        assertBool "a total multi-let conditional must still produce a packed select"
+                   (vecNodeCount "VecSelect" body > 0)
+        assertEqual "and must not produce a packed divide"
+                    0 (vecNodeCount "VecDiv" body)
+
+-- Partial-operation detection must see through the newly admitted nested lets.
+case_partial_behind_lets_does_not_vectorize :: Assertion
+case_partial_behind_lets_does_not_vectorize =
+  let body = vectorizedGuardedBody letPartialInArmRhs
+   in do
+        assertEqual "a guarded division behind a let must not become a packed divide"
+                    0 (vecNodeCount "VecDiv" body)
+        assertEqual "nor a packed select"
+                    0 (vecNodeCount "VecSelect" body)
+
+-- Binder names must remain distinct once source lets and ANF temporaries share
+-- one block.
+-- Admitting source `let`s puts source binders and ANF temporaries in the same
+-- block, so check that no NEW collision appears.
+--
+-- Measured relative to a baseline shape rather than as absolute distinctness:
+-- the surrounding generated program legitimately reuses a few binder names in
+-- disjoint scopes (the Nil and Cons branches, the fast and general paths), so
+-- an absolute assertion would fail for reasons unrelated to scoped-let
+-- support.  What matters is that a let-bearing scalar expression adds none
+-- of its own, and that no name under test is among the duplicates.
+case_source_and_anf_binders_do_not_collide :: Assertion
+case_source_and_anf_binders_do_not_collide =
+  let dupsOf rhs = let bs = allLetBinders (loopifiedGuardedBody rhs)
+                   in bs L.\\ L.nub bs
+      baseline = dupsOf (PrimAppE addP64 [VarE "i", mkLitE64 1])
+      underTest = ["y_arm", "a_c", "b_c", "c_c", "t0", "t1"]
+   in sequence_
+        [ do let ds = dupsOf rhs
+             assertEqual (lbl ++ ": no binder duplicated beyond the baseline shape")
+                         (length baseline) (length ds)
+             assertBool (lbl ++ ": no source-let binder may be duplicated: " ++ show ds)
+                        (not (any (`elem` underTest) ds))
+             assertBool (lbl ++ ": no ANF temporary may be duplicated: " ++ show ds)
+                        (not (any (L.isInfixOf "anf" . fromVar) ds))
+        | (lbl, rhs) <- [ ("armLet", letPartialInArmRhs)
+                        , ("chain", letChainRhs)
+                        , ("totalMultiLet", totalMultiLetCondRhs) ]
+        ]
+
+-- The real shape of the dropped-effect defect: a branch computes something
+-- trapping and never uses it.
+--
+-- Gibbon's `let` is strict, so the source program must divide by zero.  The
+-- synthesized loop is built only from the extracted plans, so without this
+-- check the binding would simply vanish -- the division would not appear in
+-- the generated C at all, and the optimized program would print a number
+-- where the unoptimized one exits 1.  A branch like this must stay scalar.
+case_dead_sibling_trap_blocks_loopification :: Assertion
+case_dead_sibling_trap_blocks_loopification =
+  let body = loopifiedDeadSiblingBody (PrimAppE divP64 [mkLitE64 100, VarE "i"])
+   in assertBool "a branch that would drop a trapping computation must stay scalar"
+                 (not (containsL3For body))
+
+case_dead_sibling_error_blocks_loopification :: Assertion
+case_dead_sibling_error_blocks_loopification =
+  let body = loopifiedDeadSiblingBody (PrimAppE (ErrorP "boom" (IntTy W64)) [])
+   in assertBool "a branch that would drop an effectful computation must stay scalar"
+                 (not (containsL3For body))
+
+-- ...and the control: a dead TOTAL sibling binding is unobservable, so it must
+-- not cost the optimization.
+case_dead_sibling_total_still_loopifies :: Assertion
+case_dead_sibling_total_still_loopifies =
+  let body = loopifiedDeadSiblingBody (PrimAppE mulP64 [VarE "i", mkLitE64 3])
+   in assertBool "a dead total binding must not prevent loopification"
+                 (containsL3For body)
+
+
+--------------------------------------------------------------------------------
+-- VW-07: output-buffer capacity in synthesized chunk loops.
+--
+-- Loopification REMOVES the recursive function's per-node BoundsCheck and
+-- replaces it with a per-output-buffer chunk discipline.  See
+-- Note [Output capacity in synthesized chunk loops] in
+-- "Gibbon.Passes.LoopifyTraversals".  These tests pin the replacement so it
+-- cannot be dropped silently: the runtime byte accounting lives in
+-- tests/vw07_output_capacity.sh, but a structural regression here fails fast.
+
+-- | Every synthesized chunk loop must carry the COMPLETE mechanism: one
+-- WhileCursor over the input chunk chain, one ScalarCountSet stamping the
+-- output chunk footer, one GrowRegion for the chunk transition, and at least
+-- one inner ForE doing the writes.  Dropping any one of them would leave writes
+-- whose capacity nothing establishes.
+case_vw07_chunk_loop_carries_full_capacity_mechanism :: Assertion
+case_vw07_chunk_loop_carries_full_capacity_mechanism =
+  let prg = withCountedProducer "List" cursorizedMutableLoopifyProg
+      Prog {fundefs = fds} = runnerWithCounts prg
+      body = funBody (fds M.! "fastAdd1ListMut")
+      nWhile = countExt isWhileCursor' body
+      nSet   = countExt isScalarCountSet' body
+      nGrow  = countExt isGrowRegion' body
+      nFor   = countExt isForE' body
+   in do
+        assertBool "expected loopification to fire at all" (nFor > 0 && nWhile > 0)
+        assertEqual "one ScalarCountSet per chunk loop" nWhile nSet
+        assertEqual "one GrowRegion per chunk loop" nWhile nGrow
+        assertBool "each chunk loop needs at least one inner ForE"
+                   (nFor >= nWhile)
+
+-- | The other half of the invariant: a transformation may drop a BoundsCheck
+-- only if it emits the replacement.  When loopification does NOT fire, any
+-- check in the body must survive verbatim -- it must not be discarded merely
+-- because 'classifyScalarShape' scores it as @bsUnit@ (zero writes).
+case_vw07_bounds_check_survives_when_loopification_does_not_fire :: Assertion
+case_vw07_bounds_check_survives_when_loopification_does_not_fire =
+  let prg  = withoutFunOpts "fastAdd1ListMut" cursorizedMutableLoopifyProg
+      fdIn = (fundefs prg) M.! "fastAdd1ListMut"
+      guarded = fdIn { funBody = withBoundsCheck (funBody fdIn) }
+      prg' = prg { fundefs = M.insert "fastAdd1ListMut" guarded (fundefs prg) }
+      Prog {fundefs = fds} = runner prg'
+      body = funBody (fds M.! "fastAdd1ListMut")
+   in do
+        assertBool "control: this configuration must not loopify"
+                   (countExt isWhileCursor' body == 0)
+        assertEqual "a BoundsCheck must not be dropped when nothing replaces it"
+                    1 (countExt isBoundsCheckLike body)
+
+-- | Wrap a body in a BoundsCheck, the way Cursorize emits one ahead of the
+-- writes it protects.
+withBoundsCheck :: Exp3 -> Exp3
+withBoundsCheck bod =
+  LetE ( "vw07_check", [], ProdTy []
+       , Ext (BoundsCheck 26 "outEnds" "outCurs" Nothing Output))
+       bod
+
+--------------------------------------------------------------------------------
+-- VW-09 / historical B22: which chunk loops may be fused.
+--
+-- 'Gibbon.Passes.LoopifiedTraversalFusion' gives ONE representative loop's
+-- per-chunk trip count to every loop it fuses with.  See
+-- Note [What makes fusing two chunk loops sound] there.  The relation it uses
+-- is "same constructor key, parsed out of the generated loop variable's name,
+-- and adjacent", so the encoding of that key carries a correctness obligation.
+--
+-- These tests drive the REAL fusion pass over chunk loops whose names come from
+-- the REAL encoder, so a change to either is caught here.  The end-to-end
+-- runtime evidence lives in tests/vw09_builder_counts.sh and
+-- examples/vw09_fusion_skew.hs.
+
+-- | A synthetic chunk loop in exactly the shape 'parseChunkLoop' accepts:
+-- @WhileCursor cond (prefix.. ; ForE i bound body ; IfE c t e ; ())@.
+--
+-- @stride@ stands in for the buffer's element width, so two loops in one group
+-- can differ in width the way an Int8 and an Int32 buffer of the same
+-- constructor do.
+fusionChunkLoop :: Var -> Int -> Maybe DataCon -> Int -> (Var, [()], Ty3, Exp3)
+fusionChunkLoop seed ix mdcon stride =
+    (loopVar, [], ProdTy [], Ext $ WhileCursor footerLoc chunkBody)
+  where
+    nm suffix = toVar (fromVar seed ++ "_buf" ++ show ix ++ "_" ++ suffix)
+    loopVar = case mdcon of
+                -- The dcon (tag) stream loop is named WITHOUT a _dcon_<k>_loop
+                -- segment, which is how it stays out of every fusion group.
+                Nothing   -> nm "loop"
+                Just dcon -> nm ("dcon_" ++ sanitizeLoopName dcon ++ "_loop")
+    footerLoc = nm "count_footer_loc"
+    chunkBody =
+      mkLets
+        [ (nm "current_count_footer", [], CursorTy, Ext $ DerefMutCursor footerLoc)
+        , (nm "chunk_count", [], IntTy W64, Ext $ ReadScalarCount (nm "current_count_footer"))
+        , (nm "inner", [], ProdTy [], Ext $ ForE (nm "i") (VarE (nm "chunk_count"))
+            (mkLets [ (nm "bump", [], ProdTy []
+                      , Ext $ BumpCursorMutable (nm "out_loc") (mkLitE64 (fromIntegral stride))) ]
+                    (MkProdE [])))
+        , (nm "branch", [], ProdTy [], IfE (VarE (nm "is_last"))
+                                            (MkProdE []) (MkProdE []))
+        ]
+        (MkProdE [])
+
+-- | Run only the fusion pass over a function whose body is these loops.
+fuseLoops :: [(Var, [()], Ty3, Exp3)] -> Exp3
+fuseLoops binds =
+    funBody (fds M.! "fuseProbe")
+  where
+    fn = FunDef "fuseProbe" [] ([], ProdTy []) (mkLets binds (MkProdE []))
+                (FunMeta TailRec NoInline False [Loopified])
+    prg = Prog M.empty (M.fromList [("fuseProbe", fn)]) Nothing
+    Prog{fundefs = fds} =
+      fst $ runPassM (defaultConfig {dynflags = gopt_set Opt_EnableLoopFusion loopifyDFlags})
+                     0 (fuseLoopifiedTraversals prg)
+
+-- | The constructor key must be injective, because equal keys authorize giving
+-- one loop's trip count to another.  Collapsing every non-alphanumeric
+-- character to @_@ was not: @A'@ and @A_@ both became @A_@, and the fused loop
+-- ran the @A_@ buffer for the number of @A'@ elements.
+case_vw09_b22_constructor_key_is_injective :: Assertion
+case_vw09_b22_constructor_key_is_injective =
+  let dcons = [ "A", "A_", "A'", "A__", "A'_", "A_'", "Foo", "Foo_loop"
+              , "X_dcon_Y", "Cons", "Cons'", "N1", "N_1" ]
+      keys  = map sanitizeLoopName dcons
+   in do
+        assertEqual "distinct constructors must get distinct keys"
+                    (length dcons) (length (L.nub keys))
+        assertBool "keys must stay legal C identifier tails"
+                   (all (all (\c -> isAlphaNumC c || c == '_')) keys)
+        assertEqual "a purely alphanumeric name must encode to itself"
+                    ["A", "Foo", "Cons", "N1"]
+                    (map sanitizeLoopName ["A", "Foo", "Cons", "N1"])
+  where
+    isAlphaNumC c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+
+-- | Two buffers of the SAME constructor have the same per-chunk element count,
+-- so they may share a trip count -- including when their widths differ.
+case_vw09_b22_same_constructor_buffers_fuse :: Assertion
+case_vw09_b22_same_constructor_buffers_fuse =
+  let body = fuseLoops [ fusionChunkLoop "loop_1" 1 (Just "A") 1
+                       , fusionChunkLoop "loop_1" 2 (Just "A") 4
+                       ]
+   in do
+        assertEqual "two same-constructor loops must fuse into one"
+                    1 (countExt isWhileCursor' body)
+        assertEqual "and keep both inner loop bodies"
+                    1 (countExt isForE' body)
+
+case_vw09_b22_mixed_widths_do_not_block_fusion :: Assertion
+case_vw09_b22_mixed_widths_do_not_block_fusion =
+  let body = fuseLoops [ fusionChunkLoop "loop_1" 1 (Just "N") 1
+                       , fusionChunkLoop "loop_1" 2 (Just "N") 2
+                       , fusionChunkLoop "loop_1" 3 (Just "N") 4
+                       , fusionChunkLoop "loop_1" 4 (Just "N") 8
+                       ]
+   in assertEqual "W8/W16/W32/W64 buffers of one constructor must still fuse"
+                  1 (countExt isWhileCursor' body)
+
+-- | Different constructors have unrelated per-chunk counts.  This is the B22
+-- miscompilation in structural form: before the key was made injective these
+-- two names collided and the pass fused them.
+case_vw09_b22_name_colliding_constructors_do_not_fuse :: Assertion
+case_vw09_b22_name_colliding_constructors_do_not_fuse =
+  let body = fuseLoops [ fusionChunkLoop "loop_1" 1 (Just "A'") 8
+                       , fusionChunkLoop "loop_1" 2 (Just "A_") 8
+                       ]
+   in assertEqual "A' and A_ are different constructors and must not fuse"
+                  2 (countExt isWhileCursor' body)
+
+case_vw09_b22_distinct_constructors_do_not_fuse :: Assertion
+case_vw09_b22_distinct_constructors_do_not_fuse =
+  let body = fuseLoops [ fusionChunkLoop "loop_1" 1 (Just "N") 8
+                       , fusionChunkLoop "loop_1" 2 (Just "S") 8
+                       ]
+   in assertEqual "loops for different constructors must stay separate"
+                  2 (countExt isWhileCursor' body)
+
+-- | The tag stream's footer count is the number of tags in the chunk, not any
+-- one constructor's count, so it must never be substituted for a scalar
+-- field's -- nor take one of theirs.
+case_vw09_b22_tag_loop_never_joins_a_group :: Assertion
+case_vw09_b22_tag_loop_never_joins_a_group =
+  let body = fuseLoops [ fusionChunkLoop "loop_1" 0 Nothing 1
+                       , fusionChunkLoop "loop_1" 1 (Just "A") 1
+                       , fusionChunkLoop "loop_1" 2 (Just "A") 4
+                       ]
+   in do
+        assertEqual "the tag loop stays separate while A's two buffers fuse"
+                    2 (countExt isWhileCursor' body)
+        assertBool "the tag loop's own name must carry no constructor key"
+                   (L.isSuffixOf "_buf0_loop"
+                      (fromVar (fst4 (fusionChunkLoop "loop_1" 0 Nothing 1))))
+  where fst4 (a, _, _, _) = a
+
+-- | Adjacency is part of the relation: a group is a maximal run.  A different
+-- constructor between two same-constructor loops must break the run rather
+-- than be swallowed by it.
+case_vw09_b22_interposed_constructor_breaks_the_group :: Assertion
+case_vw09_b22_interposed_constructor_breaks_the_group =
+  let body = fuseLoops [ fusionChunkLoop "loop_1" 1 (Just "A") 1
+                       , fusionChunkLoop "loop_1" 2 (Just "B") 2
+                       , fusionChunkLoop "loop_1" 3 (Just "A") 4
+                       ]
+   in assertEqual "three loops of two constructors must remain three loops"
+                  3 (countExt isWhileCursor' body)
 
 loopifyTraversalsTests :: TestTree
 loopifyTraversalsTests = $(testGroupGenerator)

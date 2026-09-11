@@ -133,7 +133,7 @@ exp ddfs env2 e0 =
     Ext ext   -> do (_bnds,e) <- gFlattenGatherBinds ddfs env2 ext
                     return  ([], Ext e)
 
-    LitE _    -> return ([],e0)
+    LitE{}    -> return ([],e0)
     CharE _   -> return ([],e0)
     FloatE{}  -> return ([],e0)
     VarE    _ -> return ([],e0)
@@ -233,7 +233,7 @@ flattenExp0 ddfs env2 e0 =
 
   in
   case e0 of
-    LitE _    -> return ([],e0)
+    LitE{}    -> return ([],e0)
     CharE _   -> return ([],e0)
     FloatE{}  -> return ([],e0)
     VarE    _ -> return ([],e0)

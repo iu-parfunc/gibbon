@@ -7,7 +7,7 @@
 -- | The final pass of the compiler: generate C code.
 
 module Gibbon.Passes.Codegen
-  ( codegenProg, harvestStructTys, makeName, rewriteReturns ) where
+  ( codegenProg, harvestStructTys, makeName, rewriteReturns, vecHelperName, vecOpSupported ) where
 
 import           Control.Monad
 import           Data.Bifunctor (first)
@@ -32,6 +32,7 @@ import           Gibbon.DynFlags
 import           Gibbon.L2.Syntax ( Multiplicity(..) )
 import           Gibbon.L4.Syntax
 import qualified Gibbon.L2.Syntax as L2
+import qualified Gibbon.L3.Syntax as L3
 
 --------------------------------------------------------------------------------
 
@@ -327,7 +328,7 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         let gen_gc = gopt Opt_GenGc dflags
         e <- case mtal of
                -- [2019.06.13]: CSK, Why is codegenTail always called with IntTy?
-               Just (PrintExp t) -> codegenTail M.empty M.empty init_fun_env sort_fns t IntTy []
+               Just (PrintExp t) -> codegenTail M.empty M.empty init_fun_env sort_fns t (IntTy L2.W64) []
                _ -> pure []
         ret_init <- gensym "init"
         ret_exit <- gensym "exit"
@@ -412,8 +413,11 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         in [cedecl| typedef enum { $enums:decls } GibDatatype; |]
 
       hashIncludes =
+        -- GibInt has one stable meaning (int64_t), always; no
+        -- GIBBON_INT32-style preprocessor define narrows it for the
+        -- generated translation unit.  A 32-bit value is `Int32` in the
+        -- source (see Gibbon.HaskellFrontend.desugarType).
         "/* Gibbon program. */\n\n" ++
-        (if gopt Opt_Int32 (dynflags cfg) then "#define GIBBON_INT32 1\n" else "") ++
         "#include \"gibbon_rts.h\"\n\n\
         \#include <assert.h>\n\
         \#include <stdio.h>\n\
@@ -454,25 +458,61 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         \  return _mm_sub_epi64(a, b);\n\
         \}\n\
         \\n\
+        \/* SSE2 has no packed 64-bit divide or modulus, so those two helpers spill\n\
+        \ * the register to a scalar array and compute lane by lane.  They are NOT an\n\
+        \ * acceleration and are not a model for new widths; they are retained only\n\
+        \ * because W64 vectorization already shipped with them.\n\
+        \ *\n\
+        \ * Multiply is no longer among them: `gib_vec_mul_int64x2` now computes both\n\
+        \ * lanes in registers (see its own comment), so the only unaccelerated W64\n\
+        \ * operations are divide and modulus.\n\
+        \ *\n\
+        \ * Being unaccelerated does not excuse them from the semantics.  Each\n\
+        \ * lane goes through the SAME deterministic scalar helper the scalar\n\
+        \ * path uses, so a W64 vectorized loop and its own scalar tail cannot\n\
+        \ * disagree: the lanes used to use bare signed `*`, `/` and `%`, which\n\
+        \ * are undefined on overflow and, for `INT64_MIN / -1` and a zero\n\
+        \ * divisor, raise SIGFPE. */\n\
         \static inline __m128i gib_vec_mul_int64x2(__m128i a, __m128i b) {\n\
-        \  int64_t av[2], bv[2];\n\
-        \  _mm_storeu_si128((__m128i *) av, a);\n\
-        \  _mm_storeu_si128((__m128i *) bv, b);\n\
-        \  return _mm_set_epi64x(av[1] * bv[1], av[0] * bv[0]);\n\
+        \#if defined(__AVX512DQ__) && defined(__AVX512VL__)\n\
+        \  return _mm_mullo_epi64(a, b);\n\
+        \#else\n\
+        \  /* Low 64 bits of the product, entirely in registers, from three unsigned\n\
+        \   * 32x32->64 multiplies:\n\
+        \   *\n\
+        \   *   a*b == al*bl + ((al*bh + ah*bl) << 32)      (mod 2^64)\n\
+        \   *\n\
+        \   * The ah*bh term contributes only at bit 64 and above, so the modulus\n\
+        \   * discards it -- which is why two of the four partial products suffice.\n\
+        \   * Signedness does not matter: the low 64 bits of a signed and an unsigned\n\
+        \   * product agree, both being arithmetic in Z/2^64, so this equals the\n\
+        \   * wrapping result `gib_mul_i64` computes lane by lane.\n\
+        \   *\n\
+        \   * This replaced a store/reload round-trip through a scalar array, which\n\
+        \   * cost a store-forwarding stall per multiply and made W64 vectorized loops\n\
+        \   * several times SLOWER than the scalar loop they replaced. */\n\
+        \  __m128i ah = _mm_srli_epi64(a, 32);\n\
+        \  __m128i bh = _mm_srli_epi64(b, 32);\n\
+        \  __m128i albl = _mm_mul_epu32(a, b);\n\
+        \  __m128i albh = _mm_mul_epu32(a, bh);\n\
+        \  __m128i ahbl = _mm_mul_epu32(ah, b);\n\
+        \  __m128i cross = _mm_slli_epi64(_mm_add_epi64(albh, ahbl), 32);\n\
+        \  return _mm_add_epi64(albl, cross);\n\
+        \#endif\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_div_int64x2(__m128i a, __m128i b) {\n\
         \  int64_t av[2], bv[2];\n\
         \  _mm_storeu_si128((__m128i *) av, a);\n\
         \  _mm_storeu_si128((__m128i *) bv, b);\n\
-        \  return _mm_set_epi64x(av[1] / bv[1], av[0] / bv[0]);\n\
+        \  return _mm_set_epi64x(gib_div_i64(av[1], bv[1]), gib_div_i64(av[0], bv[0]));\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_mod_int64x2(__m128i a, __m128i b) {\n\
         \  int64_t av[2], bv[2];\n\
         \  _mm_storeu_si128((__m128i *) av, a);\n\
         \  _mm_storeu_si128((__m128i *) bv, b);\n\
-        \  return _mm_set_epi64x(av[1] % bv[1], av[0] % bv[0]);\n\
+        \  return _mm_set_epi64x(gib_mod_i64(av[1], bv[1]), gib_mod_i64(av[0], bv[0]));\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_eq_int64x2(__m128i a, __m128i b) {\n\
@@ -494,8 +534,22 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         \  _mm_storeu_si128((__m128i *) (*ref), v);\n\
         \}\n\
         \\n\
-        \static inline __m128i gib_vec_broadcast_int32x4(GibInt x) {\n\
-        \  return _mm_set1_epi32((int) x);\n\
+        \/* --- Int32 x 4 -----------------------------------------------------\n\
+        \ *\n\
+        \ * Every helper below computes all four lanes in one 128-bit register at\n\
+        \ * baseline SSE2.  None spills to a scalar array; none loops over lanes.\n\
+        \ * Load/store are UNALIGNED (`_mm_loadu_si128`/`_mm_storeu_si128`)\n\
+        \ * because a packed SoA field buffer makes no alignment promise.\n\
+        \ *\n\
+        \ * There are deliberately no mul/div/mod helpers here.  `_mm_mullo_epi32`\n\
+        \ * is SSE4.1, and SSE2 has no packed signed 32-bit divide or modulus; the\n\
+        \ * only implementations would spill the register and loop over lanes,\n\
+        \ * which is slower than the scalar loop it replaced.  `L3.simdCapable`\n\
+        \ * therefore reports them unsupported and such loops stay entirely\n\
+        \ * scalar.  See the W32 rows of the capability matrix.\n\
+        \ */\n\
+        \static inline __m128i gib_vec_broadcast_int32x4(GibInt32 x) {\n\
+        \  return _mm_set1_epi32((int32_t) x);\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_load_int32x4(GibCursor *ref) {\n\
@@ -510,33 +564,64 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         \  return _mm_sub_epi32(a, b);\n\
         \}\n\
         \\n\
+        \/* Packed signed 32-bit multiply on BASELINE SSE2 (no _mm_mullo_epi32,\n\
+        \ * which is SSE4.1).  The low 32 bits of a signed product equal the low\n\
+        \ * 32 bits of the unsigned product -- both are arithmetic in Z/2^32 --\n\
+        \ * so the unsigned _mm_mul_epu32 computes exactly the bits we keep.\n\
+        \ *\n\
+        \ * _mm_mul_epu32 multiplies lanes 0 and 2 into two 64-bit results.\n\
+        \ * Shifting each vector right by 4 bytes moves lanes 1 and 3 into\n\
+        \ * positions 0 and 2, giving the odd products.  Each 64-bit result's\n\
+        \ * low half is then gathered and the two streams interleaved back into\n\
+        \ * lane order.  All four lanes are computed in registers: no scalar\n\
+        \ * array, no per-lane imul. */\n\
         \static inline __m128i gib_vec_mul_int32x4(__m128i a, __m128i b) {\n\
-        \#ifdef __SSE4_1__\n\
+        \#if defined(__SSE4_1__)\n\
+        \  /* One instruction when the target allows it.  The SSE2 fallback below is\n\
+        \   * seven, four of which are shuffles competing for a single port, which made\n\
+        \   * a multiply-heavy W32 loop slower vectorized than scalar.  GCC does not\n\
+        \   * pattern-match that sequence back to `_mm_mullo_epi32`, so selecting it\n\
+        \   * here is what actually makes `-msse4.1` pay off. */\n\
         \  return _mm_mullo_epi32(a, b);\n\
         \#else\n\
-        \  int32_t av[4], bv[4];\n\
-        \  _mm_storeu_si128((__m128i *) av, a);\n\
-        \  _mm_storeu_si128((__m128i *) bv, b);\n\
-        \  return _mm_set_epi32(av[3] * bv[3], av[2] * bv[2], av[1] * bv[1], av[0] * bv[0]);\n\
+        \  __m128i even = _mm_mul_epu32(a, b);\n\
+        \  __m128i odd = _mm_mul_epu32(_mm_srli_si128(a, 4), _mm_srli_si128(b, 4));\n\
+        \  __m128i e = _mm_shuffle_epi32(even, _MM_SHUFFLE(0, 0, 2, 0));\n\
+        \  __m128i o = _mm_shuffle_epi32(odd, _MM_SHUFFLE(0, 0, 2, 0));\n\
+        \  return _mm_unpacklo_epi32(e, o);\n\
         \#endif\n\
-        \}\n\
-        \\n\
-        \static inline __m128i gib_vec_div_int32x4(__m128i a, __m128i b) {\n\
-        \  int32_t av[4], bv[4];\n\
-        \  _mm_storeu_si128((__m128i *) av, a);\n\
-        \  _mm_storeu_si128((__m128i *) bv, b);\n\
-        \  return _mm_set_epi32(av[3] / bv[3], av[2] / bv[2], av[1] / bv[1], av[0] / bv[0]);\n\
-        \}\n\
-        \\n\
-        \static inline __m128i gib_vec_mod_int32x4(__m128i a, __m128i b) {\n\
-        \  int32_t av[4], bv[4];\n\
-        \  _mm_storeu_si128((__m128i *) av, a);\n\
-        \  _mm_storeu_si128((__m128i *) bv, b);\n\
-        \  return _mm_set_epi32(av[3] % bv[3], av[2] % bv[2], av[1] % bv[1], av[0] % bv[0]);\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_eq_int32x4(__m128i a, __m128i b) {\n\
         \  return _mm_cmpeq_epi32(a, b);\n\
+        \}\n\
+        \\n\
+        \/* Ordered SIGNED comparisons for Int32 x 4.  `_mm_cmpgt_epi32` is the only packed\n\
+        \ * signed compare SSE2 offers at this width, so:\n\
+        \ *   a <  b  ==  b >  a          (operands swapped)\n\
+        \ *   a <= b  ==  NOT (a > b)\n\
+        \ *   a >= b  ==  NOT (b > a)\n\
+        \ * The complement is an XOR against an all-ones vector, which turns a\n\
+        \ * lane of 0x00.. into 0xFF.. and vice versa -- so the result is still\n\
+        \ * a valid all-zero/all-one lane mask that `select` can consume.\n\
+        \ * All-ones is produced by comparing a register with ITSELF, which is\n\
+        \ * true in every lane; that needs no constant load and no SSE4.1. */\n\
+        \static inline __m128i gib_vec_gt_int32x4(__m128i a, __m128i b) {\n\
+        \  return _mm_cmpgt_epi32(a, b);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_lt_int32x4(__m128i a, __m128i b) {\n\
+        \  return _mm_cmpgt_epi32(b, a);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_ge_int32x4(__m128i a, __m128i b) {\n\
+        \  __m128i ones = _mm_cmpeq_epi32(a, a);\n\
+        \  return _mm_xor_si128(_mm_cmpgt_epi32(b, a), ones);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_le_int32x4(__m128i a, __m128i b) {\n\
+        \  __m128i ones = _mm_cmpeq_epi32(a, a);\n\
+        \  return _mm_xor_si128(_mm_cmpgt_epi32(a, b), ones);\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_select_int32x4(__m128i mask, __m128i thenv, __m128i elsev) {\n\
@@ -544,6 +629,171 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         \}\n\
         \\n\
         \static inline void gib_vec_store_int32x4(GibCursor *ref, __m128i v) {\n\
+        \  _mm_storeu_si128((__m128i *) (*ref), v);\n\
+        \}\n\
+        \\n\
+        \/* --- Int16 x 8 -----------------------------------------------------\n\
+        \ *\n\
+        \ * All eight lanes in one 128-bit register at baseline SSE2.  No helper\n\
+        \ * below spills to a scalar array or loops over lanes.  Load/store are\n\
+        \ * UNALIGNED because a packed SoA field buffer promises no alignment.\n\
+        \ *\n\
+        \ * Unlike W32, W16 DOES get a genuine packed multiply: `_mm_mullo_epi16`\n\
+        \ * is baseline SSE2 (the 32-bit `_mm_mullo_epi32` is SSE4.1).  It keeps\n\
+        \ * the low 16 bits of each product, which is the same truncating result\n\
+        \ * the scalar Int16 multiply produces.\n\
+        \ *\n\
+        \ * There are deliberately no div/mod helpers: SSE2 has no packed signed\n\
+        \ * integer divide or modulus, so `L3.simdCapable` reports them\n\
+        \ * unsupported and such loops stay scalar. */\n\
+        \static inline __m128i gib_vec_broadcast_int16x8(GibInt16 x) {\n\
+        \  return _mm_set1_epi16((short) x);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_load_int16x8(GibCursor *ref) {\n\
+        \  return _mm_loadu_si128((const __m128i *) (*ref));\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_add_int16x8(__m128i a, __m128i b) {\n\
+        \  return _mm_add_epi16(a, b);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_sub_int16x8(__m128i a, __m128i b) {\n\
+        \  return _mm_sub_epi16(a, b);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_mul_int16x8(__m128i a, __m128i b) {\n\
+        \  return _mm_mullo_epi16(a, b);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_eq_int16x8(__m128i a, __m128i b) {\n\
+        \  return _mm_cmpeq_epi16(a, b);\n\
+        \}\n\
+        \\n\
+        \/* Ordered SIGNED comparisons for Int16 x 8.  `_mm_cmpgt_epi16` is the only packed\n\
+        \ * signed compare SSE2 offers at this width, so:\n\
+        \ *   a <  b  ==  b >  a          (operands swapped)\n\
+        \ *   a <= b  ==  NOT (a > b)\n\
+        \ *   a >= b  ==  NOT (b > a)\n\
+        \ * The complement is an XOR against an all-ones vector, which turns a\n\
+        \ * lane of 0x00.. into 0xFF.. and vice versa -- so the result is still\n\
+        \ * a valid all-zero/all-one lane mask that `select` can consume.\n\
+        \ * All-ones is produced by comparing a register with ITSELF, which is\n\
+        \ * true in every lane; that needs no constant load and no SSE4.1. */\n\
+        \static inline __m128i gib_vec_gt_int16x8(__m128i a, __m128i b) {\n\
+        \  return _mm_cmpgt_epi16(a, b);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_lt_int16x8(__m128i a, __m128i b) {\n\
+        \  return _mm_cmpgt_epi16(b, a);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_ge_int16x8(__m128i a, __m128i b) {\n\
+        \  __m128i ones = _mm_cmpeq_epi16(a, a);\n\
+        \  return _mm_xor_si128(_mm_cmpgt_epi16(b, a), ones);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_le_int16x8(__m128i a, __m128i b) {\n\
+        \  __m128i ones = _mm_cmpeq_epi16(a, a);\n\
+        \  return _mm_xor_si128(_mm_cmpgt_epi16(a, b), ones);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_select_int16x8(__m128i mask, __m128i thenv, __m128i elsev) {\n\
+        \  return _mm_or_si128(_mm_and_si128(mask, thenv), _mm_andnot_si128(mask, elsev));\n\
+        \}\n\
+        \\n\
+        \static inline void gib_vec_store_int16x8(GibCursor *ref, __m128i v) {\n\
+        \  _mm_storeu_si128((__m128i *) (*ref), v);\n\
+        \}\n\
+        \\n\
+        \/* --- Int8 x 16 ------------------------------------------------------\n\
+        \ *\n\
+        \ * All sixteen lanes in one register at baseline SSE2; no spills, no\n\
+        \ * lane loops, unaligned load/store.\n\
+        \ *\n\
+        \ * The broadcast takes `GibInt8` (a signed 8-bit type) and passes it to\n\
+        \ * `_mm_set1_epi8` through `signed char`, NOT plain `char`: plain `char`\n\
+        \ * has implementation-defined signedness, and on a platform where it is\n\
+        \ * unsigned a negative Int8 would broadcast the wrong bit pattern.\n\
+        \ * `_mm_cmpeq_epi8` compares the bytes bitwise, so a correctly\n\
+        \ * broadcast INT8_MIN compares equal to a stored INT8_MIN.\n\
+        \ *\n\
+        \ * No mul/div/mod: SSE2 has no packed 8-bit multiply at all (it would\n\
+        \ * need unpack/widen/repack, which is out of scope), and no packed\n\
+        \ * signed divide or modulus.  Those loops stay scalar. */\n\
+        \static inline __m128i gib_vec_broadcast_int8x16(GibInt8 x) {\n\
+        \  return _mm_set1_epi8((signed char) x);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_load_int8x16(GibCursor *ref) {\n\
+        \  return _mm_loadu_si128((const __m128i *) (*ref));\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_add_int8x16(__m128i a, __m128i b) {\n\
+        \  return _mm_add_epi8(a, b);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_sub_int8x16(__m128i a, __m128i b) {\n\
+        \  return _mm_sub_epi8(a, b);\n\
+        \}\n\
+        \\n\
+        \/* Packed 8-bit multiply on baseline SSE2, which has no 8-bit multiply\n\
+        \ * instruction at all.  Zero-extend each half of the register to 16-bit\n\
+        \ * lanes, multiply with _mm_mullo_epi16, mask each product to its low 8\n\
+        \ * bits, then repack.\n\
+        \ *\n\
+        \ * Two subtleties.  (1) Zero-extension is sound even for negative bytes:\n\
+        \ * the low 8 bits of a product depend only on the low 8 bits of each\n\
+        \ * operand, identically under signed and unsigned reading.  (2) Masking\n\
+        \ * to 0x00FF puts every 16-bit lane in [0,255], so the UNSIGNED-\n\
+        \ * saturating _mm_packus_epi16 cannot actually saturate and behaves as a\n\
+        \ * pure truncation -- which is what preserves the intended bit pattern\n\
+        \ * for negative results.  All sixteen lanes stay in registers. */\n\
+        \static inline __m128i gib_vec_mul_int8x16(__m128i a, __m128i b) {\n\
+        \  __m128i z = _mm_setzero_si128();\n\
+        \  __m128i lo = _mm_mullo_epi16(_mm_unpacklo_epi8(a, z), _mm_unpacklo_epi8(b, z));\n\
+        \  __m128i hi = _mm_mullo_epi16(_mm_unpackhi_epi8(a, z), _mm_unpackhi_epi8(b, z));\n\
+        \  __m128i m = _mm_set1_epi16(0x00FF);\n\
+        \  return _mm_packus_epi16(_mm_and_si128(lo, m), _mm_and_si128(hi, m));\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_eq_int8x16(__m128i a, __m128i b) {\n\
+        \  return _mm_cmpeq_epi8(a, b);\n\
+        \}\n\
+        \\n\
+        \/* Ordered SIGNED comparisons for Int8 x 16.  `_mm_cmpgt_epi8` is the only packed\n\
+        \ * signed compare SSE2 offers at this width, so:\n\
+        \ *   a <  b  ==  b >  a          (operands swapped)\n\
+        \ *   a <= b  ==  NOT (a > b)\n\
+        \ *   a >= b  ==  NOT (b > a)\n\
+        \ * The complement is an XOR against an all-ones vector, which turns a\n\
+        \ * lane of 0x00.. into 0xFF.. and vice versa -- so the result is still\n\
+        \ * a valid all-zero/all-one lane mask that `select` can consume.\n\
+        \ * All-ones is produced by comparing a register with ITSELF, which is\n\
+        \ * true in every lane; that needs no constant load and no SSE4.1. */\n\
+        \static inline __m128i gib_vec_gt_int8x16(__m128i a, __m128i b) {\n\
+        \  return _mm_cmpgt_epi8(a, b);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_lt_int8x16(__m128i a, __m128i b) {\n\
+        \  return _mm_cmpgt_epi8(b, a);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_ge_int8x16(__m128i a, __m128i b) {\n\
+        \  __m128i ones = _mm_cmpeq_epi8(a, a);\n\
+        \  return _mm_xor_si128(_mm_cmpgt_epi8(b, a), ones);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_le_int8x16(__m128i a, __m128i b) {\n\
+        \  __m128i ones = _mm_cmpeq_epi8(a, a);\n\
+        \  return _mm_xor_si128(_mm_cmpgt_epi8(a, b), ones);\n\
+        \}\n\
+        \\n\
+        \static inline __m128i gib_vec_select_int8x16(__m128i mask, __m128i thenv, __m128i elsev) {\n\
+        \  return _mm_or_si128(_mm_and_si128(mask, thenv), _mm_andnot_si128(mask, elsev));\n\
+        \}\n\
+        \\n\
+        \static inline void gib_vec_store_int8x16(GibCursor *ref, __m128i v) {\n\
         \  _mm_storeu_si128((__m128i *) (*ref), v);\n\
         \}\n\
         \\n\
@@ -641,6 +891,364 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         \\n\
         \static inline void gib_vec_store_float32x4(GibCursor *ref, __m128 v) {\n\
         \  _mm_storeu_ps((float *) (*ref), v);\n\
+        \}\n\
+        \\n\
+        \/* ---------------- 256-bit (AVX2) SIMD helpers ----------------------\n\
+        \ *\n\
+        \ * Written with GCC/Clang vector extensions rather than _mm256_*\n\
+        \ * intrinsics, deliberately.  Several AVX2 integer intrinsics that look\n\
+        \ * like the SSE2 ones they are named after operate INDEPENDENTLY WITHIN\n\
+        \ * EACH 128-BIT HALF -- _mm256_unpacklo_epi8, _mm256_packus_epi16,\n\
+        \ * _mm256_srli_si256 among them -- so porting the 128-bit helpers by\n\
+        \ * mechanical name substitution produces code that compiles, runs, and is\n\
+        \ * silently wrong in the upper lanes.  Vector extensions are elementwise\n\
+        \ * by definition, so that whole class of error cannot occur.\n\
+        \ *\n\
+        \ * They also degrade safely: `vector_size(32)` is valid with or without\n\
+        \ * -mavx2.  With it the compiler uses one ymm register; without it, two\n\
+        \ * xmm registers.  So a machine without AVX2 still compiles and runs\n\
+        \ * correctly, just no faster -- rather than failing to build.\n\
+        \ *\n\
+        \ * Arithmetic goes through the UNSIGNED element type.  Signed overflow is\n\
+        \ * undefined in C, including elementwise on a vector, whereas the SSE2\n\
+        \ * intrinsics these replace wrap by hardware definition.  The low bits of\n\
+        \ * an unsigned and a signed product agree -- both are arithmetic in\n\
+        \ * Z/2^k -- so routing through the unsigned type reproduces the packed\n\
+        \ * instruction's wrapping semantics exactly, with no undefined behaviour\n\
+        \ * for the optimizer to exploit. */\n\
+        \typedef int8_t gib_v32i8 __attribute__((vector_size(32)));\n\
+        \typedef uint8_t gib_v32u8 __attribute__((vector_size(32)));\n\
+        \typedef int16_t gib_v16i16 __attribute__((vector_size(32)));\n\
+        \typedef uint16_t gib_v16u16 __attribute__((vector_size(32)));\n\
+        \typedef int32_t gib_v8i32 __attribute__((vector_size(32)));\n\
+        \typedef uint32_t gib_v8u32 __attribute__((vector_size(32)));\n\
+        \typedef int64_t gib_v4i64 __attribute__((vector_size(32)));\n\
+        \typedef uint64_t gib_v4u64 __attribute__((vector_size(32)));\n\
+        \typedef float gib_v8f32 __attribute__((vector_size(32)));\n\
+        \\n\
+        \/* --- int8x32 --- */\n\
+        \static inline gib_v32i8 gib_vec_broadcast_int8x32(GibInt8 x) {\n\
+        \  return (gib_v32i8){ (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x };\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_load_int8x32(GibCursor *ref) {\n\
+        \  gib_v32i8 v;\n\
+        \  memcpy(&v, *ref, sizeof(v));   /* unaligned: a packed field buffer promises nothing */\n\
+        \  return v;\n\
+        \}\n\
+        \\n\
+        \static inline void gib_vec_store_int8x32(GibCursor *ref, gib_v32i8 v) {\n\
+        \  memcpy(*ref, &v, sizeof(v));\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_add_int8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)((gib_v32u8) a + (gib_v32u8) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_sub_int8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)((gib_v32u8) a - (gib_v32u8) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_mul_int8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)((gib_v32u8) a * (gib_v32u8) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_eq_int8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)(a == b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_lt_int8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)(a < b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_gt_int8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)(a > b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_le_int8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)(a <= b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_ge_int8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)(a >= b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_select_int8x32(gib_v32i8 mask, gib_v32i8 thenv, gib_v32i8 elsev) {\n\
+        \  return (mask & thenv) | (~mask & elsev);\n\
+        \}\n\
+        \\n\
+        \/* --- int16x16 --- */\n\
+        \static inline gib_v16i16 gib_vec_broadcast_int16x16(GibInt16 x) {\n\
+        \  return (gib_v16i16){ (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x, (int16_t) x };\n\
+        \}\n\
+        \\n\
+        \static inline gib_v16i16 gib_vec_load_int16x16(GibCursor *ref) {\n\
+        \  gib_v16i16 v;\n\
+        \  memcpy(&v, *ref, sizeof(v));   /* unaligned: a packed field buffer promises nothing */\n\
+        \  return v;\n\
+        \}\n\
+        \\n\
+        \static inline void gib_vec_store_int16x16(GibCursor *ref, gib_v16i16 v) {\n\
+        \  memcpy(*ref, &v, sizeof(v));\n\
+        \}\n\
+        \\n\
+        \static inline gib_v16i16 gib_vec_add_int16x16(gib_v16i16 a, gib_v16i16 b) {\n\
+        \  return (gib_v16i16)((gib_v16u16) a + (gib_v16u16) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v16i16 gib_vec_sub_int16x16(gib_v16i16 a, gib_v16i16 b) {\n\
+        \  return (gib_v16i16)((gib_v16u16) a - (gib_v16u16) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v16i16 gib_vec_mul_int16x16(gib_v16i16 a, gib_v16i16 b) {\n\
+        \  return (gib_v16i16)((gib_v16u16) a * (gib_v16u16) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v16i16 gib_vec_eq_int16x16(gib_v16i16 a, gib_v16i16 b) {\n\
+        \  return (gib_v16i16)(a == b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v16i16 gib_vec_lt_int16x16(gib_v16i16 a, gib_v16i16 b) {\n\
+        \  return (gib_v16i16)(a < b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v16i16 gib_vec_gt_int16x16(gib_v16i16 a, gib_v16i16 b) {\n\
+        \  return (gib_v16i16)(a > b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v16i16 gib_vec_le_int16x16(gib_v16i16 a, gib_v16i16 b) {\n\
+        \  return (gib_v16i16)(a <= b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v16i16 gib_vec_ge_int16x16(gib_v16i16 a, gib_v16i16 b) {\n\
+        \  return (gib_v16i16)(a >= b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v16i16 gib_vec_select_int16x16(gib_v16i16 mask, gib_v16i16 thenv, gib_v16i16 elsev) {\n\
+        \  return (mask & thenv) | (~mask & elsev);\n\
+        \}\n\
+        \\n\
+        \/* --- int32x8 --- */\n\
+        \static inline gib_v8i32 gib_vec_broadcast_int32x8(GibInt32 x) {\n\
+        \  return (gib_v8i32){ (int32_t) x, (int32_t) x, (int32_t) x, (int32_t) x, (int32_t) x, (int32_t) x, (int32_t) x, (int32_t) x };\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8i32 gib_vec_load_int32x8(GibCursor *ref) {\n\
+        \  gib_v8i32 v;\n\
+        \  memcpy(&v, *ref, sizeof(v));   /* unaligned: a packed field buffer promises nothing */\n\
+        \  return v;\n\
+        \}\n\
+        \\n\
+        \static inline void gib_vec_store_int32x8(GibCursor *ref, gib_v8i32 v) {\n\
+        \  memcpy(*ref, &v, sizeof(v));\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8i32 gib_vec_add_int32x8(gib_v8i32 a, gib_v8i32 b) {\n\
+        \  return (gib_v8i32)((gib_v8u32) a + (gib_v8u32) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8i32 gib_vec_sub_int32x8(gib_v8i32 a, gib_v8i32 b) {\n\
+        \  return (gib_v8i32)((gib_v8u32) a - (gib_v8u32) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8i32 gib_vec_mul_int32x8(gib_v8i32 a, gib_v8i32 b) {\n\
+        \  return (gib_v8i32)((gib_v8u32) a * (gib_v8u32) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8i32 gib_vec_eq_int32x8(gib_v8i32 a, gib_v8i32 b) {\n\
+        \  return (gib_v8i32)(a == b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8i32 gib_vec_lt_int32x8(gib_v8i32 a, gib_v8i32 b) {\n\
+        \  return (gib_v8i32)(a < b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8i32 gib_vec_gt_int32x8(gib_v8i32 a, gib_v8i32 b) {\n\
+        \  return (gib_v8i32)(a > b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8i32 gib_vec_le_int32x8(gib_v8i32 a, gib_v8i32 b) {\n\
+        \  return (gib_v8i32)(a <= b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8i32 gib_vec_ge_int32x8(gib_v8i32 a, gib_v8i32 b) {\n\
+        \  return (gib_v8i32)(a >= b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8i32 gib_vec_select_int32x8(gib_v8i32 mask, gib_v8i32 thenv, gib_v8i32 elsev) {\n\
+        \  return (mask & thenv) | (~mask & elsev);\n\
+        \}\n\
+        \\n\
+        \/* --- int64x4 --- */\n\
+        \static inline gib_v4i64 gib_vec_broadcast_int64x4(GibInt x) {\n\
+        \  return (gib_v4i64){ (int64_t) x, (int64_t) x, (int64_t) x, (int64_t) x };\n\
+        \}\n\
+        \\n\
+        \static inline gib_v4i64 gib_vec_load_int64x4(GibCursor *ref) {\n\
+        \  gib_v4i64 v;\n\
+        \  memcpy(&v, *ref, sizeof(v));   /* unaligned: a packed field buffer promises nothing */\n\
+        \  return v;\n\
+        \}\n\
+        \\n\
+        \static inline void gib_vec_store_int64x4(GibCursor *ref, gib_v4i64 v) {\n\
+        \  memcpy(*ref, &v, sizeof(v));\n\
+        \}\n\
+        \\n\
+        \static inline gib_v4i64 gib_vec_add_int64x4(gib_v4i64 a, gib_v4i64 b) {\n\
+        \  return (gib_v4i64)((gib_v4u64) a + (gib_v4u64) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v4i64 gib_vec_sub_int64x4(gib_v4i64 a, gib_v4i64 b) {\n\
+        \  return (gib_v4i64)((gib_v4u64) a - (gib_v4u64) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v4i64 gib_vec_mul_int64x4(gib_v4i64 a, gib_v4i64 b) {\n\
+        \  return (gib_v4i64)((gib_v4u64) a * (gib_v4u64) b);\n\
+        \}\n\
+        \\n\
+        \/* Lane by lane through the SAME deterministic scalar helper the scalar\n\
+        \ * path uses, so a vectorized loop and its own scalar tail cannot disagree:\n\
+        \ * bare signed / and %% are undefined on overflow and raise SIGFPE for\n\
+        \ * INT64_MIN / -1 and for a zero divisor. */\n\
+        \static inline gib_v4i64 gib_vec_div_int64x4(gib_v4i64 a, gib_v4i64 b) {\n\
+        \  gib_v4i64 r;\n\
+        \  r[0] = gib_div_i64(a[0], b[0]);\n\
+        \  r[1] = gib_div_i64(a[1], b[1]);\n\
+        \  r[2] = gib_div_i64(a[2], b[2]);\n\
+        \  r[3] = gib_div_i64(a[3], b[3]);\n\
+        \  return r;\n\
+        \}\n\
+        \\n\
+        \/* Lane by lane through the SAME deterministic scalar helper the scalar\n\
+        \ * path uses, so a vectorized loop and its own scalar tail cannot disagree:\n\
+        \ * bare signed / and %% are undefined on overflow and raise SIGFPE for\n\
+        \ * INT64_MIN / -1 and for a zero divisor. */\n\
+        \static inline gib_v4i64 gib_vec_mod_int64x4(gib_v4i64 a, gib_v4i64 b) {\n\
+        \  gib_v4i64 r;\n\
+        \  r[0] = gib_mod_i64(a[0], b[0]);\n\
+        \  r[1] = gib_mod_i64(a[1], b[1]);\n\
+        \  r[2] = gib_mod_i64(a[2], b[2]);\n\
+        \  r[3] = gib_mod_i64(a[3], b[3]);\n\
+        \  return r;\n\
+        \}\n\
+        \\n\
+        \static inline gib_v4i64 gib_vec_eq_int64x4(gib_v4i64 a, gib_v4i64 b) {\n\
+        \  return (gib_v4i64)(a == b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v4i64 gib_vec_select_int64x4(gib_v4i64 mask, gib_v4i64 thenv, gib_v4i64 elsev) {\n\
+        \  return (mask & thenv) | (~mask & elsev);\n\
+        \}\n\
+        \\n\
+        \/* --- sym64x4 --- */\n\
+        \static inline gib_v4i64 gib_vec_broadcast_sym64x4(GibSym x) {\n\
+        \  return (gib_v4i64){ (int64_t) x, (int64_t) x, (int64_t) x, (int64_t) x };\n\
+        \}\n\
+        \\n\
+        \static inline gib_v4i64 gib_vec_load_sym64x4(GibCursor *ref) {\n\
+        \  gib_v4i64 v;\n\
+        \  memcpy(&v, *ref, sizeof(v));   /* unaligned: a packed field buffer promises nothing */\n\
+        \  return v;\n\
+        \}\n\
+        \\n\
+        \static inline void gib_vec_store_sym64x4(GibCursor *ref, gib_v4i64 v) {\n\
+        \  memcpy(*ref, &v, sizeof(v));\n\
+        \}\n\
+        \\n\
+        \static inline gib_v4i64 gib_vec_add_sym64x4(gib_v4i64 a, gib_v4i64 b) {\n\
+        \  return (gib_v4i64)((gib_v4u64) a + (gib_v4u64) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v4i64 gib_vec_sub_sym64x4(gib_v4i64 a, gib_v4i64 b) {\n\
+        \  return (gib_v4i64)((gib_v4u64) a - (gib_v4u64) b);\n\
+        \}\n\
+        \\n\
+        \/* --- char8x32 --- */\n\
+        \static inline gib_v32i8 gib_vec_broadcast_char8x32(GibChar x) {\n\
+        \  return (gib_v32i8){ (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x };\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_load_char8x32(GibCursor *ref) {\n\
+        \  gib_v32i8 v;\n\
+        \  memcpy(&v, *ref, sizeof(v));   /* unaligned: a packed field buffer promises nothing */\n\
+        \  return v;\n\
+        \}\n\
+        \\n\
+        \static inline void gib_vec_store_char8x32(GibCursor *ref, gib_v32i8 v) {\n\
+        \  memcpy(*ref, &v, sizeof(v));\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_add_char8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)((gib_v32u8) a + (gib_v32u8) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_sub_char8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)((gib_v32u8) a - (gib_v32u8) b);\n\
+        \}\n\
+        \\n\
+        \/* --- bool8x32 --- */\n\
+        \static inline gib_v32i8 gib_vec_broadcast_bool8x32(GibBool x) {\n\
+        \  return (gib_v32i8){ (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x, (int8_t) x };\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_load_bool8x32(GibCursor *ref) {\n\
+        \  gib_v32i8 v;\n\
+        \  memcpy(&v, *ref, sizeof(v));   /* unaligned: a packed field buffer promises nothing */\n\
+        \  return v;\n\
+        \}\n\
+        \\n\
+        \static inline void gib_vec_store_bool8x32(GibCursor *ref, gib_v32i8 v) {\n\
+        \  memcpy(*ref, &v, sizeof(v));\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_add_bool8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)((gib_v32u8) a + (gib_v32u8) b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v32i8 gib_vec_sub_bool8x32(gib_v32i8 a, gib_v32i8 b) {\n\
+        \  return (gib_v32i8)((gib_v32u8) a - (gib_v32u8) b);\n\
+        \}\n\
+        \\n\
+        \/* --- float32x8 --- */\n\
+        \static inline gib_v8f32 gib_vec_broadcast_float32x8(GibFloat x) {\n\
+        \  return (gib_v8f32){ (float) x, (float) x, (float) x, (float) x, (float) x, (float) x, (float) x, (float) x };\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8f32 gib_vec_load_float32x8(GibCursor *ref) {\n\
+        \  gib_v8f32 v;\n\
+        \  memcpy(&v, *ref, sizeof(v));   /* unaligned: a packed field buffer promises nothing */\n\
+        \  return v;\n\
+        \}\n\
+        \\n\
+        \static inline void gib_vec_store_float32x8(GibCursor *ref, gib_v8f32 v) {\n\
+        \  memcpy(*ref, &v, sizeof(v));\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8f32 gib_vec_add_float32x8(gib_v8f32 a, gib_v8f32 b) {\n\
+        \  return a + b;\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8f32 gib_vec_sub_float32x8(gib_v8f32 a, gib_v8f32 b) {\n\
+        \  return a - b;\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8f32 gib_vec_mul_float32x8(gib_v8f32 a, gib_v8f32 b) {\n\
+        \  return a * b;\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8f32 gib_vec_div_float32x8(gib_v8f32 a, gib_v8f32 b) {\n\
+        \  return a / b;\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8f32 gib_vec_eq_float32x8(gib_v8f32 a, gib_v8f32 b) {\n\
+        \  return (gib_v8f32)(a == b);\n\
+        \}\n\
+        \\n\
+        \static inline gib_v8f32 gib_vec_select_float32x8(gib_v8f32 mask, gib_v8f32 thenv, gib_v8f32 elsev) {\n\
+        \  gib_v8i32 m = (gib_v8i32) mask;\n\
+        \  gib_v8i32 t = (gib_v8i32) thenv;\n\
+        \  gib_v8i32 e = (gib_v8i32) elsev;\n\
+        \  return (gib_v8f32)((m & t) | (~m & e));\n\
         \}\n\
         \\n\
         \#ifdef _WIN64\n\
@@ -852,11 +1460,29 @@ rewriteReturns tl bnds =
 -- dummyLoc :: SrcLoc
 -- dummyLoc = (SrcLoc (Loc (Pos "" 0 0 0) (Pos "" 0 0 0)))
 
+-- | Emit an integer literal at the given width.
+--
+-- The minimum value of a signed width (e.g. Int64's -9223372036854775808)
+-- cannot be written as a positive magnitude followed by unary minus in C: the
+-- positive magnitude does not fit the signed type (it is exactly one past the
+-- max).  Emitting it that way is undefined/ill-typed at the boundary.  The
+-- standards-safe fix is the <stdint.h> INTn_MIN macro, which every
+-- implementation defines correctly for its own representation.
+codegenIntLit :: L2.IntWidth -> Integer -> C.Exp
+codegenIntLit w n
+  | n == fst (L2.intWidthRange w) = C.Var (C.Id (minMacro w) noLoc) noLoc
+  | otherwise = C.Const (C.IntConst (show n) C.Signed (fromIntegral n) noLoc) noLoc
+  where
+    minMacro L2.W8  = "INT8_MIN"
+    minMacro L2.W16 = "INT16_MIN"
+    minMacro L2.W32 = "INT32_MIN"
+    minMacro L2.W64 = "INT64_MIN"
+
 codegenTriv :: VEnv -> Triv -> C.Exp
 codegenTriv _ (SizeOf ty) = [cexp| sizeof($ty:(codegenTy ty)) |]
 codegenTriv _ (UninitTriv{}) = [cexp|  (void)0  |] -- noop
 codegenTriv _ (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
-codegenTriv _ (IntTriv i) = [cexp| $int:i |]
+codegenTriv _ (IntTriv w i) = codegenIntLit w (fromIntegral i)
 codegenTriv _ (CharTriv i) = [cexp| $char:i |]
 codegenTriv _ (FloatTriv i) = [cexp| $double:i |]
 codegenTriv _ (BoolTriv b) = case b of
@@ -1026,10 +1652,10 @@ codegenTail venv mutEndEnv fenv sort_fns (LetAvailT vs body) ty sync_deps =
        pure $ (map snd avail) ++ tl
 
 codegenTail venv mutEndEnv fenv sort_fns (ForLoopT idx bound loopBody body) ty sync_deps =
-    do let venv' = M.insert idx IntTy venv
+    do let venv' = M.insert idx (IntTy L2.W64) venv
        loop' <- codegenTail venv' mutEndEnv fenv sort_fns loopBody (ProdTy []) sync_deps
        body' <- codegenTail venv mutEndEnv fenv sort_fns body ty sync_deps
-       let idx_ty = codegenTy IntTy
+       let idx_ty = codegenTy (IntTy L2.W64)
            bound' = codegenTriv venv bound
        pure $
          [ C.BlockStm [cstm| for ($ty:idx_ty $id:idx = 0; $id:idx < $exp:bound'; $id:idx++) { $items:loop' } |] ]
@@ -1089,12 +1715,10 @@ codegenTail venv mutEndEnv fenv sort_fns (LetTimedT flg bnds rhs body) ty sync_d
                    | (vr0,ty0) <- bnds ]
        let rhs' = rewriteReturns rhs bnds
        rhs'' <- codegenTail venv mutEndEnv fenv sort_fns rhs' ty sync_deps
-       dflags <- getDynFlags
        -- `gib_get_iters_param` / `gib_get_size_param` both return `GibInt`,
-       -- which is `int32_t` under `--int32` and `int64_t` otherwise.  Pick the
-       -- matching conversion specifier, exactly like the `PrintInt` primitive
-       -- below does.
-       let printFmt = if gopt Opt_Int32 dflags then "%d" else "%ld"
+       -- which has one stable meaning (int64_t) -- compiler-internal
+       -- infrastructure, not program data, so it is never narrower.
+       let printFmt = "%ld"
            itersFmt = "ITERS: " ++ printFmt ++ "\n"
            sizeFmt  = "SIZE: " ++ printFmt ++ "\n"
        itertime  <- gensym "itertime"
@@ -1157,14 +1781,21 @@ codegenTail venv mutEndEnv fenv sort_fns (LetTimedT flg bnds rhs body) ty sync_d
                                        [ C.BlockStm [cstm| if ( $id:iters != gib_get_iters_param()-1) {
                                                          gib_list_bumpalloc_save_state();
                                                          gib_ptr_bumpalloc_save_state();
+                                                         gib_region_chunk_save_state();
                                                          } |]
                                        , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, & $id:begn );  |]
                                        ] ++
                                        rhs'' ++
                                        [ C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid (toVar end))); |]
+                                       -- NB: this block is AFTER clock_gettime(end), so the
+                                       -- region reclaim below costs no measured time.  It must
+                                       -- also stay a BULK free at iteration end: freeing chunks
+                                       -- one at a time as they are re-grown leaves their pages
+                                       -- resident and silently makes iterations 2..n warm.
                                        , C.BlockStm [cstm| if ( $id:iters != gib_get_iters_param()-1) {
                                                          gib_list_bumpalloc_restore_state();
                                                          gib_ptr_bumpalloc_restore_state();
+                                                         gib_region_chunk_restore_state();
                                                          } |]
                                        , C.BlockDecl [cdecl| double $id:itertime = gib_difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end))); |]
                                        , C.BlockStm [cstm| gib_vector_inplace_update($id:times, $id:iters, &($id:itertime)); |]
@@ -1276,8 +1907,16 @@ codegenTail venv mutEndEnv fenv sort_fns (LetTimedT flg bnds rhs body) ty sync_d
                             , C.BlockStm [cstm| printf("BATCHTIME: %e\n", $id:batchtime); |]
                             , C.BlockStm [cstm| printf("SELFTIMED: %e\n", $id:selftimed); |]
                             ]
-                       else [ C.BlockStm [cstm| printf($string:sizeFmt, gib_get_size_param()); |]
-                            , C.BlockStm [cstm| printf("SELFTIMED: %e\n", gib_difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end)))); |] ])
+                       -- A non-iterated timed expression emits
+                       -- SELFTIMED: and nothing else.  `ITERS:`/`SIZE:` are the
+                       -- iterated form's deterministic configuration echo; the
+                       -- C backend used to print `SIZE:` here as well, which no
+                       -- other implementation does (Gibbon.L1/L2/L4.Interp and
+                       -- the Racket `time` macro in gibbon/main.rkt all emit
+                       -- SELFTIMED: alone).  That made the answer files for
+                       -- every non-iterated `(time ..)` example unmatchable
+                       -- once the harness stopped discarding timing diffs.
+                       else [ C.BlockStm [cstm| printf("SELFTIMED: %e\n", gib_difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end)))); |] ])
        let venv' = (M.fromList bnds) `M.union` venv
        tal <- codegenTail venv' mutEndEnv fenv sort_fns body ty sync_deps
        return $ decls ++ withPrnt ++ tal
@@ -1406,39 +2045,62 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                  ParSync -> codegenTail venv' mutEndEnv' fenv sort_fns body ty []
                  _       -> codegenTail venv' mutEndEnv' fenv sort_fns body ty sync_deps
        dflags <- getDynFlags
+       arithMode <- cArithMode <$> getGibbonConfig
        let isPacked = gopt Opt_Packed dflags
            noGC = gopt Opt_DisableGC dflags
            genGC = gopt Opt_GenGc dflags
 
        pre <- case prm of
-                 AddP -> let [(outV,outT)] = bnds
-                             [pleft,pright] = rnds in pure
-                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv venv pleft) + $(codegenTriv venv pright); |] ]
+                 -- Integer arithmetic is width-annotated ('AddP w' etc) and
+                 -- that width now decides the emission: each one becomes a
+                 -- call to the deterministic RTS helper for its own width.
+                 -- C's native signed operators are NOT usable here -- see
+                 -- 'codegenIntArith'.  The float variants (FAddP etc) are
+                 -- separate L4 constructors and keep the native operator,
+                 -- which is correct: IEEE arithmetic is not modular and float
+                 -- overflow is not undefined.
+                 AddP w -> let [(outV,outT)] = bnds
+                               [pleft,pright] = rnds
+                           in pure (codegenIntArith arithMode venv "add" w (outV,outT) pleft pright)
+                 FAddP -> let [(outV,outT)] = bnds
+                              [pleft,pright] = rnds in pure
+                          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv venv pleft) + $(codegenTriv venv pright); |] ]
                  BumpCursorMutable -> let [(_outV,_outT)] = bnds
                                           [pleft,pright] = rnds in pure
                                       [C.BlockStm [cstm| *($(codegenTriv venv pleft)) += $(codegenTriv venv pright); |]] 
-                 SubP -> let (outV,outT) = Sf.headErr bnds
-                             [pleft,pright] = rnds
-                             ptrExp trv =
-                               case trv of
-                                 VarTriv v | M.lookup v venv == Just MutCursorTy ->
-                                   [cexp| *$id:v |]
-                                 _ ->
-                                   codegenTriv venv trv
-                         in pure
-                              [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $exp:(ptrExp pleft) - $exp:(ptrExp pright); |] ]
-                 MulP -> let [(outV,outT)] = bnds
-                             [pleft,pright] = rnds in pure
-                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv venv pleft) * $(codegenTriv venv pright); |]]
-                 DivP -> let [(outV,outT)] = bnds
-                             [pleft,pright] = rnds in pure
-                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv venv pleft) / $(codegenTriv venv pright); |]]
-                 ModP -> let [(outV,outT)] = bnds
-                             [pleft,pright] = rnds in pure
-                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv venv pleft) % $(codegenTriv venv pright); |]]
-                 ExpP -> let [(outV,outT)] = bnds
-                             [pleft,pright] = rnds in pure
-                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = gib_expll($(codegenTriv venv pleft), $(codegenTriv venv pright)); |]]
+                 SubP w -> let (outV,outT) = Sf.headErr bnds
+                               [pleft,pright] = rnds
+                           in pure (codegenIntArith arithMode venv "sub" w (outV,outT) pleft pright)
+                 FSubP -> let (outV,outT) = Sf.headErr bnds
+                              [pleft,pright] = rnds
+                          in pure
+                               [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv venv pleft) - $(codegenTriv venv pright); |] ]
+                 MulP w -> let [(outV,outT)] = bnds
+                               [pleft,pright] = rnds
+                           in pure (codegenIntArith arithMode venv "mul" w (outV,outT) pleft pright)
+                 FMulP -> let [(outV,outT)] = bnds
+                              [pleft,pright] = rnds in pure
+                          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv venv pleft) * $(codegenTriv venv pright); |]]
+                 DivP w -> let [(outV,outT)] = bnds
+                               [pleft,pright] = rnds
+                           in pure (codegenIntArith arithMode venv "div" w (outV,outT) pleft pright)
+                 FDivP -> let [(outV,outT)] = bnds
+                              [pleft,pright] = rnds in pure
+                          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv venv pleft) / $(codegenTriv venv pright); |]]
+                 ModP w -> let [(outV,outT)] = bnds
+                               [pleft,pright] = rnds
+                           in pure (codegenIntArith arithMode venv "mod" w (outV,outT) pleft pright)
+                 ExpP w -> let [(outV,outT)] = bnds
+                               [pleft,pright] = rnds
+                           in pure (codegenIntArith arithMode venv "exp" w (outV,outT) pleft pright)
+                 -- Float exponentiation used to call 'gib_expll', an INTEGER
+                 -- helper taking two int64_t: the operands were converted away
+                 -- and the answer was an integer power.  'powf' is the float
+                 -- one.  (Discovered while auditing 'gib_expll' for the
+                 -- integer semantics work; it is the only remaining caller.)
+                 FExpP -> let [(outV,outT)] = bnds
+                              [pleft,pright] = rnds in pure
+                          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = powf($(codegenTriv venv pleft), $(codegenTriv venv pright)); |]]
                  RandP -> let [(outV,outT)] = bnds in pure
                           [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = rand(); |]]
                  FRandP-> let [(outV,outT)] = bnds
@@ -1454,29 +2116,81 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
 
                  FloatToIntP -> let [(outV,outT)] = bnds
                                     [arg] = rnds
-                                    ity= codegenTy IntTy in pure
+                                    -- FloatToIntP's result width is fixed at
+                                    -- W64 until narrower conversions are
+                                    -- implemented.
+                                    ity= codegenTy (IntTy L2.W64) in pure
                                 [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($ty:ity) ($(codegenTriv venv arg)) ; |]]
 
-                 IntToFloatP -> let [(outV,outT)] = bnds
-                                    [arg] = rnds
-                                    fty = codegenTy FloatTy in pure
-                                [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($ty:fty) ($(codegenTriv venv arg)) ; |]]
+                 -- The source width is carried for self-description and is
+                 -- validated here; C's ordinary numeric conversion from any
+                 -- signed integer type to float is already exact-per-standard,
+                 -- so no helper is needed.
+                 IntToFloatP srcw -> let [(outV,outT)] = bnds
+                                         [arg] = rnds
+                                         fty = codegenTy FloatTy in
+                                     if outT /= FloatTy
+                                     then error $ "codegen: IntToFloatP must bind a FloatTy result, got " ++ show outT
+                                     else srcw `seq` pure
+                                     [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($ty:fty) ($(codegenTriv venv arg)) ; |]]
 
-                 EqP -> let [(outV,outT)] = bnds
-                            [pleft,pright] = rnds in pure
-                        [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) == $(codegenTriv venv pright)); |]]
-                 LtP -> let [(outV,outT)] = bnds
-                            [pleft,pright] = rnds in pure
-                        [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) < $(codegenTriv venv pright)); |]]
-                 GtP -> let [(outV,outT)] = bnds
-                            [pleft,pright] = rnds in pure
-                        [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) > $(codegenTriv venv pright)); |]]
-                 LtEqP -> let [(outV,outT)] = bnds
+                 -- Explicit integer-width conversion.  The operand is widened
+                 -- to GibInt64 (always value-preserving: every source width is
+                 -- <= 64 bits and signed), then reduced by the RTS helper
+                 -- chosen from the DESTINATION width.  The result is bound at
+                 -- codegenTy (IntTy dst) -- taken from the bound variable's own
+                 -- type, which Lower set from the primitive -- never GibInt.
+                 IntConvertP srcw dstw ->
+                   let [(outV,outT)] = bnds
+                       [arg] = rnds
+                       srcTy = codegenTy (IntTy srcw)
+                       helper :: String
+                       helper = case dstw of
+                                  L2.W8  -> "gib_int_to_int8"
+                                  L2.W16 -> "gib_int_to_int16"
+                                  L2.W32 -> "gib_int_to_int32"
+                                  L2.W64 -> "gib_int_to_int64"
+                       wide = codegenTy (IntTy L2.W64)
+                   in if outT /= IntTy dstw
+                      then error $ "codegen: IntConvertP destination width " ++ show dstw
+                                   ++ " disagrees with the bound result type " ++ show outT
+                      else pure
+                        [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV =
+                            $id:helper ( ($ty:wide) (($ty:srcTy) $(codegenTriv venv arg)) ); |]]
+
+                 EqP{} -> let [(outV,outT)] = bnds
                               [pleft,pright] = rnds in pure
-                          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) <= $(codegenTriv venv pright)); |]]
-                 GtEqP -> let [(outV,outT)] = bnds
+                          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) == $(codegenTriv venv pright)); |]]
+                 FEqP -> let [(outV,outT)] = bnds
+                             [pleft,pright] = rnds in pure
+                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) == $(codegenTriv venv pright)); |]]
+                 CEqP -> let [(outV,outT)] = bnds
+                             [pleft,pright] = rnds in pure
+                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) == $(codegenTriv venv pright)); |]]
+                 LtP{} -> let [(outV,outT)] = bnds
                               [pleft,pright] = rnds in pure
-                          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) >= $(codegenTriv venv pright)); |]]
+                          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) < $(codegenTriv venv pright)); |]]
+                 FLtP -> let [(outV,outT)] = bnds
+                             [pleft,pright] = rnds in pure
+                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) < $(codegenTriv venv pright)); |]]
+                 GtP{} -> let [(outV,outT)] = bnds
+                              [pleft,pright] = rnds in pure
+                          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) > $(codegenTriv venv pright)); |]]
+                 FGtP -> let [(outV,outT)] = bnds
+                             [pleft,pright] = rnds in pure
+                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) > $(codegenTriv venv pright)); |]]
+                 LtEqP{} -> let [(outV,outT)] = bnds
+                                [pleft,pright] = rnds in pure
+                            [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) <= $(codegenTriv venv pright)); |]]
+                 FLtEqP -> let [(outV,outT)] = bnds
+                               [pleft,pright] = rnds in pure
+                           [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) <= $(codegenTriv venv pright)); |]]
+                 GtEqP{} -> let [(outV,outT)] = bnds
+                                [pleft,pright] = rnds in pure
+                            [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) >= $(codegenTriv venv pright)); |]]
+                 FGtEqP -> let [(outV,outT)] = bnds
+                               [pleft,pright] = rnds in pure
+                           [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) >= $(codegenTriv venv pright)); |]]
                  OrP -> let [(outV,outT)] = bnds
                             [pleft,pright] = rnds in pure
                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv venv pleft) || $(codegenTriv venv pright)); |]]
@@ -1629,22 +2343,60 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                      error $ "ScalarCountFooterBegin expected no bindings/args: " ++ show (bnds, rnds)
                    pure [ C.BlockStm [cstm| gib_scalar_count_footer_begin(); |] ]
 
-                 ScalarCountBump -> do
+                 ScalarCountBump slots -> do
                    when (not (null bnds)) $
                      error $ "ScalarCountBump expected no bindings: " ++ show (bnds, rnds)
-                   let footer_arg footer =
+                   when (length slots /= length rnds) $
+                     error $ "ScalarCountBump: " ++ show (length slots) ++
+                             " slots for " ++ show (length rnds) ++ " footers"
+                   dflags <- getDynFlags
+                   let diff = gopt Opt_ScalarCountDiff dflags
+                       deferred = diff || gopt Opt_DeferScalarCounts dflags
+                       footer_arg footer =
                          case footer of
                            VarTriv v ->
                              case M.lookup v mutEndEnv of
                                Just endVar -> [cexp| $id:endVar |]
                                Nothing -> codegenTriv venv footer
                            _ -> codegenTriv venv footer
+                       -- One increment per element; the batched total is
+                       -- delivered by gib_scalar_count_bind / _on_grow /
+                       -- _finalize.
+                       bumpStm footer =
+                         let footer_arg' = footer_arg footer
+                         in C.BlockStm [cstm| gib_scalar_count_footer_bump($exp:footer_arg'); |]
+                       pendStm slot =
+                         C.BlockStm [cstm| gib_scalar_count_pending[$int:slot]++; |]
+                   -- A slot of -1 is AssignScalarCountSlots' noCountSlot: that
+                   -- buffer could not be bracketed and stays on the per-element
+                   -- bump.  Emitting `pending[-1]++` for it would be a lost
+                   -- count and an out-of-bounds store.
+                   let paired = zip slots rnds
+                       deferredStms =
+                         [ pendStm slot | (slot, _) <- paired, slot >= 0 ]
+                       bumpFallbackStms =
+                         [ bumpStm footer | (slot, footer) <- paired, slot < 0 ]
                    pure $
-                     L.map
-                       (\footer ->
-                           let footer_arg' = footer_arg footer
-                           in C.BlockStm [cstm| gib_scalar_count_footer_bump($exp:footer_arg'); |])
-                       rnds
+                     if deferred
+                     then
+                       -- Differential mode keeps the bump so the footers stay
+                       -- authoritative and each flush verifies rather than
+                       -- applies.
+                       (if diff then L.map bumpStm rnds else bumpFallbackStms)
+                         ++ deferredStms
+                     else L.map bumpStm rnds
+
+                 ScalarCountBind base len -> do
+                   when (not (null bnds) || length rnds /= 1) $
+                     error $ "ScalarCountBind expected no bindings and one arg: " ++ show (bnds, rnds)
+                   let [VarTriv ends] = rnds
+                   pure [ C.BlockStm [cstm| gib_scalar_count_bind($id:ends, $int:base, $int:len); |] ]
+
+                 ScalarCountFinalize base len -> do
+                   when (not (null bnds) || length rnds /= 1) $
+                     error $ "ScalarCountFinalize expected no bindings and one arg: " ++ show (bnds, rnds)
+                   let [VarTriv ends] = rnds
+                   pure [ C.BlockStm [cstm| gib_scalar_count_finalize($id:ends, $int:base, $int:len); |] ]
 
                  ScalarCountSet -> do
                    when (not (null bnds) || length rnds /= 2) $
@@ -1706,8 +2458,8 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                  VecMod s lanes ->
                    codegenVecMod venv bnds s lanes rnds
 
-                 VecEq s lanes ->
-                   codegenVecEq venv bnds s lanes rnds
+                 VecCmp s lanes cmp ->
+                   codegenVecCmp venv bnds s lanes cmp rnds
 
                  VecSelect s lanes ->
                    codegenVecSelect venv bnds s lanes rnds
@@ -1788,7 +2540,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
 
                  ReadTaggedCursor -> do
                                tagged <- gensym "tagged_tmpcur"
-                               let [(next,CursorTy),(afternext,CursorTy),(tag,IntTy)] = bnds
+                               let [(next,CursorTy),(afternext,CursorTy),(tag,IntTy L2.W64)] = bnds
                                    [(VarTriv cur)] = rnds
                                    tagged_t = [cty| typename uintptr_t |]
                                    tag_t = [cty| typename uint16_t |]
@@ -1862,7 +2614,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                    _chunk_end   <- gensym "chunk_end"
                    case mode of 
                      L2.Output -> do
-                        let [(IntTriv i),(VarTriv bound), (VarTriv cur)] = rnds
+                        let [(IntTriv _ i),(VarTriv bound), (VarTriv cur)] = rnds
                             {-
                             bck = [ C.BlockDecl [cdecl| $ty:(codegenTy ChunkTy) $id:new_chunk = gib_grow_region($id:bound); |]
                                   , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:chunk_start = $id:new_chunk.start; |]
@@ -1878,7 +2630,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                             bck = [ C.BlockStm  [cstm|  gib_grow_region(& $id:cur, & $id:bound); |] ]
                         pure [ C.BlockStm [cstm| if (($id:cur + $int:i) > $id:bound) { $items:bck }  |] ]
                      L2.OutputMutable -> do
-                        let [(IntTriv i),(VarTriv bound), (VarTriv cur), (VarTriv mutbounds), (VarTriv mutcur)] = rnds
+                        let [(IntTriv _ i),(VarTriv bound), (VarTriv cur), (VarTriv mutbounds), (VarTriv mutcur)] = rnds
                             {-
                             bck = [ C.BlockDecl [cdecl| $ty:(codegenTy ChunkTy) $id:new_chunk = gib_grow_region($id:bound); |]
                                   , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:chunk_start = $id:new_chunk.start; |]
@@ -1903,7 +2655,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                    --_new_chunk   <- gensym "new_chunk"
                    --_chunk_start <- gensym "chunk_start"
                    --_chunk_end   <- gensym "chunk_end"
-                   ifConds <- mapM (\(ProdTriv [(IntTriv i),(VarTriv bound), (VarTriv cur), _]) -> 
+                   ifConds <- mapM (\(ProdTriv [(IntTriv _ i),(VarTriv bound), (VarTriv cur), _]) -> 
                                            pure [cexp| ($id:cur + $int:i) > $id:bound |]
                                       ) rnds
                    ifBody <- mapM (\(ProdTriv [_, _, _, ProdTriv [(VarTriv b), (VarTriv c)]]) -> do
@@ -1928,14 +2680,14 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                    let ifBody' = (concat ifBody) ++ ifBody_update'
                    pure [ C.BlockStm [cstm| if ($exp:condExpr) { $items:ifBody' } |] ]
 
-                 SizeOfPacked -> let [(sizeV,IntTy)] = bnds
+                 SizeOfPacked -> let [(sizeV,IntTy L2.W64)] = bnds
                                      [(VarTriv startV), (VarTriv endV)] = rnds
                                  in pure
-                                   [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizeV = ($ty:(codegenTy IntTy)) $id:endV - $id:startV; |] ]
-                 SizeOfScalar -> let [(sizeV,IntTy)] = bnds
+                                   [ C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:sizeV = ($ty:(codegenTy (IntTy L2.W64))) $id:endV - $id:startV; |] ]
+                 SizeOfScalar -> let [(sizeV,IntTy L2.W64)] = bnds
                                      [(VarTriv w)]   = rnds
                                  in pure
-                                   [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizeV = ($ty:(codegenTy IntTy)) sizeof($id:w); |] ]
+                                   [ C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:sizeV = ($ty:(codegenTy (IntTy L2.W64))) sizeof($id:w); |] ]
 
                  GetFirstWord ->
                   let [ptr] = rnds in
@@ -1947,12 +2699,30 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                           |] ]
                     _ -> error $ "wrong number of return bindings from GetFirstWord: "++show bnds
 
-                 SizeParam -> let [(outV,IntTy)] = bnds in pure
-                      [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = gib_get_size_param(); |] ]
+                 SizeParam -> let [(outV,IntTy L2.W64)] = bnds in pure
+                      [ C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:outV = gib_get_size_param(); |] ]
 
-                 PrintInt ->
+                 -- Signed, exact-width printing.  Format specifiers are
+                 -- hardcoded per width rather than routed through
+                 -- <inttypes.h>'s PRIdN macros: those macros themselves
+                 -- expand to these exact strings on every platform this RTS
+                 -- targets (LP64 POSIX), and splicing a raw macro NAME through
+                 -- language-c-quote's quasiquoter -- which parses the
+                 -- quasiquote text itself, before the final C compiler's
+                 -- preprocessor ever sees it -- is not reliably well-formed
+                 -- C grammar the way "%" PRIdN string-literal-concatenation
+                 -- is once cpp has already expanded PRIdN.  %hhd/%hd are
+                 -- correct for the promoted-to-int vararg printf actually
+                 -- receives for Int8/Int16: the format specifier describes
+                 -- the INTENDED width, and printf's semantics account for
+                 -- the default argument promotion when interpreting it.
+                 PrintInt w ->
                      let [arg] = rnds
-                         printFmt = if gopt Opt_Int32 dflags then "%d" else "%ld"
+                         printFmt = case w of
+                                      L2.W8  -> "%hhd"
+                                      L2.W16 -> "%hd"
+                                      L2.W32 -> "%d"
+                                      L2.W64 -> "%ld"
                      in case bnds of
                        [(outV,ty)] -> pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = printf($string:printFmt, $(codegenTriv venv arg)); |] ]
                        [] -> pure [ C.BlockStm [cstm| printf($string:printFmt, $(codegenTriv venv arg)); |] ]
@@ -2027,7 +2797,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                                [ C.BlockDecl [cdecl| $ty:tyfile *$id:out_hdl = fopen($string:fp, "wb"); |]
                                -- , _todo
                                -- , _todo
-                               , C.BlockDecl [cdecl| $ty:tysize $id:copy_size = ($ty:(codegenTy IntTy)) ($id:copy_end - $id:copy_start); |]
+                               , C.BlockDecl [cdecl| $ty:tysize $id:copy_size = ($ty:(codegenTy (IntTy L2.W64))) ($id:copy_end - $id:copy_start); |]
                                , C.BlockDecl [cdecl| $ty:tysize $id:wrote = fwrite($id:copy_start, $id:copy_size, 1, $id:out_hdl); |]
                                , C.BlockStm [cstm| fclose($id:out_hdl); |]
                                , C.BlockStm [cstm| printf("Wrote: %s\n", $string:fp); |]
@@ -2053,7 +2823,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                                   , C.BlockStm[cstm| { if(fd == -1) { fprintf(stderr,"fopen failed\n"); abort(); }} |]
                                   , C.BlockDecl[cdecl| struct stat st; |]
                                   , C.BlockStm  [cstm| fstat(fd, &st); |]
-                                  , C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:mmap_size = st.st_size;|]
+                                  , C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:mmap_size = st.st_size;|]
                                   , C.BlockDecl[cdecl| $ty:(codegenTy CursorTy) ptr = ($ty:(codegenTy CursorTy)) mmap(0,st.st_size,PROT_READ,MAP_PRIVATE,fd,0); |]
                                   , C.BlockStm[cstm| { if(ptr==MAP_FAILED) { fprintf(stderr,"mmap failed\n"); abort(); }} |]
                                   ]
@@ -2068,7 +2838,11 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                  ReadArrayFile mfile ty
                    | [] <- rnds, [(outV,_outT)] <- bnds -> do
                            let parse_in_c t = case t of
-                                                IntTy   -> if gopt Opt_Int32 dflags then "%d" else "%ld"
+                                                -- Width-specific array reading is not implemented
+                                                -- (see 'ReadInt'); only W64 arrays are supported.
+                                                IntTy L2.W64 -> "%ld"
+                                                IntTy w -> error $ "ReadArrayFile: reading an array of " ++ show w
+                                                          ++ "-bit integers is not implemented; only Int64 arrays are."
                                                 FloatTy -> "%f"
                                                 CharTy  -> "%c"
                                                 _ -> error $ "ReadArrayFile: Lists of type " ++ sdoc ty ++ " not allowed."
@@ -2082,10 +2856,10 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
 
                            (tmps, tmps_parsers, tmps_assns, tmps_decls) <-
                                  case ty of
-                                     IntTy -> do
+                                     IntTy L2.W64 -> do
                                        one <- gensym "tmp"
                                        let assn = C.BlockStm [cstm| $id:elem = $id:one ; |]
-                                       pure ([one], [parse_in_c ty], [ assn ], [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:one; |] ])
+                                       pure ([one], [parse_in_c ty], [ assn ], [ C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:one; |] ])
                                      FloatTy -> do
                                        one <- gensym "tmp"
                                        let assn = C.BlockStm [cstm| $id:elem = $id:one ; |]
@@ -2128,7 +2902,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                                   , C.BlockStm [cstm| $id:fp = fopen( $filename, "r"); |]
                                   , C.BlockStm [cstm| { if($id:fp == NULL) { fprintf(stderr,"fopen failed\n"); abort(); }} |]
                                   ] ++ tmps_decls ++
-                                  [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:line_num = 0; |]
+                                  [ C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:line_num = 0; |]
                                   , C.BlockStm [cstm| while(($id:read = getline(&($id:line), &($id:len), $id:fp)) != -1) {
                                                       int xxxx = $scanf;
                                                       $items:tmps_assns
@@ -2140,17 +2914,17 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                    | otherwise -> error $ "ReadPackedFile, wrong arguments "++show rnds++", or expected bindings "++show bnds
 
                  MMapFileSize v -> do
-                       let [(outV,IntTy)] = bnds
+                       let [(outV,IntTy L2.W64)] = bnds
                            -- Must match with mmap_size set by ReadPackedFile
                            mmap_size = varAppend v "_size"
-                       return [ C.BlockDecl[cdecl| $ty:(codegenTy IntTy) $id:outV = $id:mmap_size; |] ]
+                       return [ C.BlockDecl[cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:outV = $id:mmap_size; |] ]
 
                  ParSync -> do
                     let e = [cexp| cilk_sync |]
                     return $ [ C.BlockStm [cstm| $exp:e; |] ] ++ (map snd sync_deps)
 
                  GetCilkWorkerNum -> do
-                   let [(outV, IntTy)] = bnds
+                   let [(outV,IntTy L2.W64)] = bnds
                    return $ [ C.BlockDecl [cdecl| int $id:outV = __cilkrts_get_worker_number(); |] ]
 
                  IsBig -> do
@@ -2172,7 +2946,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                        [i] = rnds
                        i' = codegenTriv venv i
                    tmp <- gensym "tmp"
-                   return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:tmp = sizeof( $ty:(codegenTy elty)); |]
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:tmp = sizeof( $ty:(codegenTy elty)); |]
                           , C.BlockDecl [cdecl| $ty:ty1 $id:outV = gib_vector_alloc($exp:i', $id:tmp); |]
                           ]
 
@@ -2196,9 +2970,9 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                           ]
 
                  VLengthP{} -> do
-                   let [(v,IntTy)] = bnds
+                   let [(v,IntTy L2.W64)] = bnds
                        [VarTriv ls] = rnds
-                   return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:v = gib_vector_length($id:ls); |] ]
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:v = gib_vector_length($id:ls); |] ]
 
                  InplaceVUpdateP elty -> do
                    let [(outV,_)] = bnds
@@ -2212,7 +2986,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                         return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_inplace_update($id:old_ls, $exp:i', &$exp:xexp); |] ]
                      IntTriv{} -> do
                         tmp <- gensym "tmp"
-                        return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:tmp = $exp:xexp; |]
+                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:tmp = $exp:xexp; |]
                                , C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_inplace_update($id:old_ls, $exp:i', &$id:tmp); |] ]
                      CharTriv{} -> do
                         tmp <- gensym "tmp"
@@ -2305,7 +3079,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                         return [ C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = gib_list_cons(&$exp:xexp, $id:old_ls); |] ]
                      IntTriv{} -> do
                         tmp <- gensym "tmp"
-                        return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:tmp = $exp:xexp; |]
+                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:tmp = $exp:xexp; |]
                                , C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = gib_list_cons(&$id:tmp, $id:old_ls); |] ]
                      FloatTriv{} -> do
                         tmp <- gensym "tmp"
@@ -2313,7 +3087,7 @@ codegenTail venv mutEndEnv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sy
                                , C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = gib_list_cons(&$id:tmp, $id:old_ls); |] ]
                      SymTriv{} -> do
                         tmp <- gensym "tmp"
-                        return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:tmp = $exp:xexp; |]
+                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (IntTy L2.W64)) $id:tmp = $exp:xexp; |]
                                , C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = gib_list_cons(&$id:tmp, $id:old_ls); |] ]
                      _ -> error $ "codegen: LLConsP: " ++ sdoc x
 
@@ -2535,7 +3309,7 @@ codegenVecBroadcast venv bnds scalar lanes rnds = do
     error $ "VecBroadcast expected one binding and one arg: " ++ show (bnds, rnds)
   let [(outV, outTy)] = bnds
       [val] = rnds
-  fn <- vecHelperNameM "broadcast" scalar lanes
+  fn <- vecHelperNameM L3.VecOpBroadcast scalar lanes
   pure [ C.BlockDecl [cdecl| $ty:(codegenTy outTy) $id:outV = $id:fn($(codegenTriv venv val)); |] ]
 
 codegenVecLoad :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
@@ -2544,31 +3318,32 @@ codegenVecLoad _venv bnds scalar lanes rnds = do
     error $ "VecLoad expected one binding and one arg: " ++ show (bnds, rnds)
   let [(outV, outTy)] = bnds
       [refTriv] = rnds
-  fn <- vecHelperNameM "load" scalar lanes
+  fn <- vecHelperNameM L3.VecOpLoad scalar lanes
   ref <- case refTriv of
            VarTriv v -> pure v
            _ -> error $ "VecLoad expected cursor ref variable: " ++ show refTriv
   pure [ C.BlockDecl [cdecl| $ty:(codegenTy outTy) $id:outV = $id:fn($id:ref); |] ]
 
 codegenVecAdd :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
-codegenVecAdd = codegenVecBin "add" "VecAdd"
+codegenVecAdd = codegenVecBin L3.VecOpAdd "VecAdd"
 
 codegenVecSub :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
-codegenVecSub = codegenVecBin "sub" "VecSub"
+codegenVecSub = codegenVecBin L3.VecOpSub "VecSub"
 
 codegenVecMul :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
-codegenVecMul = codegenVecBin "mul" "VecMul"
+codegenVecMul = codegenVecBin L3.VecOpMul "VecMul"
 
 codegenVecDiv :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
-codegenVecDiv = codegenVecBin "div" "VecDiv"
+codegenVecDiv = codegenVecBin L3.VecOpDiv "VecDiv"
 
 codegenVecMod :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
-codegenVecMod = codegenVecBin "mod" "VecMod"
+codegenVecMod = codegenVecBin L3.VecOpMod "VecMod"
 
-codegenVecEq :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
-codegenVecEq = codegenVecBin "eq" "VecEq"
+codegenVecCmp :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> L3.VecCmpOp -> [Triv] -> PassM [C.BlockItem]
+codegenVecCmp venv bnds scalar lanes cmp =
+  codegenVecBin (L3.vecCmpOp cmp) ("VecCmp " ++ L3.vecCmpName cmp) venv bnds scalar lanes
 
-codegenVecBin :: String -> String -> M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
+codegenVecBin :: L3.VecOp -> String -> M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
 codegenVecBin op label venv bnds scalar lanes rnds = do
   when (length bnds /= 1 || length rnds /= 2) $
     error $ label ++ " expected one binding and two args: " ++ show (bnds, rnds)
@@ -2583,7 +3358,7 @@ codegenVecSelect venv bnds scalar lanes rnds = do
     error $ "VecSelect expected one binding and three args: " ++ show (bnds, rnds)
   let [(outV, outTy)] = bnds
       [mask, thenv, elsev] = rnds
-  fn <- vecHelperNameM "select" scalar lanes
+  fn <- vecHelperNameM L3.VecOpSelect scalar lanes
   pure [ C.BlockDecl [cdecl| $ty:(codegenTy outTy) $id:outV = $id:fn($(codegenTriv venv mask), $(codegenTriv venv thenv), $(codegenTriv venv elsev)); |] ]
 
 codegenVecStore :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
@@ -2591,104 +3366,209 @@ codegenVecStore venv bnds scalar lanes rnds = do
   when (not (null bnds) || length rnds /= 2) $
     error $ "VecStore expected no bindings and two args: " ++ show (bnds, rnds)
   let [refTriv, val] = rnds
-  fn <- vecHelperNameM "store" scalar lanes
+  fn <- vecHelperNameM L3.VecOpStore scalar lanes
   ref <- case refTriv of
            VarTriv v -> pure v
            _ -> error $ "VecStore expected cursor ref variable: " ++ show refTriv
   pure [ C.BlockStm [cstm| $id:fn($id:ref, $(codegenTriv venv val)); |] ]
 
--- | Width in bytes of a single SIMD lane holding @scalar@, under the integer
--- width selected by the current 'DynFlags'.  @IntS@ is the only scalar whose
--- width depends on @--int32@ (@GibInt@ is @int32_t@ there, @int64_t@
--- otherwise); @SymS@ is a @GibSym@ (always 8 bytes) and the rest are fixed.
+-- | Width in bytes of a single SIMD lane holding @scalar@.
+--
+-- Delegates to the ONE shared capability matrix in "Gibbon.L3.Syntax" so the
+-- backend cannot disagree with the vectorizer about lane arithmetic.  A
+-- program's integers carry a real width by the time they reach here; there is
+-- no flag-dependent reinterpretation for this function to special-case.
 simdScalarWidthBytes :: DynFlags -> Scalar -> Int
-simdScalarWidthBytes dflags IntS = if gopt Opt_Int32 dflags then 4 else 8
-simdScalarWidthBytes _ SymS = 8
-simdScalarWidthBytes _ FloatS = 4
-simdScalarWidthBytes _ CharS = 1
-simdScalarWidthBytes _ BoolS = 1
+simdScalarWidthBytes _ = L3.simdScalarBytes
 
 -- | Every SIMD helper this backend emits is an SSE2 op over a 128-bit
--- @__m128i@ / @__m128@ register, and every one of them loads/stores/spills a
--- full register.  So a lowered vector op is only meaningful when its lanes
--- exactly tile 16 bytes at the *active* integer width:
+-- @__m128i@ / @__m128@ register, and every one loads/stores a full register.
+-- So a lowered vector op is meaningful only when its lanes exactly tile 16
+-- bytes:
 --
 -- >  lanes * simdScalarWidthBytes == 16
 --
--- All combinations the vectorizer can currently produce satisfy this:
--- @(IntS,2)@ at 64-bit, @(IntS,4)@ under @--int32@, @(SymS,2)@, @(FloatS,4)@,
--- @(CharS,16)@ and @(BoolS,16)@.  The dangerous one this rules out is
--- @(IntS,2)@ under @--int32@: the @int64x2@ helpers would spill 16 bytes into
--- what the rest of the backend believes is an 8-byte pair of @GibInt@s, and
--- the surrounding cursor bumps would advance by the wrong stride.  Nothing
--- except the *ordering* of the equations in
--- 'Gibbon.Passes.VectorizeTraversals.vectorLanes' keeps that off the 2-lane
--- path today, so assert the invariant here, where lowering happens and
--- 'DynFlags' is available.  Returns 'Nothing' when the combination is sound.
-vecRegisterWidthError :: DynFlags -> String -> Scalar -> Int -> Maybe String
+-- The combinations the vectorizer can produce all satisfy this:
+-- @(IntS W64,2)@, @(IntS W32,4)@, @(SymS,2)@, @(FloatS,4)@, @(CharS,16)@ and
+-- @(BoolS,16)@.  Anything else -- @(IntS W64,4)@, @(IntS W32,2)@, a hand-built
+-- 8- or 16-lane W32 node -- is malformed IR and fails loudly here rather than
+-- emitting a short or overlong memory access.  Returns 'Nothing' when sound.
+vecRegisterWidthError :: DynFlags -> L3.VecOp -> Scalar -> Int -> Maybe String
 vecRegisterWidthError dflags op scalar lanes
-  | lanes * width == 16 = Nothing
+  -- EITHER register width is acceptable, because both helper sets are emitted
+  -- into every translation unit: the 128-bit SSE2 helpers and the 256-bit
+  -- vector-extension ones.  So the backend can lower any node whose lanes
+  -- exactly fill one of them, whichever width the vectorizer chose.  What is
+  -- still rejected -- loudly -- is a count that fills NEITHER, such as
+  -- @(IntS W32, 2)@ or a hand-built @(IntS W64, 3)@: that is malformed IR and
+  -- would emit a short or overlong memory access.
+  | L3.simdLanesValidAny scalar lanes = Nothing
   | otherwise = Just $
-      "Codegen: SIMD op " ++ show op ++ " on " ++ show (scalar, lanes) ++
-      " does not fill a 128-bit register: " ++ show lanes ++ " lanes * " ++
-      show width ++ " bytes = " ++ show (lanes * width) ++ " bytes (expected 16)" ++
-      (if scalar == IntS
-       then ".  GibInt is " ++ show width ++ " bytes because Opt_Int32 is " ++
-            (if gopt Opt_Int32 dflags then "set" else "not set") ++ "."
-       else "")
+      "Codegen: SIMD op " ++ show (L3.vecOpName op) ++ " on " ++ show (scalar, lanes) ++
+      " fills neither a 128- nor a 256-bit register: " ++
+      show lanes ++ " lanes * " ++ show width ++ " bytes = " ++
+      show (lanes * width) ++ " bytes (expected " ++
+      show L3.simdRegisterBytes ++ " or " ++ show L3.simdRegisterBytesAvx2 ++ ")"
   where width = simdScalarWidthBytes dflags scalar
 
--- | 'vecHelperName', with the 128-bit register invariant checked against the
--- active integer width.  Use this from lowering, never the pure version.
-vecHelperNameM :: String -> Scalar -> Int -> PassM Var
+-- | 'vecHelperName', with the 128-bit register invariant checked.  Use this
+-- from lowering, never the pure version.
+vecHelperNameM :: L3.VecOp -> Scalar -> Int -> PassM Var
 vecHelperNameM op scalar lanes = do
   dflags <- getDynFlags
   case vecRegisterWidthError dflags op scalar lanes of
     Just msg -> error msg
     Nothing -> pure $! vecHelperName op scalar lanes
 
-vecHelperName :: String -> Scalar -> Int -> Var
+-- | The emitted helper's name.  Derived from the typed 'L3.VecOp' and the
+-- scalar, never accepted as a caller-supplied string.
+vecHelperName :: L3.VecOp -> Scalar -> Int -> Var
 vecHelperName op scalar lanes
-  | vecOpSupported op scalar lanes = toVar $ "gib_vec_" ++ op ++ "_" ++ scalarSuffix scalar lanes
-  | otherwise = error $ "Unsupported SIMD operation/scalar/lane combination: " ++ show (op, scalar, lanes)
+  | vecOpSupported op scalar lanes =
+      toVar $ "gib_vec_" ++ L3.vecOpName op ++ "_" ++ scalarSuffix scalar lanes
+  | otherwise = error $
+      "Codegen: unsupported SIMD operation/scalar/lane combination: "
+      ++ show (L3.vecOpName op, scalar, lanes)
+      ++ ".  The vectorizer should not have emitted this node; see 'L3.simdCapable'."
 
-vecOpSupported :: String -> Scalar -> Int -> Bool
+-- | Backend support, asked of the SAME matrix the vectorizer consults, plus
+-- the register-tiling invariant.  A unit test asserts the two sides agree over
+-- the whole (op x scalar) space: a vectorizer "yes" with a backend "no" is a
+-- crash, and a backend "yes" with a vectorizer "no" is dead code.
+vecOpSupported :: L3.VecOp -> Scalar -> Int -> Bool
 vecOpSupported op scalar lanes =
-  case op of
-    "broadcast" -> scalarSuffixSupported scalar lanes
-    "load" -> scalarSuffixSupported scalar lanes
-    "store" -> scalarSuffixSupported scalar lanes
-    "add" -> scalarSuffixSupported scalar lanes
-    "sub" -> scalarSuffixSupported scalar lanes
-    "mul" -> (scalar == FloatS && lanes == 4) || (scalar == IntS && lanes `elem` [2,4])
-    "div" -> (scalar == FloatS && lanes == 4) || (scalar == IntS && lanes `elem` [2,4])
-    "mod" -> scalar == IntS && lanes `elem` [2,4]
-    "eq" -> (scalar == FloatS && lanes == 4) || (scalar == IntS && lanes `elem` [2,4])
-    "select" -> (scalar == FloatS && lanes == 4) || (scalar == IntS && lanes `elem` [2,4])
-    _ -> False
+  L3.simdCapable op scalar && L3.simdLanesValidAny scalar lanes
 
 scalarSuffixSupported :: Scalar -> Int -> Bool
 scalarSuffixSupported scalar lanes =
-  case (scalar, lanes) of
-    (IntS, 2) -> True
-    (IntS, 4) -> True
-    (SymS, 2) -> True
-    (CharS, 16) -> True
-    (BoolS, 16) -> True
-    (FloatS, 4) -> True
+  L3.simdScalarEnabled scalar && L3.simdLanesValidAny scalar lanes
+
+-- | The @<scalar><bits>x<lanes>@ tag used in helper names.
+--
+-- Only combinations that exactly fill the register are nameable.  The stale
+-- @(IntS W64, 4) -> "int32x4"@ case is gone: it dated from the @--int32@ era
+-- when a "W64" integer could physically be 4 bytes, and it encoded the wrong
+-- scalar width -- a W64 node would have been lowered to 32-bit helpers.
+scalarSuffix :: Scalar -> Int -> String
+scalarSuffix scalar lanes
+  | not (L3.simdLanesValidAny scalar lanes) =
+      error $ "Codegen: unsupported SIMD scalar/lane combination: " ++ show (scalar, lanes)
+  | otherwise =
+      case scalar of
+        IntS w -> "int" ++ show (8 * L2.intWidthBytes w) ++ "x" ++ show lanes
+        SymS -> "sym64x" ++ show lanes
+        CharS -> "char8x" ++ show lanes
+        BoolS -> "bool8x" ++ show lanes
+        FloatS -> "float32x" ++ show lanes
+
+-- | The RTS helper suffix for an integer width: @gib_add_i8@ .. @gib_exp_i64@.
+intWidthSuffix :: L2.IntWidth -> String
+intWidthSuffix L2.W8  = "i8"
+intWidthSuffix L2.W16 = "i16"
+intWidthSuffix L2.W32 = "i32"
+intWidthSuffix L2.W64 = "i64"
+
+-- | Is this operand a cursor or pointer rather than a program integer?
+--
+-- 'AddP' and 'SubP' are overloaded in L4: 'Gibbon.Passes.Lower' also uses them
+-- for cursor arithmetic -- @addCursor@ emits @AddP W64@ with a 'CursorTy'
+-- result, and 'SubPtr' emits @SubP W64@ with an 'IntTy' result but two CURSOR
+-- operands.  Those must keep C's native pointer operators: a pointer is not a
+-- modular integer, and @gib_add_i64@ would not even accept one.
+isCursorTriv :: M.Map Var Ty -> Triv -> Bool
+isCursorTriv venv trv =
+  case trv of
+    VarTriv v -> case M.lookup v venv of
+                   Just CursorTy    -> True
+                   Just MutCursorTy -> True
+                   Just PtrTy       -> True
+                   _                -> False
     _ -> False
 
-scalarSuffix :: Scalar -> Int -> String
-scalarSuffix IntS 2 = "int64x2"
-scalarSuffix IntS 4 = "int32x4"
-scalarSuffix SymS 2 = "sym64x2"
-scalarSuffix CharS 16 = "char8x16"
-scalarSuffix BoolS 16 = "bool8x16"
-scalarSuffix FloatS 4 = "float32x4"
-scalarSuffix scalar lanes = error $ "Unsupported SIMD scalar/lane combination: " ++ show (scalar, lanes)
+-- | Emit one width-annotated scalar integer arithmetic binding.
+--
+-- The C lowering for add\/sub\/mul is governed by the global 'CArithMode'
+-- (@--c-arithmetic@; see its Haddock in "Gibbon.Common"
+-- for the full three-mode contract):
+--
+--   * 'ArithPortable' (default): a call to the deterministic RTS helper for
+--     the primitive's OWN annotated width, never a bare C operator.  The
+--     reason is in the "Deterministic integer arithmetic" block in
+--     @gibbon_rts.h@: signed @+@, @-@ and @*@ are UNDEFINED on overflow in
+--     C, while the packed SIMD helpers for the very same loop wrap for
+--     real, so the scalar and vector paths were not specified to agree and
+--     at @-O2@\/@-O3@ were free not to.
+--   * 'ArithWrapv'\/'ArithUnsafe': the native C operator directly, at the
+--     binding's own width.  The compile\/link-time @-fwrapv@ decision (or
+--     its absence) is made by the caller of @gibbon@, not here; see
+--     'Gibbon.Compiler.compilationCmd'.
+--
+-- @\/@ and @%@ (and @^@) are UNAFFECTED by 'CArithMode' in every case: they
+-- always call the guarded helper, since they are additionally undefined for
+-- @MIN \/ -1@ and for a zero divisor (both of which raise SIGFPE on x86-64
+-- rather than returning a wrong answer), and no native lowering is offered
+-- for that.
+--
+-- Both operands are 'Triv', so each is a variable or a literal and appears
+-- exactly once in the emitted call OR native expression: no argument is
+-- duplicated and none can be evaluated twice.  (The helpers are @static
+-- inline@ functions rather than macros for the same reason, and the native
+-- lowering below reuses the exact same single-evaluation 'codegenTriv'\/
+-- 'ptrExp' calls the cursor-overload branch already relies on.)
+--
+-- The cursor overloading of AddP\/SubP described on 'isCursorTriv' keeps the
+-- native operator UNCONDITIONALLY, regardless of 'CArithMode' -- a cursor is
+-- never a modular integer, so there is no "portable" helper for it to begin
+-- with. Any OTHER primitive reaching that path, or a result binding whose
+-- width disagrees with the primitive's, is an internal error rather than
+-- something to paper over with a default width.
+codegenIntArith :: CArithMode -> M.Map Var Ty -> String -> L2.IntWidth
+                -> (Var, Ty) -> Triv -> Triv -> [C.BlockItem]
+codegenIntArith arithMode venv opName w (outV, outT) pleft pright
+  | isCursorOp =
+      case opName of
+        "add" ->
+          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $exp:(codegenTriv venv pleft) + $exp:(codegenTriv venv pright); |] ]
+        "sub" ->
+          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $exp:(ptrExp pleft) - $exp:(ptrExp pright); |] ]
+        _ -> error $ "codegenIntArith: " ++ opName ++ " applied to a cursor or "
+                     ++ "non-integer binding, which only add/sub are overloaded "
+                     ++ "for: " ++ show (outV, outT, pleft, pright)
+  | otherwise =
+      case outT of
+        IntTy w' | w' /= w ->
+          error $ "codegenIntArith: " ++ opName ++ " is annotated " ++ show w
+                  ++ " but binds a " ++ show w' ++ " result (" ++ show outV
+                  ++ "); the annotation and the binding must agree."
+        _ | useNativeOp ->
+          case opName of
+            "add" -> [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $exp:(codegenTriv venv pleft) + $exp:(codegenTriv venv pright); |] ]
+            "sub" -> [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $exp:(codegenTriv venv pleft) - $exp:(codegenTriv venv pright); |] ]
+            "mul" -> [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $exp:(codegenTriv venv pleft) * $exp:(codegenTriv venv pright); |] ]
+            _ -> error $ "codegenIntArith: useNativeOp true for non-add/sub/mul op " ++ opName
+        _ ->
+          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $id:fn($exp:(codegenTriv venv pleft), $exp:(codegenTriv venv pright)); |] ]
+  where
+    fn = "gib_" ++ opName ++ "_" ++ intWidthSuffix w
+    -- wrapv/unsafe only ever apply to add/sub/mul; div/mod/exp always keep
+    -- the guarded helper regardless of mode (never a native lowering).
+    useNativeOp = arithMode /= ArithPortable && opName `elem` ["add", "sub", "mul"]
+    isCursorOp = not (isIntResult outT)
+                 || isCursorTriv venv pleft
+                 || isCursorTriv venv pright
+    isIntResult t = case t of
+                      IntTy{} -> True
+                      _       -> False
+    -- A MutCursorTy operand is a cursor BOX; the arithmetic is on its contents.
+    ptrExp trv = case trv of
+                   VarTriv v | M.lookup v venv == Just MutCursorTy -> [cexp| *$id:v |]
+                   _ -> codegenTriv venv trv
 
 codegenTy :: Ty -> C.Type
-codegenTy IntTy = [cty|typename GibInt|]
+codegenTy (IntTy L2.W8)  = [cty|typename GibInt8|]
+codegenTy (IntTy L2.W16) = [cty|typename GibInt16|]
+codegenTy (IntTy L2.W32) = [cty|typename GibInt32|]
+codegenTy (IntTy L2.W64) = [cty|typename GibInt64|]
 codegenTy CharTy = [cty|typename GibChar|]
 codegenTy FloatTy= [cty|typename GibFloat|]
 codegenTy BoolTy = [cty|typename GibBool|]
@@ -2699,8 +3579,27 @@ codegenTy PtrTy = [cty|typename GibPtr|] -- char* - Hack, this could be void* if
 codegenTy CursorTy = [cty|typename GibCursor|]
 codegenTy (CursorArrayTy size) = [cty| typename GibCursor[$int:size] |]
 codegenTy MutCursorTy = [cty|typename GibCursor*|]
-codegenTy (SimdTy IntTy 2) = [cty|typename __m128i|]
-codegenTy (SimdTy IntTy 4) = [cty|typename __m128i|]
+-- A SIMD register type is legal exactly when its lanes tile 16 bytes at the
+-- scalar's REAL width.  @(IntTy W64, 4)@ used to be accepted here; it encoded
+-- the wrong scalar width (it only made sense when a "W64" integer could be
+-- physically 4 bytes under @--int32@) and would have declared a 256-bit value
+-- as @__m128i@.  It is gone.
+-- 256-bit (AVX2) register types.  Named GCC vector typedefs rather than
+-- __m256i because the helpers above are written with vector extensions; see
+-- the block comment there for why.
+codegenTy (SimdTy (IntTy L2.W64) 4) = [cty|typename gib_v4i64|]
+codegenTy (SimdTy (IntTy L2.W32) 8) = [cty|typename gib_v8i32|]
+codegenTy (SimdTy (IntTy L2.W16) 16) = [cty|typename gib_v16i16|]
+codegenTy (SimdTy (IntTy L2.W8) 32) = [cty|typename gib_v32i8|]
+codegenTy (SimdTy SymTy 4) = [cty|typename gib_v4i64|]
+codegenTy (SimdTy CharTy 32) = [cty|typename gib_v32i8|]
+codegenTy (SimdTy BoolTy 32) = [cty|typename gib_v32i8|]
+codegenTy (SimdTy FloatTy 8) = [cty|typename gib_v8f32|]
+-- 128-bit (baseline SSE2) register types.
+codegenTy (SimdTy (IntTy L2.W64) 2) = [cty|typename __m128i|]
+codegenTy (SimdTy (IntTy L2.W32) 4) = [cty|typename __m128i|]
+codegenTy (SimdTy (IntTy L2.W16) 8) = [cty|typename __m128i|]
+codegenTy (SimdTy (IntTy L2.W8) 16) = [cty|typename __m128i|]
 codegenTy (SimdTy SymTy 2) = [cty|typename __m128i|]
 codegenTy (SimdTy CharTy 16) = [cty|typename __m128i|]
 codegenTy (SimdTy BoolTy 16) = [cty|typename __m128i|]
@@ -2724,7 +3623,12 @@ makeName :: [Ty] -> String
 makeName tys = concatMap makeName' tys ++ "Prod"
 
 makeName' :: Ty -> String
-makeName' IntTy       = "GibInt"
+-- Width is part of the name so a product containing Int8 and a product
+-- containing Int64 never collide on the same generated C typedef.
+makeName' (IntTy L2.W8)  = "GibInt8"
+makeName' (IntTy L2.W16) = "GibInt16"
+makeName' (IntTy L2.W32) = "GibInt32"
+makeName' (IntTy L2.W64) = "GibInt64"
 makeName' CharTy      = "GibChar"
 makeName' FloatTy     = "GibFloat"
 makeName' SymTy       = "GibSym"
@@ -2753,7 +3657,7 @@ makeIcdName :: Ty -> (String, String)
 makeIcdName ty =
   let ty_name  =
         case ty of
-          IntTy      -> "IntTy"
+          IntTy w    -> "IntTy" ++ show w
           FloatTy    -> "FloatTy"
           BoolTy     -> "BoolTy"
           SymTy      -> "SymTy"

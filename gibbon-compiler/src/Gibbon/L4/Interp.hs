@@ -20,6 +20,8 @@ import Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as Seq
 import Gibbon.L4.Syntax
 import Gibbon.Common (fromVar)
+import Gibbon.Language.Syntax ( ArithError, arithErrorMessage, checkedQuot, checkedRem
+                              , wrapAdd, wrapSub, wrapMul, wrapPow )
 import GHC.Generics
 import Control.DeepSeq
 import Text.PrettyPrint.GenericPretty
@@ -74,7 +76,7 @@ clk = Monotonic
 
 eval :: Env -> Triv -> Val
 eval env (VarTriv v) = M.findWithDefault (error ("Unbound var: " ++ (fromVar v))) v env
-eval _   (IntTriv i) = IntVal (fromIntegral i) -- TODO: Change L1 to Int64 too.
+eval _   (IntTriv _w i) = IntVal (fromIntegral i) -- TODO: Change L1 to Int64 too.
 eval _   (CharTriv i) = CharVal i
 eval _   (FloatTriv i) = FloatVal i -- TODO: Change L1 to Int64 too.
 eval _   (TagTriv t) = TagVal t
@@ -196,13 +198,36 @@ apply _ notFun _ =
 
 --------------------------------------------------------------------------------
 
+-- | Rebuild an L4 value from a result the shared model already normalized to
+-- its width; every such value fits in a host 'Int', so this cannot overflow.
+intVal :: Integer -> Val
+intVal = IntVal . fromInteger
+
+-- | Report a division failure with the same text the generated C prints.
+orDie :: Either ArithError Integer -> IO Integer
+orDie (Right n)  = pure n
+orDie (Left err) = error (arithErrorMessage err)
+
 applyPrim :: Prim -> [Val] -> IO [Val]
 
-applyPrim AddP [IntVal i1, IntVal i2] = pure [IntVal (i1 + i2)]
-applyPrim SubP [IntVal i1, IntVal i2] = pure [IntVal (i1 - i2)]
-applyPrim MulP [IntVal i1, IntVal i2] = pure [IntVal (i1 * i2)]
+-- Integer arithmetic uses the same shared model as the L1/L2 interpreter and
+-- the generated C: compute in 'Integer', normalize to the primitive's OWN
+-- annotated width.  L4's 'Prim' carries the 'IntWidth' directly, so there is no
+-- excuse for a W64 fallback here.  See "Deterministic integer arithmetic" in
+-- 'Gibbon.Language.Syntax'.
+applyPrim (AddP w) [IntVal i1, IntVal i2] = pure [intVal (wrapAdd w (toInteger i1) (toInteger i2))]
+applyPrim (SubP w) [IntVal i1, IntVal i2] = pure [intVal (wrapSub w (toInteger i1) (toInteger i2))]
+applyPrim (MulP w) [IntVal i1, IntVal i2] = pure [intVal (wrapMul w (toInteger i1) (toInteger i2))]
+applyPrim (DivP w) [IntVal i1, IntVal i2] = (\n -> [intVal n]) <$> orDie (checkedQuot w (toInteger i1) (toInteger i2))
+applyPrim (ModP w) [IntVal i1, IntVal i2] = (\n -> [intVal n]) <$> orDie (checkedRem  w (toInteger i1) (toInteger i2))
+applyPrim (ExpP w) [IntVal i1, IntVal i2] = pure [intVal (wrapPow w (toInteger i1) (toInteger i2))]
+applyPrim FAddP [IntVal i1, IntVal i2] = pure [IntVal (i1 + i2)]
+applyPrim FSubP [IntVal i1, IntVal i2] = pure [IntVal (i1 - i2)]
+applyPrim FMulP [IntVal i1, IntVal i2] = pure [IntVal (i1 * i2)]
 
-applyPrim EqP  [IntVal i1, IntVal i2] = pure [IntVal (if i1 == i2 then 1 else 0)]
+applyPrim EqP{}  [IntVal i1, IntVal i2] = pure [IntVal (if i1 == i2 then 1 else 0)]
+applyPrim FEqP   [IntVal i1, IntVal i2] = pure [IntVal (if i1 == i2 then 1 else 0)]
+applyPrim CEqP   [IntVal i1, IntVal i2] = pure [IntVal (if i1 == i2 then 1 else 0)]
 
 applyPrim NewBuffer{} [] = pure [BufVal Seq.empty]
 
@@ -220,10 +245,12 @@ applyPrim ReadTag [BufVal is] = case Seq.viewl is of
 --                                          Seq.EmptyL -> error "ReadInt: Empty buffer"
 --                                          i :< is'   -> pure  [IntVal i, BufVal is']
 
-applyPrim PrintInt [IntVal i] = do print i; return []
+applyPrim PrintInt{} [IntVal i] = do print i; return []
 applyPrim (PrintString st) [] = do putStrLn st; return []
 applyPrim ScalarCountFooterBegin [] = pure []
-applyPrim ScalarCountBump _footers = pure []
+applyPrim (ScalarCountBump _slots) _footers = pure []
+applyPrim (ScalarCountBind _base _len) _ends = pure []
+applyPrim (ScalarCountFinalize _base _len) _ends = pure []
 applyPrim ScalarCountSet _args = pure []
 applyPrim ScalarCountFooterEnd{} [] = pure []
 

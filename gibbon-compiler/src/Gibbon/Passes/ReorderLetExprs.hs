@@ -126,7 +126,7 @@ reorderLetExprsFunBody definedVars delayedExprMap ex = do
                     -- dbgTrace (minChatLvl) "reorderLetExprsFunBody (LetE isndef): " dbgTrace (minChatLvl) (sdoc (delayedLetE, freeVarsRhs', definedVars, delayedExprMap'', bod, bod', bod'')) dbgTrace (minChatLvl) "End reorderLetExprsFunBody (LetE isndef)\n."
                     pure (bod', delayedExprMap'')
         
-        LitE _ -> pure (ex, delayedExprMap)
+        LitE{} -> pure (ex, delayedExprMap)
         CharE _ -> pure (ex, delayedExprMap)
         FloatE{} -> pure (ex, delayedExprMap)
         LitSymE _ -> pure (ex, delayedExprMap)
@@ -326,7 +326,7 @@ releaseExprsFunBody definedVars delayedExprMap ex = do
             bod'' <- releaseExprsFunBody definedVars'' delayedExprMap' bod'
             pure $ LetE (v, locs, ty, rhs) bod''
         
-        LitE _ -> pure ex
+        LitE{} -> pure ex
         CharE _ -> pure ex
         FloatE{} -> pure ex
         LitSymE _ -> pure ex
@@ -501,7 +501,7 @@ ensureLocationsAreDefinedForWrite definedVars ex = do
             let definedVars' = S.insert (fromVarToFreeVarsTy v) definedVars
             bod' <- ensureLocationsAreDefinedForWrite definedVars' bod
             pure $ LetE (v, locs, ty, rhs) bod'
-        LitE _ -> pure ex
+        LitE{} -> pure ex
         CharE _ -> pure ex
         FloatE{} -> pure ex
         LitSymE _ -> pure ex
@@ -626,7 +626,7 @@ removeDuplicateLocations definedLocs ex = case ex of
             rhs' <- removeDuplicateLocations definedLocs rhs
             bod' <- removeDuplicateLocations definedLocs bod
             pure $ LetE (v, locs, ty, rhs') bod'
-        LitE _ -> pure ex
+        LitE{} -> pure ex
         CharE _ -> pure ex
         FloatE{} -> pure ex
         LitSymE _ -> pure ex

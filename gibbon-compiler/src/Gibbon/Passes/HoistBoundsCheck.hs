@@ -323,8 +323,8 @@ hoistBoundsCheckHelper visited env l2exp = do
                 if S.member boundsCheck vmap
                   then Nothing
                   else case boundsCheck of
-                    BoundsCheckExpr i bound cur -> Just $ LetE ("_", [], MkTy2 IntTy, (Ext $ BoundsCheck i bound cur)) expr'
-                    BoundsCheckVectorExpr bounds -> Just $ LetE ("_", [], MkTy2 IntTy, (Ext $ BoundsCheckVector bounds)) expr'
+                    BoundsCheckExpr i bound cur -> Just $ LetE ("_", [], MkTy2 (IntTy W64), (Ext $ BoundsCheck i bound cur)) expr'
+                    BoundsCheckVectorExpr bounds -> Just $ LetE ("_", [], MkTy2 (IntTy W64), (Ext $ BoundsCheckVector bounds)) expr'
                     LetLocExpr l rhs -> Just $ Ext $ LetLocE l rhs expr'
                     LetRegExpr r rhs -> Just $ Ext $ LetRegE r rhs expr'
                     LetRegionExpr r sz endmut ty -> Just $ Ext $ LetRegionE r sz endmut ty expr'

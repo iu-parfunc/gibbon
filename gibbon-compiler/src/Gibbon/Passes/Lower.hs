@@ -239,7 +239,9 @@ sandwich mid s end = openParen s $ mid $ closeParen end
 printTy :: Bool -> Ty3 -> [T.Triv] -> (T.Tail -> T.Tail)
 printTy pkd ty trvs =
   case (ty, trvs) of
-    (IntTy, [_one])             -> T.LetPrimCallT [] T.PrintInt trvs
+    -- Every width lowers now: T.PrintInt carries its own width, and
+    -- Codegen is what actually has to print it correctly.
+    (IntTy w, [_one])                 -> T.LetPrimCallT [] (T.PrintInt w) trvs
     (CharTy, [_one])            -> T.LetPrimCallT [] T.PrintChar trvs
     (FloatTy, [_one])           -> T.LetPrimCallT [] T.PrintFloat trvs
     (SymTy, [_one])             -> T.LetPrimCallT [] T.PrintSym trvs
@@ -320,7 +322,7 @@ addPrintToTail ty tl0 = do
     dflags <- getDynFlags
     let pkd = gopt Opt_Packed dflags
         ty' = if pkd
-              then T.IntTy
+              then T.IntTy W64  -- infrastructure convention, not a program width
               else T.fromL3Ty ty
     T.withTail (tl0, ty') $ \ trvs ->
       printTy pkd ty (properTrivs pkd ty trvs) $
@@ -559,10 +561,12 @@ lower Prog{fundefs,ddefs,mainExp} = do
       Ext (VecMul _ _ a b) -> ispure a && ispure b
       Ext (VecDiv _ _ a b) -> ispure a && ispure b
       Ext (VecMod _ _ a b) -> ispure a && ispure b
-      Ext (VecEq _ _ a b) -> ispure a && ispure b
+      Ext (VecCmp _ _ _ a b) -> ispure a && ispure b
       Ext (VecSelect _ _ m a b) -> ispure m && ispure a && ispure b
       Ext (VecStore {}) -> False
       Ext (ScalarCountCopyAll _ _ _) -> False
+      Ext (ScalarCountBind _ _ _) -> False
+      Ext (ScalarCountFinalize _ _ _) -> False
       LetE (_,_,_,rhs) bod -> ispure rhs && ispure bod
       IfE _ b c   -> ispure b && ispure c
       CaseE _ brs -> all id $ L.map (\(_,_,rhs) -> ispure rhs) brs
@@ -654,6 +658,8 @@ lower Prog{fundefs,ddefs,mainExp} = do
               StartScalarsAllocation{} -> syms
               EndScalarsAllocation{} -> syms
               ScalarCountBump{} -> syms
+              ScalarCountBind{} -> syms
+              ScalarCountFinalize{} -> syms
               ScalarCountSet{} -> syms
               ScalarCountCopyAll _ _ _ -> syms
               ReadScalarCount{} -> syms
@@ -669,7 +675,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
               VecMul _ _ a b -> go a <> go b
               VecDiv _ _ a b -> go a <> go b
               VecMod _ _ a b -> go a <> go b
-              VecEq _ _ a b -> go a <> go b
+              VecCmp _ _ _ a b -> go a <> go b
               VecSelect _ _ m a b -> go m <> go a <> go b
               VecStore _ _ _ val -> go val
               SSPush{} -> syms
@@ -715,7 +721,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
         -- Here we lamely chase down all the tuple references and make them variables:
         -- So that Goto's work properly (See [Modifying switch statements to use redirection nodes]).
         let doalt (k,ls,rhs) = do
-              let rhs' = L3.substE (Ext (AddCursor scrut (LitE 1))) (VarE ctmp) $
+              let rhs' = L3.substE (Ext (AddCursor scrut (mkLitE64 1))) (VarE ctmp) $
                          rhs
               -- We only need to thread one value through, the cursor resulting from read.
               (getTagOfDataCon ddefs k,) <$>
@@ -754,7 +760,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
       tag_bndr  <- gensym $ toVar "tag"
 
       let bndrs' = tag_bndr : bndrs2
-          tys'   = T.IntTy  : tys
+          tys'   = T.IntTy W64 : tys
       rhs' <- tail free_reg sym_tbl rhs
       return (T.LetUnpackT (zip bndrs' tys') e_var rhs')
 
@@ -781,7 +787,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
       return $
         T.LetPrimCallT
           [(tag_bndr, T.TagTyPacked), (tail_bndr, T.CursorTy)]
-          (T.ReadScalar IntS)
+          (T.ReadScalar intS64)
           [e_triv]
           (T.Switch lbl (T.VarTriv tag_bndr) (T.IntAlts alts') (Just def_alt))
 
@@ -794,7 +800,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
 
           field_tys= L.map typ (lookupDataCon ddefs k)
           fields0  = fragileZip field_tys (L.map (triv sym_tbl "DataConE args") ls)
-          fields   = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
+          fields   = (T.IntTy W64, T.intTrivW64 (fromIntegral tag)) : fields0
           --  | is_prod   = fields0
           --  | otherwise = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
       bod' <- tail free_reg sym_tbl bod
@@ -897,7 +903,16 @@ lower Prog{fundefs,ddefs,mainExp} = do
          tail free_reg sym_tbl bod
 
     LetE (_, _, _, Ext (ScalarCountBump _ footers)) bod ->
-      T.LetPrimCallT [] T.ScalarCountBump (L.map T.VarTriv footers) <$>
+      T.LetPrimCallT [] (T.ScalarCountBump (L.map snd footers))
+        (L.map (T.VarTriv . fst) footers) <$>
+        tail free_reg sym_tbl bod
+
+    LetE (_, _, _, Ext (ScalarCountBind base len ends)) bod ->
+      T.LetPrimCallT [] (T.ScalarCountBind base len) [T.VarTriv ends] <$>
+        tail free_reg sym_tbl bod
+
+    LetE (_, _, _, Ext (ScalarCountFinalize base len ends)) bod ->
+      T.LetPrimCallT [] (T.ScalarCountFinalize base len) [T.VarTriv ends] <$>
         tail free_reg sym_tbl bod
 
     LetE (_, _, _, Ext (ScalarCountSet footer count)) bod ->
@@ -909,7 +924,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
         tail free_reg sym_tbl bod
 
     LetE (v, _, _, Ext (ReadScalarCount footer)) bod ->
-      T.LetPrimCallT [(v, T.IntTy)] T.ScalarCountGet [T.VarTriv footer] <$>
+      T.LetPrimCallT [(v, T.IntTy W64)] T.ScalarCountGet [T.VarTriv footer] <$>
         tail free_reg sym_tbl bod
 
     LetE (v, _, _, Ext (ReadScalarCountFirstFooter footer)) bod ->
@@ -955,8 +970,8 @@ lower Prog{fundefs,ddefs,mainExp} = do
         [triv sym_tbl "vector mod lhs" a, triv sym_tbl "vector mod rhs" b] <$>
         tail free_reg sym_tbl bod
 
-    LetE (v, _, ty, Ext (VecEq scalar lanes a b)) bod ->
-      T.LetPrimCallT [(v, T.fromL3Ty ty)] (T.VecEq scalar lanes)
+    LetE (v, _, ty, Ext (VecCmp scalar lanes cmp a b)) bod ->
+      T.LetPrimCallT [(v, T.fromL3Ty ty)] (T.VecCmp scalar lanes cmp)
         [triv sym_tbl "vector eq lhs" a, triv sym_tbl "vector eq rhs" b] <$>
         tail free_reg sym_tbl bod
 
@@ -989,13 +1004,13 @@ lower Prog{fundefs,ddefs,mainExp} = do
     -- In Target, AddP is overloaded still:
     LetE (v,_, _,  (Ext (AddCursor c ( (Ext (MMapFileSize w)))))) bod -> do
       size <- gensym (varAppend "sizeof_" v)
-      T.LetPrimCallT [(size,T.IntTy)] (T.MMapFileSize w) [] <$>
-        T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv sym_tbl "addCursor base" (VarE c)
+      T.LetPrimCallT [(size,T.IntTy W64)] (T.MMapFileSize w) [] <$>
+        T.LetPrimCallT [(v,T.CursorTy)] (T.AddP W64) [ triv sym_tbl "addCursor base" (VarE c)
                                                , triv sym_tbl "addCursor offset" (VarE size)] <$>
         tail free_reg sym_tbl bod
 
     LetE (v,_, _,  (Ext (AddCursor c e))) bod ->
-      T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv sym_tbl "addCursor base" (VarE c)
+      T.LetPrimCallT [(v,T.CursorTy)] (T.AddP W64) [ triv sym_tbl "addCursor base" (VarE c)
                                              , triv sym_tbl "addCursor offset" e] <$>
          tail free_reg sym_tbl bod
 
@@ -1012,7 +1027,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
 
     LetE (v, _, _, (Ext (IndexCursorArray cur idx))) bod ->
       T.LetPrimCallT [(v, T.CursorTy)] T.IndexCursorArray [ triv sym_tbl "base pointer" (VarE cur)  
-                                                          , triv sym_tbl "index_into_base_pointer" (LitE idx)] <$>
+                                                          , triv sym_tbl "index_into_base_pointer" (mkLitE64 idx)] <$>
         tail free_reg sym_tbl bod
 
     LetE (v, _, _, (Ext (AddrOfCursor i@(Ext (IndexCursorArray _cur _idx))))) bod -> do
@@ -1044,7 +1059,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
 
 
     LetE (v,_, _,  (Ext (SubPtr a b))) bod ->
-      T.LetPrimCallT [(v,T.IntTy)] T.SubP [ triv sym_tbl "subCursor base" (VarE a)
+      T.LetPrimCallT [(v,T.IntTy W64)] (T.SubP W64) [ triv sym_tbl "subCursor base" (VarE a)
                                           , triv sym_tbl "subCursor offset" (VarE b)] <$>
          tail free_reg sym_tbl bod
 
@@ -1121,25 +1136,25 @@ lower Prog{fundefs,ddefs,mainExp} = do
          tail free_reg sym_tbl bod
 
     LetE (v,_,_,  (Ext (SizeOfPacked start end))) bod -> do
-      T.LetPrimCallT [(v,T.IntTy)] T.SizeOfPacked [ T.VarTriv start, T.VarTriv end ] <$>
+      T.LetPrimCallT [(v,T.IntTy W64)] T.SizeOfPacked [ T.VarTriv start, T.VarTriv end ] <$>
         tail free_reg sym_tbl bod
 
     LetE (v,_,_,  (Ext (SizeOfScalar w))) bod -> do
-      T.LetPrimCallT [(v,T.IntTy)] T.SizeOfScalar [ T.VarTriv w ] <$>
+      T.LetPrimCallT [(v,T.IntTy W64)] T.SizeOfScalar [ T.VarTriv w ] <$>
         tail free_reg sym_tbl bod
 
     -- Just a side effect
     LetE(_,_,_,  (Ext (BoundsCheck i bound cur mb mode))) bod -> do
       let args = if mode == L2.Output 
-                 then [T.IntTriv (fromIntegral i), T.VarTriv bound, T.VarTriv cur]
+                 then [T.intTrivW64 (fromIntegral i), T.VarTriv bound, T.VarTriv cur]
                  else
                    let Just (mutbound, mutcur) = mb 
-                    in [T.IntTriv (fromIntegral i), T.VarTriv bound, T.VarTriv cur, T.VarTriv mutbound, T.VarTriv mutcur]
+                    in [T.intTrivW64 (fromIntegral i), T.VarTriv bound, T.VarTriv cur, T.VarTriv mutbound, T.VarTriv mutcur]
       T.LetPrimCallT [] (T.BoundsCheck mode) args <$> tail free_reg sym_tbl bod
 
     LetE(_,_,_, (Ext (BoundsCheckVector bounds))) bod -> do 
       let args = map (\(i, bound, cur, (b', c')) -> 
-                        T.ProdTriv [ T.IntTriv (fromIntegral i)
+                        T.ProdTriv [ T.intTrivW64 (fromIntegral i)
                               , T.VarTriv bound
                               , T.VarTriv cur
                               , T.ProdTriv [T.VarTriv b', T.VarTriv c']
@@ -1160,7 +1175,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
                  L3.substE (ProjE 1 (VarE v)) (VarE ctmp) $
                  L3.substE (ProjE 2 (VarE v)) (VarE tagtmp) $
                  bod
-      T.LetPrimCallT [(vtmp,T.CursorTy),(ctmp,T.CursorTy),(tagtmp,T.IntTy)] T.ReadTaggedCursor [T.VarTriv c] <$>
+      T.LetPrimCallT [(vtmp,T.CursorTy),(ctmp,T.CursorTy),(tagtmp,T.IntTy W64)] T.ReadTaggedCursor [T.VarTriv c] <$>
         tail free_reg sym_tbl bod'
 
     LetE (v, _, _, (Ext (WriteCursorIndirection cur to toEnd))) bod ->
@@ -1237,7 +1252,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
         tail free_reg sym_tbl bod
 
     LetE (v, _, _,  (Ext NullCursor)) bod ->
-      T.LetTrivT (v,T.CursorTy,T.IntTriv 0) <$> tail free_reg sym_tbl bod
+      T.LetTrivT (v,T.CursorTy,T.intTrivW64 0) <$> tail free_reg sym_tbl bod
 
     LetE (v, _, _, (Ext (InitCursor (CursorArrayTy sz)))) bod -> 
       T.LetTrivT (v, T.CursorArrayTy sz, T.UninitTriv v (T.CursorArrayTy sz) sz) <$> tail free_reg sym_tbl bod
@@ -1387,7 +1402,10 @@ triv :: M.Map String Word16 -> String -> Exp3 -> T.Triv
 triv sym_tbl msg ( e0) =
   case e0 of
     (VarE x) -> T.VarTriv x
-    (LitE x) -> T.IntTriv (fromIntegral x)      -- TODO: back propogate Int64 to L1
+    -- L1's literal is already fully typed by this point (L0 typechecking
+    -- resolved it); an unresolved one reaching Lower is an internal error,
+    -- which 'litWidth' raises rather than guessing.
+    (LitE ann x) -> T.IntTriv (litWidth ann) (fromIntegral x)
     (CharE c) -> T.CharTriv c
     (FloatE x)  -> T.FloatTriv x -- TODO: back propogate Int64 to L1
     (LitSymE v) -> let s = fromVar v in
@@ -1400,7 +1418,7 @@ triv sym_tbl msg ( e0) =
     (PrimAppE L3.MkTrue [])  -> T.BoolTriv True
     (PrimAppE L3.MkFalse []) -> T.BoolTriv False
     -- Heck, let's map Unit onto Int too:
-    (MkProdE []) -> T.IntTriv 0
+    (MkProdE []) -> T.intTrivW64 0
     (MkProdE ls) -> T.ProdTriv (map (\x -> triv sym_tbl (show x) x) ls)
     (ProjE ix e) -> T.ProjTriv ix (triv sym_tbl "proje argument" e)
     (Ext (IndexCursorArray cur idx)) -> T.IndexCursorArrayTriv idx (triv sym_tbl "index_into" (VarE cur))
@@ -1412,7 +1430,8 @@ triv sym_tbl msg ( e0) =
 typ :: UrTy () -> T.Ty
 typ t =
   case t of
-    IntTy  -> T.IntTy
+    -- Widths now survive: L4's Ty carries them.
+    IntTy w  -> T.IntTy w
     CharTy -> T.CharTy
     FloatTy-> T.FloatTy
     SymTy  -> T.SymTy
@@ -1438,45 +1457,62 @@ typ t =
 typ' :: String -> Ty3 -> T.Ty
 typ' str t = dbgTraceIt str $ typ t
 
+-- | THE WIDTH ERASURE POINT (L3 -> L4).
+--
+-- L4's Prim is width-less, so the IntPrimAnn carried faithfully through L0,
+-- L1, L2 and L3 is dropped here and every integer operation becomes 64-bit in
+-- the generated C.  Narrow-width code generation is therefore UNSAFE and is
+-- deliberately out of scope until L4 carries widths: `sizeOfTy` already
+-- reports 1 byte for Int8 while codegen would write 8.
+--
+-- Do not "fix" this by widening at L3; fix it by giving L4 a width.
+-- | Every width-sensitive int-arithmetic/comparison primitive carries its
+-- 'L1.IntPrimAnn' from L0 all the way to here, so its width is always
+-- resolved by construction ('intPrimWidth' errors on an unresolved one rather
+-- than guessing).  Float and char comparisons keep their own L4 constructors
+-- (see 'T.FEqP'/'T.CEqP' and friends) instead of being folded back onto the
+-- integer ones, which is exactly the "integer Add W8 vs W64 vs floating Add"
+-- ambiguity this representation is meant to avoid.
 prim :: Prim Ty3 -> T.Prim
 prim p =
   case p of
-    AddP -> T.AddP
-    SubP -> T.SubP
-    MulP -> T.MulP
-    DivP -> T.DivP
-    ModP -> T.ModP
-    ExpP -> T.ExpP
-    FAddP -> T.AddP
-    FSubP -> T.SubP
-    FMulP -> T.MulP
-    FDivP -> T.DivP
-    FExpP -> T.ExpP
+    AddP a -> T.AddP (intPrimWidth a)
+    SubP a -> T.SubP (intPrimWidth a)
+    MulP a -> T.MulP (intPrimWidth a)
+    DivP a -> T.DivP (intPrimWidth a)
+    ModP a -> T.ModP (intPrimWidth a)
+    ExpP a -> T.ExpP (intPrimWidth a)
+    FAddP -> T.FAddP
+    FSubP -> T.FSubP
+    FMulP -> T.FMulP
+    FDivP -> T.FDivP
+    FExpP -> T.FExpP
     FRandP-> T.FRandP
     FSqrtP-> T.FSqrtP
     FTanP-> T.FTanP
     FloatToIntP -> T.FloatToIntP
-    IntToFloatP -> T.IntToFloatP
+    IntToFloatP a -> T.IntToFloatP (intPrimWidth a)
+    IntConvertP a dst -> T.IntConvertP (intPrimWidth a) dst
     RandP -> T.RandP
     Gensym -> T.Gensym
     EqSymP -> T.EqSymP
     EqBenchProgP str -> T.EqBenchProgP str
-    EqIntP -> T.EqP
-    EqFloatP -> T.EqP
-    EqCharP  -> T.EqP
-    LtP    -> T.LtP
-    GtP    -> T.GtP
-    LtEqP  -> T.LtEqP
-    GtEqP  -> T.GtEqP
-    FLtP   -> T.LtP
-    FGtP   -> T.GtP
-    FLtEqP -> T.LtEqP
-    FGtEqP -> T.GtEqP
+    EqIntP a -> T.EqP (intPrimWidth a)
+    EqFloatP -> T.FEqP
+    EqCharP  -> T.CEqP
+    LtP a    -> T.LtP (intPrimWidth a)
+    GtP a    -> T.GtP (intPrimWidth a)
+    LtEqP a  -> T.LtEqP (intPrimWidth a)
+    GtEqP a  -> T.GtEqP (intPrimWidth a)
+    FLtP   -> T.FLtP
+    FGtP   -> T.FGtP
+    FLtEqP -> T.FLtEqP
+    FGtEqP -> T.FGtEqP
     OrP    -> T.OrP
     AndP   -> T.AndP
     SizeParam -> T.SizeParam
     IsBig    -> T.IsBig
-    PrintInt -> T.PrintInt
+    PrintInt a -> T.PrintInt (intPrimWidth a)
     PrintChar -> T.PrintChar
     PrintFloat -> T.PrintFloat
     PrintBool -> T.PrintBool

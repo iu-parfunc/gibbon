@@ -1,9 +1,6 @@
--- VARIANT of the V1 defect: a partial op in the IF CONDITION rather than an
--- arm.  The scalar loop evaluates the condition for every element, so the
--- vector loop evaluating it for the same elements is correct -- this must stay
--- VECTORIZED (checking the fix rejects only SPECULATED positions).
--- The divisor `k` is a non-zero loop-invariant argument, so no trap occurs
--- in either version.
+-- VerifyV1CondDivide: DList (Factored).
+-- Functions: mkDList, mapCondDiv, sumFirst, sumSecond.
+-- Annotated: MayVectorize on mapCondDiv; StoreScalarCounts on mkDList.
 data DList = DCons Int Int DList | DNil
 {-# ANN type DList "Factored" #-}
 
@@ -15,7 +12,7 @@ mkDList n =
   else let rst = mkDList (n - 1)
        in DCons n (n * 2) rst
 
-{-# ANN mapCondDiv "OPT:CanVectorize" #-}
+{-# ANN mapCondDiv "OPT:MayVectorize" #-}
 mapCondDiv :: DList -> Int -> DList
 mapCondDiv xs k =
   case xs of

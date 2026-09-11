@@ -1,4 +1,4 @@
--- Characterizes deliberate loss D4: a CanVectorize producer whose cursorized
+-- Characterizes deliberate loss D4: a MayVectorize producer whose cursorized
 -- ABI is NOT the exact four-cursor-array shape (here: two packed SoA inputs and
 -- one packed SoA output -> six cursor arrays).  `soaOutputCursorShape` now
 -- returns Nothing, so `rewriteSelectiveFun` refuses to share anything.
@@ -10,7 +10,7 @@ mkL :: Int -> L
 mkL n = if n <= 0 then N else let r = mkL (n - 1) in C n (n * 2) r
 
 -- Two packed inputs, one packed output; field b is a pure copy of xs's b.
-{-# ANN zipAdd "OPT:CanVectorize" #-}
+{-# ANN zipAdd "OPT:MayVectorize" #-}
 zipAdd :: L -> L -> L
 zipAdd xs ys =
   case xs of

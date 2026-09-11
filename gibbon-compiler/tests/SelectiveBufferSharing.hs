@@ -16,11 +16,19 @@ import Gibbon.Language
 import qualified Gibbon.L3.Syntax as L3
 import Gibbon.Passes.SelectiveBufferSharing
 
+-- | The pass's own hard error requires --auto-loopification or
+-- --opt-loopification to also be present -- selective buffer sharing only
+-- ever rewrites functions loopification already rewrote. These tests
+-- exercise SelectiveBufferSharing in isolation against a hand-built
+-- already-loopified fixture (see 'loopifiedFun' etc.), so they set
+-- Opt_AutoLoopification here purely to satisfy that precondition, exactly
+-- as a real compile invoking both passes together always would.
 runnerEnabled :: L3.Prog3 -> L3.Prog3
 runnerEnabled prg =
   fst $
     runPassM
-      (defaultConfig {dynflags = gopt_set Opt_EnableSelectiveBufferSharing (dynflags defaultConfig)})
+      (defaultConfig {dynflags = gopt_set Opt_AutoLoopification
+                                    (gopt_set Opt_EnableSelectiveBufferSharing (dynflags defaultConfig))})
       0
       (selectiveBufferSharing prg)
 
@@ -46,7 +54,7 @@ loopifiedFun =
     ["inEnds", "outEnds", "outCurs", "inCurs"]
     (replicate 4 (L3.CursorArrayTy 3), L3.ProdTy [])
     loopifiedBody
-    (FunMeta TailRec NoInline False [CanVectorize])
+    (FunMeta TailRec NoInline False [Loopified])
 
 loopifiedProducerFun :: L3.FunDef3
 loopifiedProducerFun =
@@ -57,7 +65,7 @@ loopifiedProducerFun =
     , L3.ProdTy []
     )
     loopifiedBody
-    (FunMeta TailRec NoInline False [CanVectorize])
+    (FunMeta TailRec NoInline False [Loopified])
 
 -- A fold over *two* packed SoA inputs.  After cursorization this has exactly
 -- the same shape as a one-in/one-out map -- four equal-length cursor arrays --
@@ -67,8 +75,8 @@ consumer2Fun =
   FunDef
     "consumer2"
     ["endsX", "endsY", "cursX", "cursY"]
-    (replicate 4 (L3.CursorArrayTy 3), L3.IntTy)
-    (L3.LitE 1)
+    (replicate 4 (L3.CursorArrayTy 3), L3.IntTy W64)
+    (L3.mkLitE64 1)
     (FunMeta TailRec NoInline False [])
 
 twoInputCallSiteProg :: L3.Prog3
@@ -76,13 +84,13 @@ twoInputCallSiteProg =
   Prog
     M.empty
     (M.fromList [("producer", loopifiedProducerFun), ("consumer2", consumer2Fun)])
-    (Just (twoInputCallSiteMain, L3.IntTy))
+    (Just (twoInputCallSiteMain, L3.IntTy W64))
 
 twoInputCallSiteMain :: L3.Exp3
 twoInputCallSiteMain =
   L3.mkLets
     [ ("produce", [], L3.ProdTy [], L3.AppE "producer" UnknownTailType [] [L3.VarE "inEnds", L3.VarE "outEnds", L3.VarE "outCurs", L3.VarE "inCurs"])
-    , ("consume", [], L3.IntTy, L3.AppE "consumer2" UnknownTailType [] [L3.VarE "outEnds", L3.VarE "inEnds", L3.VarE "outCurs", L3.VarE "inCurs"])
+    , ("consume", [], L3.IntTy W64, L3.AppE "consumer2" UnknownTailType [] [L3.VarE "outEnds", L3.VarE "inEnds", L3.VarE "outCurs", L3.VarE "inCurs"])
     ]
     (L3.VarE "consume")
 
@@ -91,8 +99,8 @@ consumerFun =
   FunDef
     "consumer"
     ["ends", "curs"]
-    ([L3.CursorArrayTy 3, L3.CursorArrayTy 3], L3.IntTy)
-    (L3.LitE 1)
+    ([L3.CursorArrayTy 3, L3.CursorArrayTy 3], L3.IntTy W64)
+    (L3.mkLitE64 1)
     (FunMeta TailRec NoInline False [])
 
 callSiteProg :: L3.Prog3
@@ -100,7 +108,7 @@ callSiteProg =
   Prog
     M.empty
     (M.fromList [("producer", loopifiedProducerFun), ("consumer", consumerFun)])
-    (Just (callSiteMain, L3.IntTy))
+    (Just (callSiteMain, L3.IntTy W64))
 
 callSiteMain :: L3.Exp3
 callSiteMain =
@@ -111,7 +119,7 @@ callSiteMain =
   -- not inserted inside the fold body where recursive calls would repeat it.
   L3.mkLets
     [ ("produce", [], L3.ProdTy [], L3.TimeIt (L3.AppE "producer" UnknownTailType [] [L3.VarE "inEnds", L3.VarE "outEnds", L3.VarE "outCurs", L3.VarE "inCurs"]) (L3.ProdTy []) False)
-    , ("consume", [], L3.IntTy, L3.TimeIt (L3.AppE "consumer" UnknownTailType [] [L3.VarE "outEnds", inlineCopiedCursorArg "copyCurs" "outCurs"]) L3.IntTy False)
+    , ("consume", [], L3.IntTy W64, L3.TimeIt (L3.AppE "consumer" UnknownTailType [] [L3.VarE "outEnds", inlineCopiedCursorArg "copyCurs" "outCurs"]) (L3.IntTy W64) False)
     ]
     (L3.VarE "consume")
 
@@ -144,14 +152,14 @@ dconLoop =
   , L3.ProdTy []
   , L3.Ext $ L3.WhileCursor "loop_probe_buf0_count_footer_loc" $
       L3.mkLets
-        [("loop_probe_buf0_inner_loop", [], L3.ProdTy [], L3.Ext $ L3.ForE "i" (L3.LitE 8) dconForBody)]
+        [("loop_probe_buf0_inner_loop", [], L3.ProdTy [], L3.Ext $ L3.ForE "i" (L3.mkLitE64 8) dconForBody)]
         (L3.MkProdE [])
   )
 
 dconForBody :: L3.Exp3
 dconForBody =
   L3.mkLets
-    [("loop_probe_buf0_write_tag", [], L3.CursorTy, L3.Ext $ L3.WriteTagPacked "out_dcon" (L3.LitE 1))]
+    [("loop_probe_buf0_write_tag", [], L3.CursorTy, L3.Ext $ L3.WriteTagPacked "out_dcon" (L3.mkLitE64 1))]
     (L3.MkProdE [])
 
 copyLoop :: (Var, [()], L3.Ty3, L3.Exp3)
@@ -161,7 +169,7 @@ copyLoop =
   , L3.ProdTy []
   , L3.Ext $ L3.WhileCursor "loop_probe_buf1_count_footer_loc" $
       L3.mkLets
-        [("loop_probe_buf1_inner_loop", [], L3.ProdTy [], L3.Ext $ L3.ForE "i" (L3.LitE 8) copyForBody)]
+        [("loop_probe_buf1_inner_loop", [], L3.ProdTy [], L3.Ext $ L3.ForE "i" (L3.mkLitE64 8) copyForBody)]
         (L3.MkProdE [])
   )
 
@@ -175,9 +183,9 @@ copyScalarBody :: Int -> L3.Exp3
 copyScalarBody ix =
   let pfx = "loop_probe_buf" ++ show ix
    in L3.mkLets
-        [ (toVar (pfx ++ "_read_pair"), [], L3.ProdTy [L3.IntTy, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.IntS (toVar (pfx ++ "_read_cur")))
-        , (toVar (pfx ++ "_read_val"), [], L3.IntTy, L3.ProjE 0 (L3.VarE (toVar (pfx ++ "_read_pair"))))
-        , (toVar (pfx ++ "_write_val"), [], L3.CursorTy, L3.Ext $ L3.WriteScalar L3.IntS (toVar (pfx ++ "_write_cur")) (L3.VarE (toVar (pfx ++ "_read_val"))))
+        [ (toVar (pfx ++ "_read_pair"), [], L3.ProdTy [L3.IntTy W64, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.intS64 (toVar (pfx ++ "_read_cur")))
+        , (toVar (pfx ++ "_read_val"), [], L3.IntTy W64, L3.ProjE 0 (L3.VarE (toVar (pfx ++ "_read_pair"))))
+        , (toVar (pfx ++ "_write_val"), [], L3.CursorTy, L3.Ext $ L3.WriteScalar L3.intS64 (toVar (pfx ++ "_write_cur")) (L3.VarE (toVar (pfx ++ "_read_val"))))
         ]
         (L3.MkProdE [])
 
@@ -188,7 +196,7 @@ mutateLoop =
   , L3.ProdTy []
   , L3.Ext $ L3.WhileCursor "loop_probe_buf2_count_footer_loc" $
       L3.mkLets
-        [("loop_probe_buf2_inner_loop", [], L3.ProdTy [], L3.Ext $ L3.ForE "i" (L3.LitE 8) mutateForBody)]
+        [("loop_probe_buf2_inner_loop", [], L3.ProdTy [], L3.Ext $ L3.ForE "i" (L3.mkLitE64 8) mutateForBody)]
         (L3.MkProdE [])
   )
 
@@ -218,7 +226,7 @@ crossFieldLoop =
   , L3.ProdTy []
   , L3.Ext $ L3.WhileCursor "loop_probe_buf1_count_footer_loc" $
       L3.mkLets
-        [("loop_probe_buf1_inner_loop", [], L3.ProdTy [], L3.Ext $ L3.ForE "i" (L3.LitE 8) crossFieldForBody)]
+        [("loop_probe_buf1_inner_loop", [], L3.ProdTy [], L3.Ext $ L3.ForE "i" (L3.mkLitE64 8) crossFieldForBody)]
         (L3.MkProdE [])
   )
 
@@ -234,22 +242,22 @@ crossFieldForBody =
 crossFieldScalarBody :: L3.Exp3
 crossFieldScalarBody =
   L3.mkLets
-    [ ("loop_probe_buf1_read_pair", [], L3.ProdTy [L3.IntTy, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.IntS "loop_probe_buf1_read_cur")
-    , ("loop_probe_buf1_read_val", [], L3.IntTy, L3.ProjE 0 (L3.VarE "loop_probe_buf1_read_pair"))
-    , ("loop_probe_buf1_dep2_read_pair", [], L3.ProdTy [L3.IntTy, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.IntS "loop_probe_buf1_dep2_read_cur")
-    , ("loop_probe_buf1_dep2_read_val", [], L3.IntTy, L3.ProjE 0 (L3.VarE "loop_probe_buf1_dep2_read_pair"))
-    , ("loop_probe_buf1_field_val", [], L3.IntTy, L3.VarE "loop_probe_buf1_dep2_read_val")
-    , ("loop_probe_buf1_write_val", [], L3.CursorTy, L3.Ext $ L3.WriteScalar L3.IntS "loop_probe_buf1_write_cur" (L3.VarE "loop_probe_buf1_field_val"))
+    [ ("loop_probe_buf1_read_pair", [], L3.ProdTy [L3.IntTy W64, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.intS64 "loop_probe_buf1_read_cur")
+    , ("loop_probe_buf1_read_val", [], L3.IntTy W64, L3.ProjE 0 (L3.VarE "loop_probe_buf1_read_pair"))
+    , ("loop_probe_buf1_dep2_read_pair", [], L3.ProdTy [L3.IntTy W64, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.intS64 "loop_probe_buf1_dep2_read_cur")
+    , ("loop_probe_buf1_dep2_read_val", [], L3.IntTy W64, L3.ProjE 0 (L3.VarE "loop_probe_buf1_dep2_read_pair"))
+    , ("loop_probe_buf1_field_val", [], L3.IntTy W64, L3.VarE "loop_probe_buf1_dep2_read_val")
+    , ("loop_probe_buf1_write_val", [], L3.CursorTy, L3.Ext $ L3.WriteScalar L3.intS64 "loop_probe_buf1_write_cur" (L3.VarE "loop_probe_buf1_field_val"))
     ]
     (L3.MkProdE [])
 
 mutateScalarBody :: L3.Exp3
 mutateScalarBody =
   L3.mkLets
-    [ ("loop_probe_buf2_read_pair", [], L3.ProdTy [L3.IntTy, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.IntS "loop_probe_buf2_read_cur")
-    , ("loop_probe_buf2_read_val", [], L3.IntTy, L3.ProjE 0 (L3.VarE "loop_probe_buf2_read_pair"))
-    , ("loop_probe_buf2_plus1", [], L3.IntTy, L3.PrimAppE AddP [L3.VarE "loop_probe_buf2_read_val", L3.LitE 1])
-    , ("loop_probe_buf2_write_val", [], L3.CursorTy, L3.Ext $ L3.WriteScalar L3.IntS "loop_probe_buf2_write_cur" (L3.VarE "loop_probe_buf2_plus1"))
+    [ ("loop_probe_buf2_read_pair", [], L3.ProdTy [L3.IntTy W64, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.intS64 "loop_probe_buf2_read_cur")
+    , ("loop_probe_buf2_read_val", [], L3.IntTy W64, L3.ProjE 0 (L3.VarE "loop_probe_buf2_read_pair"))
+    , ("loop_probe_buf2_plus1", [], L3.IntTy W64, L3.PrimAppE addP64 [L3.VarE "loop_probe_buf2_read_val", L3.mkLitE64 1])
+    , ("loop_probe_buf2_write_val", [], L3.CursorTy, L3.Ext $ L3.WriteScalar L3.intS64 "loop_probe_buf2_write_cur" (L3.VarE "loop_probe_buf2_plus1"))
     ]
     (L3.MkProdE [])
 

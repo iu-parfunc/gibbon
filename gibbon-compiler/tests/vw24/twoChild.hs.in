@@ -1,0 +1,30 @@
+-- VW-24: TWO children, aggregate = sum of both children's `agg` fields.
+data T = Leaf Int32
+       | Node Int32   -- ctl
+              Int32   -- agg (computed from both children)
+              T T
+
+{-# ANN type T "Linear" #-}
+
+getAgg :: T -> Int32
+getAgg t =
+  case t of
+    Leaf v -> v
+    Node _ agg _ _ -> agg
+
+buildT :: Int -> T
+buildT d =
+  if d == 0
+  then Leaf 7
+  else
+    let c0 = buildT (d - 1)
+        c1 = buildT (d - 1)
+        a0 = getAgg c0
+        a1 = getAgg c1
+        agg = a0 + a1
+    in Node 99 agg c0 c1
+
+gibbon_main =
+  let t = buildT @D@
+      a = getAgg t
+  in a

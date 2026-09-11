@@ -1,4 +1,4 @@
--- Probe: guarded integer division inside a CanVectorize map.
+-- Probe: guarded integer division inside a MayVectorize map.
 -- The scalar program never divides by zero because the `d == 0` branch is
 -- taken first.  The vectorizer canonicalizes the statement-level conditional
 -- write into a value-level select, which evaluates BOTH arms eagerly.
@@ -16,7 +16,7 @@ mkDList n =
            dv = if n == 3 then 0 else n
        in DCons (n * 100) dv rst
 
-{-# ANN mapDiv "OPT:CanVectorize" #-}
+{-# ANN mapDiv "OPT:MayVectorize" #-}
 mapDiv :: DList -> Int -> DList
 mapDiv xs k =
   case xs of

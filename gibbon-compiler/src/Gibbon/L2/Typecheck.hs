@@ -141,7 +141,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
           do ty <- lookupVar env (fromVarToFreeVarsTy v) exp
              return (ty, tstatein)
 
-      LitE _i -> return (IntTy, tstatein)
+      LitE ann _ -> return (IntTy (litWidth ann), tstatein)
 
       CharE _i -> return (CharTy, tstatein)
 
@@ -219,11 +219,24 @@ tcExp ddfs env funs constrs regs tstatein exp =
                      _ <- ensureEqualTy (es !! 1) BoolTy (tys !! 1)
                      pure (BoolTy, tstate)
 
+                   -- The primitive's annotation is authoritative: both
+                   -- operands must have exactly the annotated width, so a
+                   -- malformed node (say W8 AddP over W16 operands) fails here
+                   -- rather than being silently re-derived downstream.
+                   annWidth = case intPrimAnnOf pr of
+                                Just (IntPrimWidth w) -> pure w
+                                Just IntPrimUnresolved -> throwError $ GenericTC
+                                  ("Width-sensitive integer primitive still has an unresolved width at L2.")
+                                  (es !! 0)
+                                Nothing -> throwError $ GenericTC
+                                  ("Not a width-sensitive integer primitive.") (es !! 0)
+
                    int_ops = do
                      len2
-                     _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
-                     _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
-                     pure (IntTy, tstate)
+                     w <- annWidth
+                     _ <- ensureEqualTy (es !! 0) (IntTy w) (tys !! 0)
+                     _ <- ensureEqualTy (es !! 1) (IntTy w) (tys !! 1)
+                     pure (IntTy w, tstate)
 
                    float_ops = do
                      len2
@@ -233,8 +246,9 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
                    int_cmps = do
                      len2
-                     _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
-                     _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
+                     w <- annWidth
+                     _ <- ensureEqualTy (es !! 0) (IntTy w) (tys !! 0)
+                     _ <- ensureEqualTy (es !! 1) (IntTy w) (tys !! 1)
                      pure (BoolTy, tstate)
 
                    float_cmps = do
@@ -252,22 +266,22 @@ tcExp ddfs env funs constrs regs tstatein exp =
                case pr of
                  MkTrue  -> mk_bools
                  MkFalse -> mk_bools
-                 AddP    -> int_ops
-                 SubP    -> int_ops
-                 MulP    -> int_ops
-                 DivP    -> int_ops
-                 ModP    -> int_ops
-                 ExpP    -> int_ops
+                 AddP{}    -> int_ops
+                 SubP{}    -> int_ops
+                 MulP{}    -> int_ops
+                 DivP{}    -> int_ops
+                 ModP{}    -> int_ops
+                 ExpP{}    -> int_ops
                  FAddP   -> float_ops
                  FSubP   -> float_ops
                  FMulP   -> float_ops
                  FDivP   -> float_ops
                  FExpP   -> float_ops
-                 EqIntP  -> int_cmps
-                 LtP     -> int_cmps
-                 GtP     -> int_cmps
-                 LtEqP   -> int_cmps
-                 GtEqP   -> int_cmps
+                 EqIntP{}  -> int_cmps
+                 LtP{}     -> int_cmps
+                 GtP{}     -> int_cmps
+                 LtEqP{}   -> int_cmps
+                 GtEqP{}   -> int_cmps
                  EqFloatP -> float_cmps
                  EqCharP  -> char_cmps
                  FLtP     -> float_cmps
@@ -277,18 +291,23 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  OrP     -> bool_ops
                  AndP    -> bool_ops
 
-                 RandP -> return (IntTy, tstate)
+                 RandP -> return ((IntTy W64), tstate)
                  FRandP -> return (FloatTy, tstate)
 
                  FloatToIntP -> do
                    len1
                    ensureEqualTy exp FloatTy (tys !! 0)
-                   return (IntTy, tstate)
+                   return ((IntTy W64), tstate)
 
-                 IntToFloatP -> do
+                 IntToFloatP a -> do
                    len1
-                   ensureEqualTy exp IntTy (tys !! 0)
+                   ensureEqualTy exp (IntTy (intPrimWidth a)) (tys !! 0)
                    return (FloatTy, tstate)
+
+                 IntConvertP a dst -> do
+                   len1
+                   ensureEqualTy exp (IntTy (intPrimWidth a)) (tys !! 0)
+                   return (IntTy dst, tstate)
 
                  FSqrtP -> do
                    len1
@@ -359,12 +378,12 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
                  SizeParam -> do
                    len0
-                   return (IntTy, tstate)
+                   return ((IntTy W64), tstate)
 
                  IsBig -> do
                    len2
                    let [ity, ety] = tys
-                   ensureEqualTy exp ity IntTy
+                   ensureEqualTy exp ity (IntTy W64)
                    if isPackedTy ety
                    then pure (BoolTy, tstate)
                    else error "L1.Typecheck: IsBig expects a Packed value."
@@ -395,10 +414,10 @@ tcExp ddfs env funs constrs regs tstatein exp =
                    len1
                    case (es !! 0) of
                      VarE{} -> if isPackedTy (tys !! 0)
-                               then return (IntTy, tstate)
+                               then return ((IntTy W64), tstate)
                                else case (tys !! 0) of
-                                      SymTy -> return (IntTy, tstate)
-                                      IntTy -> return (IntTy, tstate)
+                                      SymTy -> return ((IntTy W64), tstate)
+                                      IntTy{} -> return ((IntTy W64), tstate)
                                       _ -> throwError $ GenericTC "Expected PackedTy" exp
                      _ -> throwError $ GenericTC "Expected a variable argument" exp
 
@@ -406,7 +425,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                    len1
                    checkListElemTy elty
                    let [i] = tys
-                   _ <- ensureEqualTy (es !! 0) IntTy i
+                   _ <- ensureEqualTy (es !! 0) (IntTy W64) i
                    pure (VectorTy elty, tstate)
 
                  VFreeP elty -> do
@@ -426,25 +445,25 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  VLengthP elty -> do
                    let [ls] = tys
                    _ <- ensureEqualTy exp (VectorTy elty) ls
-                   pure (IntTy, tstate)
+                   pure ((IntTy W64), tstate)
 
                  VNthP elty -> do
                    let [ls, i] = tys
                    _ <- ensureEqualTy exp (VectorTy elty) ls
-                   _ <- ensureEqualTy exp IntTy i
+                   _ <- ensureEqualTy exp (IntTy W64) i
                    pure (elty, tstate)
 
                  VSliceP elty   -> do
                    let [from,to,ls] = tys
-                   _ <- ensureEqualTy exp IntTy from
-                   _ <- ensureEqualTy exp IntTy to
+                   _ <- ensureEqualTy exp (IntTy W64) from
+                   _ <- ensureEqualTy exp (IntTy W64) to
                    _ <- ensureEqualTy exp (VectorTy elty) ls
                    pure (VectorTy elty, tstate)
 
                  InplaceVUpdateP elty -> do
                    let [ls,i,val] = tys
                    _ <- ensureEqualTy exp (VectorTy elty) ls
-                   _ <- ensureEqualTy exp IntTy i
+                   _ <- ensureEqualTy exp (IntTy W64) i
                    _ <- ensureEqualTy exp elty val
                    pure (VectorTy elty, tstate)
 
@@ -472,7 +491,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                          [a,b] -> do
                             _ <- ensureEqualTy (es !! 1) a elty
                             _ <- ensureEqualTy (es !! 1) b elty
-                            _ <- ensureEqualTy (es !! 1) ret_ty IntTy
+                            _ <- ensureEqualTy (es !! 1) ret_ty (IntTy W64)
                             pure (VectorTy elty, tstate)
                          _ -> err fn_ty
                      oth -> throwError $ GenericTC ("vsort: function pointer has to be a variable reference. Got"++ sdoc oth) exp
@@ -595,11 +614,12 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
                  GetNumProcessors -> do
                    len0
-                   pure (IntTy, tstate)
+                   pure ((IntTy W64), tstate)
 
-                 PrintInt -> do
+                 PrintInt{} -> do
                    len1
-                   _ <- ensureEqualTy (es !!! 0) IntTy (tys !!! 0)
+                   w <- annWidth
+                   _ <- ensureEqualTy (es !!! 0) (IntTy w) (tys !!! 0)
                    pure (ProdTy [], tstate)
 
                  PrintChar -> do
@@ -671,14 +691,14 @@ tcExp ddfs env funs constrs regs tstatein exp =
                    len3
                    _ <- ensureEqualTy (es !!! 0) IntHashTy (tys !!! 0)
                    _ <- ensureEqualTy (es !!! 1) SymTy (tys !!! 1)
-                   _ <- ensureEqualTy (es !!! 2) IntTy (tys !!! 2)
+                   _ <- ensureEqualTy (es !!! 2) (IntTy W64) (tys !!! 2)
                    pure (IntHashTy, tstate)
 
                  IntHashLookup -> do
                    len2
                    _ <- ensureEqualTy (es !!! 0) IntHashTy (tys !!! 0)
                    _ <- ensureEqualTy (es !!! 1) SymTy (tys !!! 1)
-                   pure (IntTy, tstate)
+                   pure ((IntTy W64), tstate)
 
                  Write3dPpmFile{} -> throwError $ GenericTC "Write3dPpmFile not handled yet" exp
 
@@ -922,11 +942,11 @@ tcExp ddfs env funs constrs regs tstatein exp =
                recur tstatein $ VarE v
 
       -- The IntTy is just a placeholder. BoundsCheck is a side-effect
-      Ext (BoundsCheck{}) -> return (IntTy,tstatein)
+      Ext (BoundsCheck{}) -> return ((IntTy W64),tstatein)
 
       Ext (IndirectionE tycon _ (a,_) _ _) -> return (PackedTy tycon a, tstatein)
 
-      Ext GetCilkWorkerNum -> return (IntTy, tstatein)
+      Ext GetCilkWorkerNum -> return ((IntTy W64), tstatein)
 
       Ext (LetAvail _ e) -> recur tstatein e
 
@@ -980,8 +1000,8 @@ tcCases ddfs env funs constrs regs tstatein lin reg ((dc, vs, e):cases) = do
           (l1,[AfterConstantC 1 lin l1, InRegionC l1 reg] ++ lst)
       genConstrs (((_v1,l1),PackedTy _ _),Just ((v2,l2),PackedTy _ _)) (_lin,lst) =
           (l1,[AfterVariableC v2 l2 l1, InRegionC l1 reg] ++ lst)
-      genConstrs (((_v1,l1),PackedTy _ _),Just ((_v2,_l2),IntTy)) (lin,lst) =
-        let sz = fromMaybe 1 (sizeOfTy IntTy)
+      genConstrs (((_v1,l1),PackedTy _ _),Just ((_v2,_l2),IntTy{})) (lin,lst) =
+        let sz = fromMaybe 1 (sizeOfTy (IntTy W64))
         in (l1, [AfterConstantC sz lin l1, InRegionC l1 reg] ++ lst)
       genConstrs (((_,l1),_),_) (lin,lst) =
         (lin, (InRegionC l1 reg : lst))
@@ -1174,8 +1194,8 @@ checkLen expr pr n ls =
 -- | Ensure that two types are equal.
 -- Includes an expression for error reporting.
 ensureEqualTy :: Exp -> Ty2 -> Ty2 -> TcM Ty2
-ensureEqualTy _ CursorTy IntTy = return CursorTy
-ensureEqualTy _ IntTy CursorTy = return CursorTy
+ensureEqualTy _ CursorTy IntTy{} = return CursorTy
+ensureEqualTy _ IntTy{} CursorTy = return CursorTy
 ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
                                          ++ (show a) ++ ", " ++ (show b)) a b
 

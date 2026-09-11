@@ -44,7 +44,7 @@ shakeTreeExp = go
         else dbgTrace 4 (" [shakeTreeExp] dropping binding: "++show (v,t,rhs))$ bod'
 
     (VarE v)           -> VarE v
-    (LitE i)           -> LitE i
+    (LitE ann i)       -> LitE ann i
     (CharE i)           -> CharE i
     (FloatE i)         -> FloatE i
     (LitSymE v)        -> LitSymE v
@@ -89,7 +89,7 @@ hasEffect rhs =
     -- Trivials have been inlined, but we're still flat-ish:
     case rhs of
       VarE _ -> False
-      LitE _ -> False
+      LitE{} -> False
       CharE _ -> False
       FloatE{}  -> False
       LitSymE _ -> False

@@ -124,6 +124,8 @@ Assume that the input program is monomorphic.
 -}
 
 -- Just a mechanical transformation ..
+-- | Lower L0 to L1.  Integer widths are carried by Ty0 and pass through
+-- unchanged; the surface type `Int` is resolved to a width in the frontend.
 toL1 :: Prog0 -> L1.Prog1
 toL1 Prog{ddefs, fundefs, mainExp} =
    Prog (M.map toL1DDef ddefs) (M.map toL1FunDef fundefs) mainExp'
@@ -145,7 +147,15 @@ toL1 Prog{ddefs, fundefs, mainExp} =
     toL1Exp ex =
       case ex of
         VarE v    -> L1.VarE v
-        LitE n    -> L1.LitE n
+        LitE ann n ->
+          case ann of
+            -- The post-L0 invariant: contextual literal typing (or the
+            -- defaulting sweep at the end of L0 typechecking) must have
+            -- decided a width for every source literal.  Silently defaulting
+            -- here would hide an inference bug, so this is an ICE.
+            LitUnresolved -> error $ "toL1: internal error: integer literal " ++ show n
+                                     ++ " still has an unresolved width after L0 typechecking."
+            LitWidth{}    -> L1.LitE ann n
         CharE n   -> L1.CharE n
         FloatE n  -> L1.FloatE n
         LitSymE v -> L1.LitSymE v
@@ -198,14 +208,22 @@ toL1 Prog{ddefs, fundefs, mainExp} =
             -- Erase srclocs while going to L1
             L _ e   -> toL1Exp e
 
+    -- | The post-L0 invariant for primitives: L0 width inference must have
+    -- decided a width for every width-sensitive integer primitive.  Silently
+    -- defaulting here would hide an inference bug, so this is an ICE.
     toL1Prim :: Prim Ty0 -> Prim L1.Ty1
-    toL1Prim = fmap toL1Ty
+    toL1Prim pr =
+      case intPrimAnnOf pr of
+        Just IntPrimUnresolved ->
+          error $ "toL1: internal error: width-sensitive integer primitive "
+                  ++ show pr ++ " still has an unresolved width after L0 typechecking."
+        _ -> fmap toL1Ty pr
 
     toL1Ty :: Ty0 -> L1.Ty1
     toL1Ty ty =
       case ty of
         CharTy  -> L1.CharTy
-        IntTy   -> L1.IntTy
+        IntTy w -> L1.IntTy w
         FloatTy -> L1.FloatTy
         SymTy0  -> L1.SymTy
         BoolTy  -> L1.BoolTy
@@ -418,7 +436,7 @@ monoOblsTy :: DDefs0 -> Ty0 -> MonoM Ty0
 monoOblsTy ddefs1 t = do
   case t of
     CharTy    -> pure t
-    IntTy     -> pure t
+    IntTy{}     -> pure t
     FloatTy   -> pure t
     SymTy0    -> pure t
     BoolTy    -> pure t
@@ -831,7 +849,7 @@ updateTyConsTy :: DDefs0 -> MonoState -> Ty0 -> Ty0
 updateTyConsTy ddefs mono_st ty =
   case ty of
     CharTy  -> ty
-    IntTy   -> ty
+    IntTy{}   -> ty
     FloatTy -> ty
     SymTy0  -> ty
     BoolTy  -> ty
@@ -1363,7 +1381,7 @@ bindLambdas prg@Prog{fundefs,mainExp} = do
           (ls, e1') <- go e1
           pure (ls, Ext $ L p e1')
         (Ext (LinearExt{})) -> error $ "bindLambdas: a linear types extension wasn't desugared: " ++ sdoc e0
-        (LitE _)      -> pure ([], e0)
+        (LitE{})      -> pure ([], e0)
         (CharE _)     -> pure ([], e0)
         (FloatE{})    -> pure ([], e0)
         (LitSymE _)   -> pure ([], e0)
@@ -1672,7 +1690,9 @@ genPrintFn DDef{tyName, dataCons} = do
                 ys <- mapM (\_ -> gensym "y") tys
                 let bnds = foldr (\(ty,x,y) acc ->
                                      case ty of
-                                       IntTy   -> (y, [], ProdTy [], PrimAppE PrintInt [VarE x]) : acc
+                                       -- The derived printer prints the field at
+                                       -- the field's OWN width, not a fixed W64.
+                                       IntTy w   -> (y, [], ProdTy [], PrimAppE (PrintInt (IntPrimWidth w)) [VarE x]) : acc
                                        FloatTy -> (y, [], ProdTy [], PrimAppE PrintFloat [VarE x]) : acc
                                        SymTy0  -> (y, [], ProdTy [], PrimAppE PrintSym [VarE x]) : acc
                                        BoolTy  -> (y, [], ProdTy [], PrimAppE PrintBool [VarE x]) : acc

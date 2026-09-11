@@ -1,47 +1,31 @@
--- | Conservative loopification for `OPT:CanVectorize` traversals over flat
--- AoS packed layouts.
+-- | Conservative loopification for `OPT:MayVectorize` traversals over flat AoS
+-- packed layouts.
 --
--- This is deliberately separate from `LoopifyTraversals`, which targets fully
--- factored SoA layouts.  In a flat AoS layout all constructor tags and fields
--- live in one heterogeneous byte stream, so there are no homogeneous field
--- buffers, no scalar-count footer bounds, and no useful per-buffer vector loop.
--- The best first-step loopification is therefore structural: replace recursive
--- calls with a single cursor walk over the packed input value.
+-- Separate from `LoopifyTraversals`, which targets SoA: a flat AoS layout keeps
+-- all tags and fields in one heterogeneous byte stream, so there are no
+-- homogeneous field buffers, no scalar-count footer bounds, and no per-buffer
+-- vector loop.  Loopification here is structural -- recursive calls become a
+-- single cursor walk over the packed input.
 --
--- Invariants for this pass:
+-- Invariants:
 --
--- * The function must be annotated with `OPT:CanVectorize`, or the compiler
---   must be run with `--auto-loopification`.  The annotation/auto-discovery path
---   is the user/compiler promise that recursive calls are independent.
---   Automatic mode ignores generated packed helpers (`_copy_*`, `_print_*`,
---   `_traverse_*`, `_unpack_*`, etc.) because they are compiler infrastructure,
---   not source-level map candidates. The pass
---   still reuses the SoA parent-child dependency check and refuses functions
---   where self-call results flow into parent scalar writes, tags, conditions, or
---   subsequent traversal decisions.
+-- * The function must carry `OPT:MayVectorize`, or `--auto-loopification` must
+--   be set; automatic mode ignores generated packed helpers (`_copy_*`,
+--   `_print_*`, `_traverse_*`, `_unpack_*`).  The SoA parent-child dependency
+--   check still applies: functions whose self-call results flow into parent
+--   scalar writes, tags, conditions, or later traversal decisions are refused.
+-- * The datatype in the top-level case must not be `FullyFactored`; those go to
+--   the SoA pass.
+-- * The cursorized mutable AoS function carries the input value end and the
+--   current input cursor as mutable cursor references, so the loop stops at
+--   `while (*input_cursor != *input_end)`.
+-- * Each iteration runs the original single-node switch body with self-calls
+--   replaced by unit.  Constructor branches consume one node header and its
+--   scalar fields; redirection/indirection branches retarget the cursor and
+--   continue.
 --
--- * The datatype mentioned by the top-level case expression must not be
---   `FullyFactored`.  Fully factored values are handled by the SoA pass using
---   footer counts and per-buffer loops.
---
--- * The cursorized mutable AoS function carries both the input value end and
---   the current input cursor as mutable cursor references.  After the Cursorize
---   end-cursor fix, the input end argument is the packed value end, so the flat
---   loop can stop at `while (*input_cursor != *input_end)`.
---
--- * Each loop iteration executes the original single-node switch body with
---   recursive self-calls replaced by unit.  Normal constructor branches consume
---   exactly one node header and its scalar fields, leaving recursive child
---   cursors for later loop iterations.  Redirection/indirection branches update
---   the input cursor to the target and then let the loop continue.
---
--- Current limitations:
---
--- * This first AoS pass only handles the mutable-cursor cursorized shape.  That
---   is the backend used for the flat baseline we care about right now.
---
--- * It does not attempt SIMD, selective sharing, or field fusion.  Those are
---   SoA-only optimizations.
+-- Limitations: mutable-cursor cursorized shape only; no SIMD, selective
+-- sharing, or field fusion (those are SoA-only).
 module Gibbon.Passes.LoopifyFlatTraversals
   ( loopifyFlatTraversals
   ) where
@@ -74,7 +58,7 @@ rewriteFun :: Bool -> DDefs3 -> FunDef3 -> PassM FunDef3
 rewriteFun auto ddefs f@FunDef{funName, funArgs, funTy, funMeta, funBody} = do
   funBodyRepaired <- repairMutAddCursorSources (M.fromList (zip funArgs (fst funTy))) funBody
   let fRepaired = f { funBody = funBodyRepaired }
-      explicitlyAnnotated = CanVectorize `elem` funOpt funMeta
+      explicitlyAnnotated = MayVectorize `elem` funOpt funMeta
       canInfer = auto && not (isGeneratedPackedHelper funName)
   if not explicitlyAnnotated && not canInfer
     then pure fRepaired
@@ -89,7 +73,7 @@ rewriteFun auto ddefs f@FunDef{funName, funArgs, funTy, funMeta, funBody} = do
                 body' = LetE (freshFlatLoopName funName, [], ProdTy [],
                             Ext $ WhileCursorEnd fcInputCursor fcInputEnd loopBody)
                            (MkProdE [])
-            pure $ stampCanVectorize (fRepaired { funBody = body' })
+            pure $ stampLoopified (fRepaired { funBody = body' })
 
 hasNonAbiMutFormalAddCursorUse :: [Var] -> [Ty3] -> Exp3 -> Bool
 hasNonAbiMutFormalAddCursorUse args tys body =
@@ -177,9 +161,12 @@ repairMutAddCursorSourcesExt env ext =
     Assert rhs -> Ext . Assert <$> repairMutAddCursorSources env rhs
     _ -> pure $ Ext ext
 
-stampCanVectorize :: FunDef3 -> FunDef3
-stampCanVectorize fn@FunDef{funMeta} =
-  fn { funMeta = funMeta { funOpt = CanVectorize : filter (/= CanVectorize) (funOpt funMeta) } }
+-- | See the identically-named function in 'Gibbon.Passes.LoopifyTraversals'
+-- (a separate copy, not shared code): stamps the INTERNAL 'Loopified'
+-- marker, never the user's own 'MayVectorize' annotation.
+stampLoopified :: FunDef3 -> FunDef3
+stampLoopified fn@FunDef{funMeta} =
+  fn { funMeta = funMeta { funOpt = Loopified : filter (/= Loopified) (funOpt funMeta) } }
 
 -- | The minimal role information needed for flat AoS loopification.
 data FlatCandidate = FlatCandidate

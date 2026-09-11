@@ -1,0 +1,18 @@
+-- The same disagreement, but only 8 bytes apart: A's tail is at loc+17 and
+-- B's at loc+9, and an indirection node is 9 bytes, so re-placing the value
+-- would write over the value's own tag.  Must be refused before code
+-- generation rather than compiled into a corrupt program.
+data T = A Int Int T | B Int T | End
+{-# ANN type T "Linear" #-}
+mkT :: Int -> T
+mkT n = if n <= 0
+        then End
+        else let rst = mkT (n - 1)
+              in if n < 3 then A n (n * 2) rst else B (n + 200) rst
+lenT :: T -> Int
+lenT t = case t of { End -> 0 ; A x y rst -> 1 + lenT rst ; B w rst -> 1 + lenT rst }
+sumA :: T -> Int
+sumA t = case t of { End -> 0 ; A x y rst -> x + y + sumA rst ; B w rst -> sumA rst }
+sumB :: T -> Int
+sumB t = case t of { End -> 0 ; A x y rst -> sumB rst ; B w rst -> w + sumB rst }
+gibbon_main = let t = mkT @N@ in (lenT t, sumA t, sumB t)

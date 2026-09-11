@@ -14,6 +14,8 @@
 # PARALLEL
 # BUMPALLOC
 # PAPI
+# REGIONRESET               = 0 | 1
+# SCALARCOUNTDIFF           = 0 | 1
 #
 #
 # GC toggles:
@@ -76,6 +78,37 @@ endif
 
 ifeq ($(BUMPALLOC), 1)
 	CFLAGS += -D_GIBBON_BUMPALLOC_LISTS -D_GIBBON_BUMPALLOC_HEAP
+endif
+
+# Opt-in vector bounds checking.  Costs a branch per element access, so it is
+# off by default; see Note [GibVector range and indexing contract] in
+# rts-c/gibbon_rts.c.  With it, an out-of-range `nth`/`inplacevupdate` exits
+# deterministically with the index and the valid range instead of silently
+# corrupting the heap.
+ifeq ($(BOUNDSCHECK), 1)
+	CFLAGS += -D_GIBBON_BOUNDSCHECK
+endif
+
+# Opt-in reclamation of region chunks grown inside an `iterate` benchmark loop.
+# Without it, each iteration re-grows the output region from its first chunk and
+# strands the previous iteration's chunk chain, so memory grows by one whole
+# output value per iteration (measured: 929 MB/iteration for a 100M-element
+# list, i.e. 94 GB over 101 iterations).  Off by default so the pre-existing
+# behaviour is exactly recoverable; see Note [Region chunk log] in
+# rts-c/gibbon_rts.c.
+ifeq ($(REGIONRESET), 1)
+	CFLAGS += -D_GIBBON_REGIONRESET=1
+else
+	CFLAGS += -D_GIBBON_REGIONRESET=0
+endif
+
+# Differential scalar counts: build the flush so it VERIFIES the deferred
+# counter against the per-element bump instead of applying it.  Must match the
+# -D_GIBBON_SCALAR_COUNT_DIFF the generated program is compiled with, because
+# the per-element increment is inlined into the program while the flush lives
+# here.  See Note [Deferred scalar counts].
+ifeq ($(SCALARCOUNTDIFF), 1)
+	CFLAGS += -D_GIBBON_SCALAR_COUNT_DIFF
 endif
 
 ifeq ($(EAGER_PROMOTION), 1)

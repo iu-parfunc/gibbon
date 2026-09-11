@@ -35,16 +35,4 @@ Running pass sumPathLengths (fold, uses=3):
 ITERS: 1
 SIZE: 1
 End
-Running pass classify tree (fold, uses=5): 
-ITERS: 1
-SIZE: 1
-End
-Running pass classify Depth (fold, uses=4): 
-ITERS: 1
-SIZE: 1
-End
-Running pass classify Batch (fold, uses=5): 
-ITERS: 1
-SIZE: 1
-End
-'#(67 34 8 32921 21 0 34 7 109 -1 4 -89)
+'#(67 34 8 32921 21 0 34 7 109)

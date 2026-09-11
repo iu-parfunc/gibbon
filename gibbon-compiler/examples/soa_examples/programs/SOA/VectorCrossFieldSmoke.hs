@@ -12,7 +12,7 @@ mkVList n =
   else let rst = mkVList (n - 1)
        in VCons n (n + 10) rst
 
-{-# ANN mapCross "OPT:CanVectorize" #-}
+{-# ANN mapCross "OPT:MayVectorize" #-}
 mapCross :: VList -> Int -> VList
 mapCross xs k =
   case xs of

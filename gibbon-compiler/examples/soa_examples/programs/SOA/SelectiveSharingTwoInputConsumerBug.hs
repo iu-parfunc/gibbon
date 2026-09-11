@@ -1,27 +1,6 @@
--- REPRODUCER (audit artifact): selective buffer sharing leaves the
--- selective-indirection wrapper un-normalized when the consumer of the shared
--- value takes two packed SoA arguments.
---
--- After cursorization `zipSum` has four CursorArray arguments,
--- (ends_xs, ends_ys, curs_xs, curs_ys).
--- `Gibbon.Passes.SelectiveBufferSharing.soaInputCursorShapes` matches its
--- "producer" pattern `(endIx,_,n1) : _ : _ : (curIx,_,n2) : _` and pairs
--- argument 0 with argument 3, i.e. one input's *ends* array with the other
--- input's *cursor* array.  That pair is never a marked selective pair, so no
--- `UnwrapSelectiveIndirections` is emitted and the consumer reads the raw
--- GIB_SELECTIVE_INDIRECTION_TAG (249) from the shared dcon buffer.
---
--- Expected (== output without --enable-selective-buffer-sharing): 10200
--- Observed with --enable-selective-buffer-sharing:
---   "Unknown tag in: tmpval_<n>"  and exit status 1.
---
--- Swapping the argument order to `zipSum xs ys` fails identically.
---
--- Repro:
---   gibbon --use-mutable-cursors --no-ran --store-scalar-field-counts \
---          --enable-loopification --auto-loopification \
---          --packed --to-exe SelectiveSharingTwoInputConsumerBug.hs  -- 10200
---   gibbon ... --enable-selective-buffer-sharing ...                 -- crashes
+-- SelectiveSharingTwoInputConsumerBug: List (Factored).
+-- Functions: mkList, add1KeepFloat, zipSum.
+-- Annotated: MayVectorize on add1KeepFloat; StoreScalarCounts on mkList.
 
 data List = Cons Int Float List | Nil
 {-# ANN type List "Factored" #-}
@@ -34,7 +13,7 @@ mkList len =
   else let rst = mkList (len - 1)
        in Cons len 1.0 rst
 
-{-# ANN add1KeepFloat "OPT:CanVectorize" #-}
+{-# ANN add1KeepFloat "OPT:MayVectorize" #-}
 add1KeepFloat :: List -> List
 add1KeepFloat xs =
   case xs of

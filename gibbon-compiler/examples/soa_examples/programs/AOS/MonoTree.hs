@@ -1,8 +1,9 @@
--- test monomorphic things
+-- MonoTree: Tree (Linear).
+-- Functions: mkTree, add1Tree, sumTree, sumTreeAcc, id, main.
+-- Annotated: MayVectorize on add1Tree.
 module MonoTree where
 
--- @BENCH adt_fields=3
-data Tree = Leaf Int
+data Tree = Leaf Int64
           | Node Tree Tree
   deriving Show
 
@@ -11,10 +12,10 @@ data Tree = Leaf Int
 mkTree :: Int -> Int -> Tree
 mkTree d acc =
   if d == 0
-  then Leaf (acc)
+  then Leaf acc
   else Node (mkTree (d-1) (d+acc)) (mkTree (d-1) (d+acc))
 
-{-# ANN add1Tree "OPT:CanVectorize" #-}
+{-# ANN add1Tree "OPT:MayVectorize" #-}
 add1Tree :: Tree -> Tree
 add1Tree t =
   case t of
@@ -44,7 +45,7 @@ gibbon_main = let
                 _ = printsym (quote "NEWLINE")
                 tree = (mkTree 23 0)
 
-                _ = printsym (quote "Running pass add1Tree (map, uses=3): ")
+                _ = printsym (quote "Running pass add1Tree (map, uses=3, shared=0): ")
                 _ = printsym (quote "NEWLINE")
                 tree' =  iterate (add1Tree tree)
                 _ = printsym (quote "End")

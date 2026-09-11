@@ -38,7 +38,7 @@ tcExp :: HasCallStack => DDefs1 -> Env2 Var Ty1 -> Exp1 -> TcM Ty1 Exp1
 tcExp ddfs env exp =
   case exp of
     VarE v    -> lookupVar env v exp
-    LitE _    -> return IntTy
+    LitE ann _ -> return (IntTy (litWidth ann))
     CharE _   -> return CharTy
     FloatE{}  -> return FloatTy
     LitSymE _ -> return SymTy
@@ -106,11 +106,48 @@ tcExp ddfs env exp =
             _ <- ensureEqualTy (es !!! 1) BoolTy (tys !!! 1)
             pure BoolTy
 
-          int_ops = do
+          -- The primitive's own annotation, which must be concrete by L1.
+          annWidth = case intPrimAnnOf pr of
+                       Just (IntPrimWidth w) -> pure w
+                       Just IntPrimUnresolved -> throwError $ GenericTC
+                         ("Width-sensitive integer primitive " ++ sdoc pr ++
+                          " still has an unresolved width at L1. Widths must be resolved by L0.")
+                         exp
+                       Nothing -> throwError $ GenericTC
+                         ("Not a width-sensitive integer primitive: " ++ sdoc pr) exp
+
+          -- Integer prims are width-polymorphic but width-HOMOGENEOUS: both
+          -- operands must be integers of the SAME width, that width must equal
+          -- the primitive's annotation, and (for arithmetic) the result has
+          -- that width.  Mixing widths is a type error; the only way to cross
+          -- widths will be an explicit conversion prim.
+          --
+          -- Validating against the annotation as well as against the other
+          -- operand is what makes a malformed IR node such as "W8 AddP applied
+          -- to W16 operands" a typechecking failure rather than something a
+          -- later pass silently re-derives.
+          sameIntWidth = do
             len2
-            _ <- ensureEqualTy (es !!! 0) IntTy (tys !!! 0)
-            _ <- ensureEqualTy (es !!! 1) IntTy (tys !!! 1)
-            pure IntTy
+            w <- annWidth
+            let t0 = tys !!! 0
+                t1 = tys !!! 1
+            case (t0, t1) of
+              (IntTy w0, IntTy w1)
+                | w0 /= w1 -> throwError $ GenericTC
+                    ("Integer widths do not match: " ++ sdoc t0 ++ " vs " ++ sdoc t1
+                     ++ ". Gibbon does not implicitly convert between integer widths.")
+                    (es !!! 0)
+                | w0 /= w  -> throwError $ GenericTC
+                    ("Integer primitive " ++ sdoc pr ++ " is annotated " ++ show w
+                     ++ " but its operands have type " ++ sdoc t0 ++ ".")
+                    (es !!! 0)
+                | otherwise -> pure w
+              (IntTy _, _) -> throwError $ GenericTC ("Expected an integer, got " ++ sdoc t1) (es !!! 1)
+              _            -> throwError $ GenericTC ("Expected an integer, got " ++ sdoc t0) (es !!! 0)
+
+          int_ops = do
+            w <- sameIntWidth
+            pure (IntTy w)
 
           float_ops = do
             len2
@@ -119,9 +156,7 @@ tcExp ddfs env exp =
             pure FloatTy
 
           int_cmps = do
-            len2
-            _ <- ensureEqualTy (es !!! 0) IntTy (tys !!! 0)
-            _ <- ensureEqualTy (es !!! 1) IntTy (tys !!! 1)
+            _ <- sameIntWidth
             pure BoolTy
 
           float_cmps = do
@@ -139,22 +174,22 @@ tcExp ddfs env exp =
       case pr of
         MkTrue  -> mk_bools
         MkFalse -> mk_bools
-        AddP    -> int_ops
-        SubP    -> int_ops
-        MulP    -> int_ops
-        DivP    -> int_ops
-        ModP    -> int_ops
-        ExpP    -> int_ops
+        AddP{}    -> int_ops
+        SubP{}    -> int_ops
+        MulP{}    -> int_ops
+        DivP{}    -> int_ops
+        ModP{}    -> int_ops
+        ExpP{}    -> int_ops
         FAddP   -> float_ops
         FSubP   -> float_ops
         FMulP   -> float_ops
         FDivP   -> float_ops
         FExpP   -> float_ops
-        EqIntP  -> int_cmps
-        LtP     -> int_cmps
-        GtP     -> int_cmps
-        LtEqP   -> int_cmps
-        GtEqP   -> int_cmps
+        EqIntP{}  -> int_cmps
+        LtP{}     -> int_cmps
+        GtP{}     -> int_cmps
+        LtEqP{}   -> int_cmps
+        GtEqP{}   -> int_cmps
         EqFloatP -> float_cmps
         FLtP     -> float_cmps
         FGtP     -> float_cmps
@@ -175,7 +210,7 @@ tcExp ddfs env exp =
           len0
           return BoolTy
 
-        RandP -> return IntTy
+        RandP -> return (IntTy W64)
         FRandP -> return FloatTy
         FSqrtP -> do
           len1
@@ -190,16 +225,26 @@ tcExp ddfs env exp =
         FloatToIntP -> do
           len1
           _ <- ensureEqualTy exp FloatTy (tys !! 0)
-          return IntTy
+          return (IntTy W64)
 
-        IntToFloatP -> do
+        IntToFloatP a -> do
           len1
-          _ <- ensureEqualTy exp IntTy (tys !! 0)
+          _ <- ensureEqualTy exp (IntTy (intPrimWidth a)) (tys !! 0)
           return FloatTy
 
-        PrintInt -> do
+        -- Explicit width conversion: the operand must be exactly the
+        -- annotated source width (no implicit widening on the way in), and the
+        -- result is exactly the destination width.
+        IntConvertP a dst -> do
           len1
-          _ <- ensureEqualTy (es !!! 0) IntTy (tys !!! 0)
+          _ <- ensureEqualTy exp (IntTy (intPrimWidth a)) (tys !! 0)
+          return (IntTy dst)
+
+        -- PrintInt accepts every integer width, but exactly the annotated one.
+        PrintInt{} -> do
+          len1
+          w <- annWidth
+          _ <- ensureEqualTy (es !!! 0) (IntTy w) (tys !!! 0)
           return (ProdTy [])
 
         PrintChar -> do
@@ -224,7 +269,7 @@ tcExp ddfs env exp =
 
         ReadInt -> do
           len0
-          return IntTy
+          return (IntTy W64)
 
         SymSetEmpty -> do
           len0
@@ -316,12 +361,12 @@ tcExp ddfs env exp =
 
         SizeParam -> do
           len0
-          return IntTy
+          return (IntTy W64)
 
         IsBig -> do
           len2
           let [ity,ety] = tys
-          _ <- ensureEqualTy exp ity IntTy
+          _ <- ensureEqualTy exp ity (IntTy W64)
           if isPackedTy ety
           then pure BoolTy
           else error $ "L1.Typecheck: IsBig expects a Packed value. Got: " ++ sdoc ety
@@ -348,10 +393,10 @@ tcExp ddfs env exp =
           len1
           case (es !! 0) of
             VarE{} -> if isPackedTy (tys !! 0)
-                      then return IntTy
+                      then return (IntTy W64)
                       else case (tys !! 0) of
-                             SymTy -> return IntTy
-                             IntTy -> return IntTy
+                             SymTy -> return (IntTy W64)
+                             IntTy{} -> return (IntTy W64)
                              _ -> throwError $ GenericTC "Expected PackedTy" exp
             _ -> throwError $ GenericTC "Expected a variable argument" exp
 
@@ -359,7 +404,7 @@ tcExp ddfs env exp =
           len1
           checkListElemTy elty
           let [i] = tys
-          _ <- ensureEqualTy (es !! 0) IntTy i
+          _ <- ensureEqualTy (es !! 0) (IntTy W64) i
           pure (VectorTy elty)
 
         VFreeP elty -> do
@@ -381,22 +426,22 @@ tcExp ddfs env exp =
           checkListElemTy elty
           let [ls] = tys
           _ <- ensureEqualTy (es !! 0) (VectorTy elty) ls
-          pure IntTy
+          pure (IntTy W64)
 
         VNthP elty -> do
           len2
           checkListElemTy elty
           let [ls, i] = tys
           _ <- ensureEqualTy (es !! 0) (VectorTy elty) ls
-          _ <- ensureEqualTy (es !! 1) IntTy i
+          _ <- ensureEqualTy (es !! 1) (IntTy W64) i
           pure elty
 
         VSliceP elty -> do
           len3
           checkListElemTy elty
           let [from,to,ls] = tys
-          _ <- ensureEqualTy (es !! 0) IntTy from
-          _ <- ensureEqualTy (es !! 1) IntTy to
+          _ <- ensureEqualTy (es !! 0) (IntTy W64) from
+          _ <- ensureEqualTy (es !! 1) (IntTy W64) to
           _ <- ensureEqualTy (es !! 2) (VectorTy elty) ls
           pure (VectorTy elty)
 
@@ -405,7 +450,7 @@ tcExp ddfs env exp =
           checkListElemTy elty
           let [ls,i,x] = tys
           _ <- ensureEqualTy (es !! 0) (VectorTy elty) ls
-          _ <- ensureEqualTy (es !! 1) IntTy i
+          _ <- ensureEqualTy (es !! 1) (IntTy W64) i
           _ <- ensureEqualTy (es !! 2) elty x
           pure (VectorTy elty)
 
@@ -432,7 +477,7 @@ tcExp ddfs env exp =
                    -- [2021.05.08]: looks suspicious
                    _ <- ensureEqualTy (es !! 1) a elty
                    _ <- ensureEqualTy (es !! 1) b elty
-                   _ <- ensureEqualTy (es !! 1) ret_ty IntTy
+                   _ <- ensureEqualTy (es !! 1) ret_ty (IntTy W64)
                    pure (VectorTy elty)
                 _ -> err fn_ty
             oth -> throwError $ GenericTC ("vsort: function pointer has to be a variable reference. Got"++ sdoc oth) exp
@@ -556,7 +601,7 @@ tcExp ddfs env exp =
 
         GetNumProcessors -> do
           len0
-          pure IntTy
+          pure (IntTy W64)
 
         IntHashEmpty -> do
           len0
@@ -566,14 +611,14 @@ tcExp ddfs env exp =
           len3
           _ <- ensureEqualTy (es !!! 0) IntHashTy (tys !!! 0)
           _ <- ensureEqualTy (es !!! 1) SymTy (tys !!! 1)
-          _ <- ensureEqualTy (es !!! 2) IntTy (tys !!! 2)
+          _ <- ensureEqualTy (es !!! 2) (IntTy W64) (tys !!! 2)
           return IntHashTy
 
         IntHashLookup -> do
           len2
           _ <- ensureEqualTy (es !!! 0) IntHashTy (tys !!! 0)
           _ <- ensureEqualTy (es !!! 1) SymTy (tys !!! 1)
-          return IntTy
+          return (IntTy W64)
 
         Write3dPpmFile{} -> throwError $ GenericTC "Write3dPpmFile not handled yet" exp
 
@@ -739,7 +784,7 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
                            -- Fail if the main expression is packed and we're in packed mode
                            then if (not $ hasPacked ty) || (not $ gopt Opt_Packed flags)
                                 then return $ Just (e, ty)
-                                else error $ "Main expression has type " ++ sdoc ty ++ ", but it must be a simple (non-packed) type, such as " ++ (sdoc (IntTy :: Ty1)) ++ "."
+                                else error $ "Main expression has type " ++ sdoc ty ++ ", but it must be a simple (non-packed) type, such as " ++ (sdoc ((IntTy W64) :: Ty1)) ++ "."
                            else error $ "Expected type " ++ sdoc main_ty ++ " but got " ++ sdoc ty
 
   return prg { mainExp = mainExp' }
@@ -861,8 +906,8 @@ ensureEqual exp str a b = if a == b
 -- ensureEqualTy :: (Eq l, Out l) => PreExp e () (UrTy ()) -> (UrTy l) -> (UrTy l) ->
 --                  TcM (UrTy l) PreExp e () (UrTy ())
 ensureEqualTy :: PreExp e () (UrTy ()) -> Ty1 -> Ty1 -> TcM Ty1 (PreExp e () (UrTy ()))
-ensureEqualTy _exp CursorTy IntTy = return CursorTy
-ensureEqualTy _exp IntTy CursorTy = return CursorTy
+ensureEqualTy _exp CursorTy IntTy{} = return CursorTy
+ensureEqualTy _exp IntTy{} CursorTy = return CursorTy
 ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
                                          ++ (sdoc a) ++ ", " ++ (sdoc b)) a b
 

@@ -1,73 +1,66 @@
--- @BENCH adt_fields=25
+-- ColorOctree: ColorOctree (Factored).
+-- Functions: absI, sum8, mixSeed, cSumR, cSumG, cSumB, cCount,
+-- buildColorOctree. ...
+-- Annotated: StoreScalarCounts on buildColorOctree.
 data ColorOctree
-  = CNode Int  -- sumR
-          Int  -- sumG
-          Int  -- sumB
-          Int  -- pixel count
-          Int  -- level
-          Int  -- bboxMinR
-          Int  -- bboxMinG
-          Int  -- bboxMinB
-          Int  -- bboxMaxR
-          Int  -- bboxMaxG
-          Int  -- bboxMaxB
-          Int  -- variance proxy
-          Int  -- energy proxy
-          Int  -- bucket flags
+  = CNode Int64  -- sumR
+          Int64  -- sumG
+          Int64  -- sumB
+          Int64  -- pixel count
+          Int64  -- level
+          Int64  -- bboxMinR
+          Int64  -- bboxMinG
+          Int64  -- bboxMinB
+          Int64  -- bboxMaxR
+          Int64  -- bboxMaxG
+          Int64  -- bboxMaxB
+          Int64  -- variance proxy
+          Int64  -- energy proxy
+          Int64  -- bucket flags
           ColorOctree ColorOctree ColorOctree ColorOctree
           ColorOctree ColorOctree ColorOctree ColorOctree
-  | CPixel Int Int Int
+  | CPixel Int64 Int64 Int64
   | CEmpty
 
 {-# ANN type ColorOctree "Factored" #-}
 
--- Integer absolute value helper used by all synthetic metrics.
 absI :: Int -> Int
 absI x = if x < 0 then 0 - x else x
 
--- Fixed-arity sum so recursive passes avoid building intermediate lists.
 sum8 :: Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int
 sum8 a b c d e f g h = a + b + c + d + e + f + g + h
 
--- Deterministic pseudo-random mixer for generating stable synthetic input trees.
 mixSeed :: Int -> Int -> Int
 mixSeed s salt = s * 1103 + salt * 97 + 13
 
--- Extractor for cached red-channel sum (or pixel red at leaves).
-cSumR :: ColorOctree -> Int
+cSumR :: ColorOctree -> Int64
 cSumR t =
   case t of
     CNode r _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ -> r
     CPixel r _ _ -> r
     CEmpty -> 0
 
--- Extractor for cached green-channel sum (or pixel green at leaves).
-cSumG :: ColorOctree -> Int
+cSumG :: ColorOctree -> Int64
 cSumG t =
   case t of
     CNode _ g _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ -> g
     CPixel _ g _ -> g
     CEmpty -> 0
 
--- Extractor for cached blue-channel sum (or pixel blue at leaves).
-cSumB :: ColorOctree -> Int
+cSumB :: ColorOctree -> Int64
 cSumB t =
   case t of
     CNode _ _ b _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ -> b
     CPixel _ _ b -> b
     CEmpty -> 0
 
--- Extractor for cached pixel count in a subtree.
-cCount :: ColorOctree -> Int
+cCount :: ColorOctree -> Int64
 cCount t =
   case t of
     CNode _ _ _ cnt _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ -> cnt
     CPixel _ _ _ -> 1
     CEmpty -> 0
 
--- Builds a full synthetic color octree and caches per-cell aggregates.
--- This creates realistic mixed-field nodes (stats + 8 children), which
--- stress AoS layouts with wide records and SoA layouts with field-wise scans.
 {-# ANN buildColorOctree "OPT:StoreScalarCounts" #-}
 buildColorOctree :: Int -> Int -> Int -> ColorOctree
 buildColorOctree depth level seed =
@@ -109,15 +102,7 @@ buildColorOctree depth level seed =
         flags = mod (absI (mixSeed seed 29)) 8
     in CNode sr sg sb cnt level minR minG minB maxR maxG maxB varP energy flags c0 c1 c2 c3 c4 c5 c6 c7
 
--- Pass 1 (fold): estimates number of palette entries after quantization.
--- A palette is a small table of representative colors (e.g. 16/64/256 colors)
--- used instead of storing arbitrary RGB values for every pixel.
--- Quantization uses this pass to decide where one representative color is enough:
--- compact/low-variance regions map to one palette color, while detailed regions
--- recurse so they can consume more palette entries and preserve visual detail.
--- This is a realistic branchy reduction for both AoS (node-local metadata) and
--- SoA (repeated scans over selected fields such as bounds/variance/count).
-paletteEntriesQuantized :: ColorOctree -> Int -> Int -> Int
+paletteEntriesQuantized :: ColorOctree -> Int64 -> Int64 -> Int64
 paletteEntriesQuantized t maxDepth theta =
   case t of
     CNode _ _ _ cnt lvl minR minG minB maxR maxG maxB varP energy flags a b c d e f g h ->
@@ -137,20 +122,7 @@ paletteEntriesQuantized t maxDepth theta =
     CPixel _ _ _ -> 1
     CEmpty -> 0
 
--- Pass 2 (fold): estimates quantization error (quality loss from replacing
--- many original colors with fewer palette colors).
--- This proxy computes a per-region color disagreement score from average
--- channel differences, then chooses between:
--- (1) a coarse approximation at this node (fast, less detail), or
--- (2) recursion into children (costlier, more detail),
--- based on depth and a far/near-style threshold.
--- This matters because quantization is a rate-vs-distortion tradeoff: we need
--- to know whether a coarse palette assignment is acceptable or likely to
--- introduce visible error. The function provides that decision signal while
--- remaining efficient enough for repeated benchmark traversals.
--- It is also a realistic AoS/SoA workload with a different access pattern than
--- paletteEntriesQuantized (uses sums/counts for means rather than bbox fields).
-quantizationErrorProxy :: ColorOctree -> Int -> Int -> Int -> Int
+quantizationErrorProxy :: ColorOctree -> Int64 -> Int64 -> Int64 -> Int64
 quantizationErrorProxy t maxDepth eta weight =
   case t of
     CNode sr sg sb cnt lvl _ _ _ _ _ _ _ _ _ a b c d e f g h ->
@@ -174,8 +146,6 @@ quantizationErrorProxy t maxDepth eta weight =
     CPixel r g b -> absI (r - g) + absI (g - b) + absI (b - r)
     CEmpty -> 0
 
--- Benchmark driver: builds one tree and runs both reductions through iterate
--- to exercise the compiler/runtime on repeated AoS/SoA-style traversals.
 gibbon_main =
   let _ = printsym (quote "Running program ColorOctree Quantization: ")
       _ = printsym (quote "NEWLINE")

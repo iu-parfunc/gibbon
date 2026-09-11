@@ -1,17 +1,6 @@
--- Probe for a residual gap in `ScalarCountPropagation.countPropagatedProducers`:
--- `callSiteCovered` (ScalarCountPropagation.hs:210-228) only checks that the
--- ENCLOSING function is one this pass rewrites (funRec == NotRec) and that the
--- two ends arguments are variables.  It does NOT check that the call sits in a
--- `LetE` right-hand side, which is the only position `rewriteExp` /
--- `copyBindsForRhs` (ScalarCountPropagation.hs:90-94, 139-153) actually
--- rewrites.  A producer call in, e.g., an `IfE` arm tail would therefore be
--- reported as "count propagated" while receiving no `ScalarCountCopyAll`,
--- which makes `LoopifyTraversals.countGuaranteedTyCons` admit the type and the
--- loopified consumer read a 0 trip count.
---
--- `mul2` is shape preserving (so ScalarCountPropagation recognizes it) but not
--- loopifiable (the nested conditional defeats the scalar-plan extractor), so it
--- is count-establishing ONLY via propagation.
+-- VerifyN1IfArmProducer: List (Factored).
+-- Functions: mkList, mul2, add1, sumList.
+-- Annotated: MayVectorize on add1; StoreScalarCounts on mkList.
 data List = Cons Int List | Nil
 {-# ANN type List "Factored" #-}
 
@@ -30,7 +19,7 @@ mul2 lst = case lst of
                                    else (if i == 1 then 1 else i * 2)
                             in Cons v (mul2 rst)
 
-{-# ANN add1 "OPT:CanVectorize" #-}
+{-# ANN add1 "OPT:MayVectorize" #-}
 add1 :: List -> List
 add1 lst = case lst of
              Nil -> Nil

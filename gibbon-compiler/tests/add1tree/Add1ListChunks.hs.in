@@ -1,0 +1,36 @@
+-- BW-01 lane-tail/chunk-boundary fixture, one width per
+-- instantiation (@W@ is substituted). Correctness-only; NOT a benchmark.
+--
+-- List-shaped (unlike the committed Add1TreeIntN.hs's Fibonacci tree), so
+-- an EXACT node count is directly controllable via `sizeParam` -- needed
+-- to hit the lane-1/lane/lane+1/2*lane-1/2*lane/2*lane+1 boundaries
+-- precisely, which a Fibonacci-shaped tree cannot (its leaf counts are
+-- restricted to the Fibonacci sequence). Same map (`x+1`, MayVectorize)
+-- and same order-sensitive checksum shape as Add1TreeIntN.hs's
+-- `add1Tree`/`checksumTree`, applied to a list instead of a tree.
+module Add1ListChunks where
+
+data L = Cons Int@W@ L | Nil
+{-# ANN type L "Factored" #-}
+
+{-# ANN mkL "OPT:StoreScalarCounts" #-}
+mkL :: Int -> Int -> L
+mkL n seed =
+  if n <= 0
+  then Nil
+  else Cons (toInt@W@ (mod seed 64 - 32)) (mkL (n - 1) (seed * 2 + 1))
+
+{-# ANN add1L "OPT:MayVectorize" #-}
+add1L :: L -> L
+add1L t =
+  case t of
+    Nil -> Nil
+    Cons x rst -> Cons (x + 1) (add1L rst)
+
+checksumL :: L -> Int@W@ -> Int@W@
+checksumL t h =
+  case t of
+    Nil -> h
+    Cons x rst -> checksumL rst (h * 31 + x)
+
+gibbon_main = checksumL (add1L (mkL sizeParam 1)) (toInt@W@ 0)

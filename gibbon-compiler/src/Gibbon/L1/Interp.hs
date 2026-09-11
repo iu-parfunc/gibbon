@@ -77,7 +77,7 @@ interp rc valenv ddefs fenv = go valenv
           Ext ext -> do
               gInterpExt rc env ddefs fenv ext
 
-          LitE c    -> return $ VInt c
+          LitE _ c  -> return $ VInt (fromIntegral c)
           CharE c   -> return $ VChar c
           FloatE c  -> return $ VFloat c
           LitSymE s -> return $ VSym (fromVar s)
@@ -192,6 +192,18 @@ interp rc valenv ddefs fenv = go valenv
     --   pure (VList ls')
 
 
+-- | Rebuild an interpreter value from a result the shared arithmetic model has
+-- already normalized.  The value is in range for its annotated width and every
+-- such width fits in a host 'Int', so this conversion cannot itself overflow.
+vInt :: Integer -> Value e
+vInt = VInt . fromInteger
+
+-- | Turn a division failure into the same diagnostic the generated C prints,
+-- rather than letting a host arithmetic exception escape.
+orDie :: Either ArithError Integer -> InterpM s e Integer
+orDie (Right n) = pure n
+orDie (Left err) = error (arithErrorMessage err)
+
 applyPrim :: (Show ty, Ord l, Out l, Show l, Show d, Out d, Ord d,  Ord (e l d), Out (e l d), Show (e l d))
           => RunConfig -> Prim ty -> [(Value (PreExp e l d))] -> InterpM s (PreExp e l d) (Value (PreExp e l d))
 applyPrim rc p args =
@@ -200,12 +212,19 @@ applyPrim rc p args =
    (MkFalse,[])            -> pure $ VBool False
    -- FIXME: randomIO does not guarentee unique numbers every time.
    (Gensym, [])            -> pure $ VSym $ "gensym_" ++ (show $ (unsafePerformIO randomIO :: Int) `mod` 1000)
-   (AddP,[VInt x, VInt y]) -> pure $ VInt (x+y)
-   (SubP,[VInt x, VInt y]) -> pure $ VInt (x-y)
-   (MulP,[VInt x, VInt y]) -> pure $ VInt (x*y)
-   (DivP,[VInt x, VInt y]) -> pure $ VInt (x `quot` y)
-   (ModP,[VInt x, VInt y]) -> pure $ VInt (x `rem` y)
-   (ExpP,[VInt x, VInt y]) -> pure $ VInt (x ^ y)
+   -- Integer arithmetic goes through the shared model in
+   -- 'Gibbon.Language.Syntax' (see the "Deterministic integer arithmetic"
+   -- section there), which computes in 'Integer' and normalizes to the
+   -- primitive's annotated width.  The interpreter's own value representation
+   -- is width-erased ('VInt Int'), so the ANNOTATION is authoritative -- these
+   -- must never fall back to W64, and must never do the arithmetic in host
+   -- 'Int' first, which is precisely what they used to do.
+   (AddP a,[VInt x, VInt y]) -> pure $ vInt (wrapAdd (intPrimWidth a) (toInteger x) (toInteger y))
+   (SubP a,[VInt x, VInt y]) -> pure $ vInt (wrapSub (intPrimWidth a) (toInteger x) (toInteger y))
+   (MulP a,[VInt x, VInt y]) -> pure $ vInt (wrapMul (intPrimWidth a) (toInteger x) (toInteger y))
+   (DivP a,[VInt x, VInt y]) -> vInt <$> orDie (checkedQuot (intPrimWidth a) (toInteger x) (toInteger y))
+   (ModP a,[VInt x, VInt y]) -> vInt <$> orDie (checkedRem  (intPrimWidth a) (toInteger x) (toInteger y))
+   (ExpP a,[VInt x, VInt y]) -> pure $ vInt (wrapPow (intPrimWidth a) (toInteger x) (toInteger y))
    (FAddP,[VFloat x, VFloat y]) -> pure $ VFloat (x+y)
    (FSubP,[VFloat x, VFloat y]) -> pure $ VFloat (x-y)
    (FMulP,[VFloat x, VFloat y]) -> pure $ VFloat (x*y)
@@ -218,18 +237,21 @@ applyPrim rc p args =
    (FRandP,[]) -> do
        i <- liftIO $ randomIO
        pure $ VFloat i
-   (IntToFloatP,[VInt x]) -> pure $ VFloat (fromIntegral x)
+   -- Compiled code and the interpreter must agree bit for bit; both go
+   -- through 'narrowToIntWidth', computed in Integer.
+   (IntConvertP _ dst,[VInt x]) -> pure $ VInt (fromInteger (narrowToIntWidth dst (toInteger x)))
+   (IntToFloatP _,[VInt x]) -> pure $ VFloat (fromIntegral x)
    (FloatToIntP,[VFloat x]) -> pure $ VInt (round x)
    (FSqrtP,[VFloat x]) -> pure $ VFloat (sqrt x)
    (EqSymP,[VSym x, VSym y]) -> pure $ VBool (x==y)
    (EqBenchProgP _str,[]) -> pure $ VBool False
-   (EqIntP,[VInt x, VInt y]) -> pure $ VBool (x==y)
+   (EqIntP{},[VInt x, VInt y]) -> pure $ VBool (x==y)
    (EqFloatP,[VFloat x, VFloat y]) -> pure $ VBool (x==y)
    (EqCharP ,[VChar x , VChar y])  -> pure $ VBool (x==y)
-   (LtP,[VInt x, VInt y]) -> pure $ VBool (x < y)
-   (GtP,[VInt x, VInt y]) -> pure $ VBool (x > y)
-   (LtEqP,[VInt x, VInt y]) -> pure $ VBool (x <= y)
-   (GtEqP,[VInt x, VInt y]) -> pure $ VBool (x >= y)
+   (LtP{},[VInt x, VInt y]) -> pure $ VBool (x < y)
+   (GtP{},[VInt x, VInt y]) -> pure $ VBool (x > y)
+   (LtEqP{},[VInt x, VInt y]) -> pure $ VBool (x <= y)
+   (GtEqP{},[VInt x, VInt y]) -> pure $ VBool (x >= y)
    (FLtP,[VFloat x, VFloat y]) -> pure $ VBool (x < y)
    (FGtP,[VFloat x, VFloat y]) -> pure $ VBool (x > y)
    (FLtEqP,[VFloat x, VFloat y]) -> pure $ VBool (x <= y)
@@ -277,7 +299,7 @@ applyPrim rc p args =
        pure ls
    (InplaceVSortP _, [ls, _fn]) -> do
        pure ls
-   (PrintInt, [VInt n]) -> do
+   (PrintInt{}, [VInt n]) -> do
        tell $ string8 (show n)
        pure $ VProd []
    (PrintFloat, [VFloat n]) -> do

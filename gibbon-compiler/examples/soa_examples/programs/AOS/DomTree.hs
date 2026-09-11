@@ -1,21 +1,26 @@
--- @BENCH adt_fields=15
+-- DomTree: DOM (Linear).
+-- Functions: buildRenderTree, sumArea, max, maxBottom, countPositioned,
+-- sumTextWidth, computeWidths, getWidth. ...
+-- Annotated: MayVectorize on scaleLayout.
 data DOM
-  = Elem Int   -- tag id
-         Int   -- class id
-         Int   -- style flags
-         Int   -- layout cost
-         Int   -- x
-         Int   -- y
-         Int   -- width
-         Int   -- height
+  = Elem Int64   -- tag id
+         Int64   -- class id
+         Int64   -- style flags
+         Int64   -- layout cost
+         Int64   -- x
+         Int64   -- y
+         Int64   -- width
+         Int64   -- height
          DOM
          DOM
-  | Text Int   -- char count
-         Int   -- font size
-         Int   -- color
-         Int   -- width
-         Int   -- height
+  | Text Int64   -- char count
+         Int64   -- font size
+         Int64   -- color
+         Int64   -- width
+         Int64   -- height
   | Empty
+
+
 
 {-# ANN type DOM "Linear" #-}
 
@@ -110,7 +115,9 @@ getWidth d =
     Text _ _ _ w _ -> w
     Empty -> 0
 
-{-# ANN scaleLayout "OPT:CanVectorize" #-}
+-- `k` is explicitly Int, matching the fields it multiplies, so this
+-- MayVectorize loop needs no width-changing conversion in its body.
+{-# ANN scaleLayout "OPT:MayVectorize" #-}
 scaleLayout :: DOM -> Int -> DOM
 scaleLayout d k =
   case d of
@@ -151,12 +158,12 @@ gibbon_main =
       textW  = iterate (sumTextWidth tree)
       _ = printsym (quote "End")
       _ = printsym (quote "NEWLINE")
-      _ = printsym (quote "Running pass computeWidths (map, uses=14): ")
+      _ = printsym (quote "Running pass computeWidths (map, uses=14, shared=12): ")
       _ = printsym (quote "NEWLINE")
       tree'  = iterate (computeWidths tree_smaller)
       _ = printsym (quote "End")
       _ = printsym (quote "NEWLINE")
-      _ = printsym (quote "Running pass scaleLayout (map, uses=15): ")
+      _ = printsym (quote "Running pass scaleLayout (map, uses=15, shared=7): ")
       _ = printsym (quote "NEWLINE")
       tree'' = iterate (scaleLayout tree' 2)
       _ = printsym (quote "End")

@@ -1,0 +1,23 @@
+-- VW-07 capacity fixture, one width per instantiation (@W@ is substituted).
+-- Correctness-only; NOT a benchmark.
+module SingleWidthChunks where
+
+data T = Node Int@W@ T | Leaf
+{-# ANN type T "Factored" #-}
+
+{-# ANN mkT "OPT:StoreScalarCounts" #-}
+mkT :: Int64 -> T
+mkT n = if n <= 0 then Leaf else Node (toInt@W@ (mod n 50)) (mkT (n - 1))
+
+{-# ANN bump "OPT:MayVectorize" #-}
+bump :: T -> T
+bump t = case t of
+           Leaf -> Leaf
+           Node a rst -> Node (a + 1) (bump rst)
+
+total :: T -> Int64
+total t = case t of
+            Leaf -> 0
+            Node a rst -> toInt64 a + total rst
+
+gibbon_main = total (bump (mkT sizeParam))

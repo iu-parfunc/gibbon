@@ -1,44 +1,23 @@
--- LLVM-inspired linear IR
-
--- @BENCH adt_fields=9
+-- Compiler: IR (Factored).
+-- Functions: buildIR_validPhi_go, instCountPass, blockCountPass,
+-- castInstCountPass, goHasCycle, memoryOpStatsPass, branchStatsPass,
+-- latencyModelPass. ...
+-- Annotated: MayVectorize on targetRetunePass, stripSideEffectsPass;
+-- StoreScalarCounts on buildIR_validPhi_go.
 data IR
-  = Instr Int   -- opcode (see encoding below)
-          Int   -- flags
-          Int   -- src1
-          Int   -- src2
-          Int   -- dst
-          Int   -- latency
-          Int   -- throughput
+  = Instr Int64   -- opcode (see encoding below)
+          Int64   -- flags
+          Int64   -- src1
+          Int64   -- src2
+          Int64   -- dst
+          Int64   -- latency
+          Int64   -- throughput
           IR
   | BlockEnd    -- basic block terminator
           IR
   | End
 
 {-# ANN type IR "Factored" #-}
-
--- Opcode encoding:
--- 0: ALU      (add, mul, fadd, etc.)
--- 1: Load     (load)
--- 2: Store    (store)
--- 3: Compare  (icmp, fcmp)
--- 4: Branch   (br, switch)
--- 5: Call     (call, invoke)
--- 6: Phi      (phi)
--- 7: Cast     (bitcast, zext, fptosi, ...)
-
--- buildIR :: Int -> IR
--- buildIR n =
---    if n <= 0
---    then End
---    else if mod n 7 == 0
---    then BlockEnd (buildIR (n - 1))
---    else
---     let
---        op   = mod n 8
---        flags = mod (n*3) 16
---        lat  = 1 + mod n 5
---        thr  = 1 + mod n 3
---       in Instr op flags (n-1) (n-2) n lat thr (buildIR (n - 1))
 
 
 -- Build "LLVM-valid-ish" IR:
@@ -154,7 +133,7 @@ throughputModelPass ir =
     End ->
       0
 
-{-# ANN targetRetunePass "OPT:CanVectorize" #-}
+{-# ANN targetRetunePass "OPT:MayVectorize" #-}
 targetRetunePass :: IR -> Int -> IR
 targetRetunePass ir k =
   case ir of
@@ -166,7 +145,7 @@ targetRetunePass ir k =
     End ->
       End
 
-{-# ANN stripSideEffectsPass "OPT:CanVectorize" #-}
+{-# ANN stripSideEffectsPass "OPT:MayVectorize" #-}
 stripSideEffectsPass :: IR -> IR
 stripSideEffectsPass ir =
   case ir of
@@ -179,42 +158,39 @@ stripSideEffectsPass ir =
       End
 
 
--- Verifier pass with side effects only.
--- Side effect: prints a short marker if it sees an invalid condition.
--- Realistic: LLVM verifier reports diagnostics; here we emit tiny markers.
--- Also emits markers for negative values (mostly never triggers in this synthetic IR).
--- LLVM-style PHI placement verifier (side-effect only).
--- Prints "BADPHI " iff a PHI appears *after* a non-PHI in the same basic block.
-verifyPhiPlacement_IO :: IR -> Int -> ()
+verifyPhiPlacement_IO :: IR -> Int -> Int
 verifyPhiPlacement_IO ir seenNonPhi =
   case ir of
     End ->
-      ()
+      0
 
     BlockEnd rest ->
       -- new block: we are back in the "PHI prefix"
       verifyPhiPlacement_IO rest 0
 
     Instr op fl s1 s2 dst lat thr rest ->
-      let _ = if op == 6
-              then
-                if seenNonPhi == 1
-                then printsym (quote "BADPHI ")
-                else ()
-              else ()
+      -- Returns the NUMBER of misplaced PHIs rather than (). A unit result
+      -- carries no data dependence, so the whole traversal was eliminable and
+      -- this pass timed at ~84ns regardless of whether its result was consumed.
+      let bad = if op == 6
+                then
+                  if seenNonPhi == 1
+                  then 1
+                  else 0
+                else 0
           seenNonPhi' = if op == 6
                             then seenNonPhi
                             else 1
-      in verifyPhiPlacement_IO rest seenNonPhi'
+      in bad + verifyPhiPlacement_IO rest seenNonPhi'
 
 gibbon_main =
-  let _ = printsym (quote "Running the Compiler IR Program: ")
+  let _ = printsym (quote "Running program Compiler IR: ")
       _ = printsym (quote "NEWLINE")
       ir     = buildIR_validPhi_go (sizeParam + 5000000) 0
       -- we can verify IR here
       _ = printsym (quote "Running pass verifyIR (fold, uses=9): ")
       _ = printsym (quote "NEWLINE")
-      _  = iterate (verifyPhiPlacement_IO ir 0)
+      badPhis = iterate (verifyPhiPlacement_IO ir 0)
       _ = printsym (quote "End")
       _ = printsym (quote "NEWLINE")
 
@@ -256,17 +232,20 @@ gibbon_main =
       _ = printsym (quote "Running pass throughputModelPass (fold, uses=3): ")
       _ = printsym (quote "NEWLINE")
       thr    = iterate (throughputModelPass ir)
-      _ = printsym (quote "End: ")
+      _ = printsym (quote "End")
       _ = printsym (quote "NEWLINE")
-      _ = printsym (quote "Running pass targetReturnPass (map, uses=9): ")
+      _ = printsym (quote "Running pass targetReturnPass (map, uses=9, shared=6): ")
       _ = printsym (quote "NEWLINE")
       ir'    = iterate (targetRetunePass ir 2)
       _ = printsym (quote "End")
       _ = printsym (quote "NEWLINE")
-      _ = printsym (quote "Running pass stripSideEffectsPass (map, uses=7): ")
+      _ = printsym (quote "Running pass stripSideEffectsPass (map, uses=7, shared=6): ")
       _ = printsym (quote "NEWLINE")
       ir''   = iterate (stripSideEffectsPass ir')
       _ = printsym (quote "End")
       _ = printsym (quote "NEWLINE")
       --_      = printPacked ir''
-  in (insts, blocks, memops, brs, lat, hasCycle, thr, instCountPass ir', instCountPass ir'')
+  -- badPhis and castInstrs must appear here: a timed pass whose result is
+  -- never referenced gets (partly) optimized away. castInstCountPass measured
+  -- 1.37ms dead vs 2.92ms live.
+  in (insts, blocks, memops, brs, lat, hasCycle, thr, instCountPass ir', instCountPass ir'', badPhis, castInstrs)

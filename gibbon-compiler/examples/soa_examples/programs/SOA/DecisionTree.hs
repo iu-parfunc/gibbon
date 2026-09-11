@@ -1,25 +1,25 @@
+-- DecisionTree: DTree (Factored).
+-- Functions: buildTree, countNodes, countLeaves, treeDepth, sumImpurity,
+-- sumSamples, countFeatureUses, countClass. ...
 {-# LANGUAGE BangPatterns #-}
 
-module DTreeBench where
+module DTreeFoldBench where
 
-import Gibbon.Vector
 
 -- ===============================
 -- Decision Tree Benchmark (DTree)
 -- ===============================
 
--- @BENCH adt_fields=7
 data DTree
   = Leaf
-      Int        -- class label
-      Int        -- sample count
+      Int64        -- class label
+      Int64        -- sample count
   | Node
-      Int        -- feature id
-      Int        -- threshold
-      Int        -- impurity (e.g. Gini * 1000)
+      Int64        -- feature id
+      Int64        -- threshold
+      Int64        -- impurity (e.g. Gini * 1000)
       DTree
       DTree
-
 
 
 {-# ANN type DTree "Factored" #-}
@@ -28,7 +28,6 @@ data DTree
 -- Tree generator (benchmark input)
 -- -------------------------------
 
-{-# ANN buildTree "OPT:StoreScalarCounts" #-}
 buildTree :: Int -> DTree
 buildTree d =
   if d <= 0
@@ -89,6 +88,7 @@ sumSamples t =
     Node _ _ _ l r ->
       sumSamples l + sumSamples r
 
+-- `fid` is Int64, matching the field it is compared against.
 countFeatureUses :: Int -> DTree -> Int
 countFeatureUses fid t =
   case t of
@@ -143,64 +143,19 @@ sumPathLengths depth t =
       let dr = sumPathLengths (depth + 1) r in
       dl + dr
 
--- -------------------------------
--- Feature vectors (Gibbon.Vector)
--- -------------------------------
-
-type FeatureVec = Vector Int
-
-mkFeatureVec :: Int -> FeatureVec
-mkFeatureVec n =
-  generate n (\i -> mod (i * 7 + n + sizeParam) 100)
-
--- Vidush: TODO: We need to fix these classify output
--- -------------------------------
--- Classification (inference)
--- -------------------------------
-
-classify :: DTree -> FeatureVec -> Int
-classify t fv =
-  case t of
-    Leaf label _ ->
-      label
-    Node feature threshold _ left right ->
-      let val = nth fv feature in
-      if val <= threshold
-      then classify left fv
-      else classify right fv
-
-classifyDepth :: DTree -> FeatureVec -> Int -> Int
-classifyDepth t fv depth =
-  case t of
-    Leaf _ _ ->
-      depth
-    Node feature threshold _ left right ->
-      let val = nth fv feature in
-      if val <= threshold
-      then classifyDepth left fv (depth + 1)
-      else classifyDepth right fv (depth + 1)
-
--- -------------------------------
--- Batched inference
--- -------------------------------
-
-classifyBatch :: DTree -> Int -> Int -> Int
-classifyBatch t fvSize i =
-  if i <= 0
-  then 0
-  else
-    let fv = generate fvSize (\j -> mod (j * 3 + i + sizeParam) 100) in
-    let label = classify t fv in
-    label + classifyBatch t fvSize (i - 1)
 
 -- -------------------------------
 -- Benchmark entry point
 -- -------------------------------
 
 gibbon_main =
+
   let _ = printsym (quote "Running program Decision Tree: ") in
   let _ = printsym (quote "NEWLINE") in
-  let tree = buildTree (sizeParam + 35) in
+  -- Depth 32: the nine folds below are O(nodes) and, at the
+  -- classification file's depth 14, each ran 12-23 MICROseconds --
+  -- unmeasurable. See this file's header for the sizing.
+  let tree = buildTree (sizeParam + 32) in
 
   -- Structural analyses
   let _ = printsym (quote "Running pass countNodes (fold, uses=2): ") in
@@ -218,7 +173,6 @@ gibbon_main =
   let depth   = iterate (treeDepth tree) in
   let _ = printsym (quote "End") in
   let _ = printsym (quote "NEWLINE") in
-  -- ML-style reductions
   let _ = printsym (quote "Running pass sumImpurity (fold, uses=3): ") in
   let _ = printsym (quote "NEWLINE") in
   let imp     = iterate (sumImpurity tree) in
@@ -239,7 +193,6 @@ gibbon_main =
   let small   = iterate (countSmallLeaves 5 tree) in
   let _ = printsym (quote "End") in
   let _ = printsym (quote "NEWLINE") in
-  -- Inference-related reductions
   let _ = printsym (quote "Running pass inferenceCost (fold, uses=2): ") in
   let _ = printsym (quote "NEWLINE") in
   let cost  = iterate (inferenceCost tree) in
@@ -250,22 +203,4 @@ gibbon_main =
   let paths = iterate (sumPathLengths 0 tree) in
   let _ = printsym (quote "End") in
   let _ = printsym (quote "NEWLINE") in
-  -- Single inference
-  let fv = mkFeatureVec 32 in
-  let _ = printsym (quote "Running pass classify tree (fold, uses=5): ") in
-  let _ = printsym (quote "NEWLINE") in
-  let pred   = iterate(classify tree fv) in
-  let _ = printsym (quote "End") in
-  let _ = printsym (quote "NEWLINE") in
-  let _ = printsym (quote "Running pass classify Depth (fold, uses=4): ") in
-  let _ = printsym (quote "NEWLINE") in
-  let pdepth = iterate(classifyDepth tree fv 0) in
-  let _ = printsym (quote "End") in
-  let _ = printsym (quote "NEWLINE") in
-  let _ = printsym (quote "Running pass classify Batch (fold, uses=5): ") in
-  let _ = printsym (quote "NEWLINE") in
-  -- Batched inference
-  let batch = iterate(classifyBatch tree 32 100) in
-  let _ = printsym (quote "End") in
-  let _ = printsym (quote "NEWLINE") in
-  (nodes, leaves, depth, imp, samples, feat0, small, cost, paths, pred, pdepth, batch)
+  (nodes, leaves, depth, imp, samples, feat0, small, cost, paths)

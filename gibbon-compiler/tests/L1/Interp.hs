@@ -18,9 +18,9 @@ import Gibbon.L1.Interp as L1
 
 p1 :: Prog1
 p1 = Prog emptyDD M.empty
-          (Just ( LetE ("x", [], IntTy, LitE 3) $
+          (Just ( LetE ("x", [], IntTy W64, mkLitE64 3) $
                   VarE "x"
-                , IntTy ))
+                , IntTy W64 ))
 
 case_test1 :: Assertion
 case_test1 = "3" @=? gInterpNoLogs () (RunConfig 1 1 dbgLvl False) p1

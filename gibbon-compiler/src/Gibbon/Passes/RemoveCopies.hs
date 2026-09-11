@@ -13,6 +13,41 @@ import Gibbon.L2.Syntax
 -- Maps a location to a region
 type LocEnv = M.Map LocVar RegVar
 
+-- | Maps a location to @(root, byte offset from root)@ where that is
+-- statically known.  Only constant offsets are tracked; a location built with
+-- a data-dependent offset becomes its own root, so an unknown distance is
+-- never mistaken for a known one.  See
+-- Note [A value cannot be re-placed onto itself].
+type OffEnv = M.Map LocVar (LocVar, Int)
+
+learnOffset :: LocVar -> PreLocExp LocVar -> OffEnv -> OffEnv
+learnOffset loc rhs oenv =
+  case rhs of
+    AfterConstantLE k base ->
+      let (root, off) = resolveOffset base oenv
+       in M.insert loc (root, off + k) oenv
+    AssignLE base -> M.insert loc (resolveOffset base oenv) oenv
+    _ -> oenv
+
+resolveOffset :: LocVar -> OffEnv -> (LocVar, Int)
+resolveOffset loc oenv = M.findWithDefault (loc, 0) loc oenv
+
+-- | Bytes an indirection node occupies: one tag plus one tagged pointer.
+-- 'Gibbon.Passes.Cursorize' lowers 'IndirectionE' to exactly this
+-- (@end = from + 9@).
+indirectionBytes :: Int
+indirectionBytes = 9
+
+-- | Does re-placing a value at @lout@ that currently lives at @lin@ write over
+-- the value itself?  See Note [A value cannot be re-placed onto itself].
+replacementOverlaps :: OffEnv -> LocVar -> LocVar -> Bool
+replacementOverlaps oenv lin lout =
+  case (resolveOffset lin oenv, resolveOffset lout oenv) of
+    ((rootIn, offIn), (rootOut, offOut))
+      | rootIn == rootOut -> let gap = offIn - offOut
+                              in gap >= 0 && gap < indirectionBytes
+    _ -> False
+
 removeCopies :: Prog2 -> PassM Prog2
 removeCopies Prog{ddefs,fundefs,mainExp} = do
   dflags <- getDynFlags
@@ -35,7 +70,7 @@ removeCopies Prog{ddefs,fundefs,mainExp} = do
   mainExp' <- case mainExp of
                 Nothing -> return Nothing
                 Just (mn, ty) -> Just . (,ty) <$>
-                  removeCopiesExp keepCopiesForMutableGC ddefs' fundefs M.empty env2 mn
+                  removeCopiesExp keepCopiesForMutableGC ddefs' fundefs M.empty M.empty env2 mn
   return $ Prog ddefs' fundefs' mainExp'
 
 removeCopiesFn :: Bool -> DDefs Ty2 -> FunDefs2 -> FunDef2 -> PassM FunDef2
@@ -45,19 +80,173 @@ removeCopiesFn keepCopiesForMutableGC ddefs fundefs f@FunDef{funArgs,funTy,funBo
                                     ) (locVars funTy)
       initTyEnv  = M.fromList $ zip funArgs (arrIns funTy)
       env2 = Env2 initTyEnv (initFunEnv fundefs)
-  bod' <- removeCopiesExp keepCopiesForMutableGC ddefs fundefs initLocEnv env2 funBody
+  bod' <- removeCopiesExp keepCopiesForMutableGC ddefs fundefs initLocEnv M.empty env2 funBody
   return $ f {funBody = bod'}
 
+-- | Note [A value cannot be re-placed onto itself]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- When two constructor alternatives consume the SAME let-bound packed value and
+-- their field layouts differ, the value's start is not where both need it.
+-- Location inference's copy repair fires, and neither mechanism implementing
+-- that copy works when the destination overlaps the value:
+--
+--   * as an INDIRECTION (the default): the node is 9 bytes -- a tag plus a
+--     tagged pointer -- written AT the destination pointing AT the value, so if
+--     the value begins fewer than 9 bytes later the pointer field runs over the
+--     value's own tag.  It is the distance, not the shape, that matters: the
+--     same program is correct once the gap reaches 16.
+--   * as a REAL COPY (what @--use-mutable-cursors@ keeps): the copy walks
+--     forward writing into storage it is still reading, for the same reason.
+--
+-- This is a property of the representation, not of either lowering, so the
+-- response is to refuse before code generation.  A non-overlapping re-placement
+-- is untouched and still becomes an indirection.
+--
+-- Fully-factored (SoA) values are refused whenever the two locations differ at
+-- all: an SoA value's start is one cursor per buffer, different constructors
+-- advance different buffers, and the per-buffer distances are exactly the
+-- overlapping kind above.  Cursorize's SoA indirection lowering is also
+-- incomplete, and with mutable cursors the SoA copy call fails the L3
+-- typechecker (@CursorArrayTy n <> CursorTy@).  No program under
+-- examples/soa_examples/programs/SOA produces an SoA copy today.
+
+-- | Note [A fully-factored value cannot be re-placed]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- An SoA value's start is one cursor PER BUFFER, and different constructors
+-- advance different field buffers: a tail built as @A@'s field begins with
+-- @A@'s buffer advanced and @B@'s not, which is not where @B@ needs it.  So
+-- location inference's copy repair tactic fires with two genuinely different
+-- SoA locations, and no copy-free placement exists.
+--
+-- Gibbon cannot lower that copy today, on either path:
+--
+--   * without @--use-mutable-cursors@ it is rewritten to an SoA indirection
+--     node, whose Cursorize lowering is incomplete (see the "indirection with
+--     gc need a bit more thinking" note there); the value it produces faults
+--     when traversed;
+--   * with @--use-mutable-cursors@ the copy call is kept and the L3
+--     typechecker rejects its ABI, @CursorArrayTy n <> CursorTy@.
+--
+-- Emitting either was a silent miscompilation.  Refuse instead, before code
+-- generation, and say what to do about it.  Measured before adding this: none
+-- of the 109 SoA programs under examples/soa_examples/programs/SOA produces an
+-- SoA copy, so nothing that compiles today starts failing.
+replaceUnsupported :: String -> Exp2 -> LocVar -> LocVar -> a
+replaceUnsupported why arg lin lout =
+  error $
+    "\nGibbon cannot re-place this packed value: " ++ why ++ ".\n\n"
+    ++ "  the value    : " ++ sdoc arg ++ "\n"
+    ++ "  currently at : " ++ sdoc lin ++ "\n"
+    ++ "  required at  : " ++ sdoc lout ++ "\n\n"
+    ++ "Two constructor alternatives need this value at different places, so a copy\n"
+    ++ "was required, and the copy cannot be expressed: the destination overlaps the\n"
+    ++ "value's own storage, so both an indirection node and a real copy would write\n"
+    ++ "over the value they are re-placing.\n\n"
+    ++ "This normally comes from a let-bound packed value consumed by more than one\n"
+    ++ "constructor alternative:\n\n"
+    ++ "    let rst = mkT (n - 1)\n"
+    ++ "     in if p then A x rst else B y rst\n\n"
+    ++ "Write the producing call inside each alternative instead:\n\n"
+    ++ "    if p then A x (mkT (n - 1)) else B y (mkT (n - 1))\n\n"
+    ++ "For an array-of-structs type ({-# ANN type T \"Linear\" #-}) the alternatives\n"
+    ++ "must also agree on where the packed field starts, or be far enough apart that\n"
+    ++ "an indirection fits between them.\n"
+
+-- | Why, if at all, this re-placement cannot be expressed.
+--
+-- @keepCopies@ says the copy will survive as a real @_copy_T@ call rather than
+-- becoming an indirection (see 'removeCopies': that is the
+-- @--use-mutable-cursors@ path).  The two lowerings fail under different
+-- conditions, so the rule is different for each:
+--
+--   * as an indirection, only an OVERLAPPING re-placement is wrong -- the
+--     9-byte node would be written over the value it points at.  A
+--     re-placement further away is fine, and 'tests/vw31/gap16.hs.in' is the
+--     control proving it still compiles and runs;
+--   * as a kept copy, a same-region re-placement is wrong regardless of the
+--     distance.  Measured on that same gap16 fixture with
+--     @--use-mutable-cursors@: the value comes back with an unknown tag at
+--     every depth above two, while the identical program on the indirection
+--     path is correct.  Refuse rather than emit a value already measured to
+--     be corrupt.
+--
+-- Neither rule fires on anything in the tree: across 199 programs
+-- (examples/, examples/soa_examples/programs/{AOS,SOA}) compiled with mutable
+-- cursors there is no same-region re-placement at all, and across the 109 SoA
+-- programs under @--packed@ there is no SoA copy.
+unsupportedReplacement :: Bool -> OffEnv -> LocVar -> LocVar -> Maybe String
+unsupportedReplacement keepCopies oenv lin lout
+  | isSoALoc lin || isSoALoc lout =
+      Just ("it is fully factored (SoA), so its start is one cursor per buffer"
+            ++ " and the buffers do not line up")
+  | replacementOverlaps oenv lin lout =
+      Just ("the destination is only "
+            ++ show (snd (resolveOffset lin oenv) - snd (resolveOffset lout oenv))
+            ++ " bytes before the value itself, and an indirection needs "
+            ++ show indirectionBytes)
+  | keepCopies && sameRegion oenv lin lout =
+      Just ("it would have to be copied within one region, which the copy ABI"
+            ++ " kept for mutable cursors does not implement correctly")
+  | otherwise = Nothing
+
+sameRegion :: OffEnv -> LocVar -> LocVar -> Bool
+sameRegion oenv lin lout =
+  fst (resolveOffset lin oenv) == fst (resolveOffset lout oenv)
+
 -- ASSUMPTION: copy functions would always be called on a single argument.
-removeCopiesExp :: Bool -> DDefs Ty2 -> FunDefs2 -> LocEnv -> Env2 Var Ty2 -> Exp2 -> PassM Exp2
-removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv env2 ex =
+removeCopiesExp :: Bool -> DDefs Ty2 -> FunDefs2 -> LocEnv -> OffEnv -> Env2 Var Ty2 -> Exp2 -> PassM Exp2
+removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv oenv env2 ex =
   case ex of
+    -- See Note [A fully-factored value cannot be re-placed].  This must come
+    -- before every other copy case, including the ones that keep copies for
+    -- mutable-cursor GC, so that the refusal is what the user sees rather than
+    -- a downstream type error or a fault at run time.
+    AppE f _cty [lin,lout] [arg]
+      | isCopyFunName f, lin /= lout
+      , Just why <- unsupportedReplacement keepCopiesForMutableGC oenv lin lout ->
+      replaceUnsupported why arg lin lout
+
+    LetE (_,_,PackedTy{}, (AppE f _cty [lin,lout] [arg])) _
+      | isCopyFunName f, lin /= lout
+      , Just why <- unsupportedReplacement keepCopiesForMutableGC oenv lin lout ->
+      replaceUnsupported why arg lin lout
+
     AppE f _cty [_,_] [_] | isCopyFunName f && keepCopiesForMutableGC ->
       pure ex
 
     LetE (v,locs,ty, rhs@(AppE f _cty [_,_] [_])) bod | isCopyFunName f && keepCopiesForMutableGC ->
       LetE (v,locs,ty, rhs) <$>
-        removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv (extendVEnv v ty env2) bod
+        removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv oenv (extendVEnv v ty env2) bod
+
+    -- Note [An identity copy is not an indirection]
+    -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    -- A copy whose source and destination are the SAME location is the
+    -- identity: the value already sits at the destination, so there is nothing
+    -- to move and nothing to point at.  Rewriting it to an indirection is not
+    -- identity-preserving -- it writes an indirection node AT the value,
+    -- pointing AT itself, which both destroys the value and creates a cycle.
+    -- The RTS write barrier walks indirection chains
+    -- (@gib_indirection_barrier@), so the cycle is a hang; a traversal that
+    -- reaches the clobbered node instead reports an unknown tag or faults.
+    --
+    -- 'InferLocations' produces such a copy for
+    --
+    --     let rst = mkT (n-1)
+    --      in if n < 3 then A n rst else B (n+200) rst
+    --
+    -- because each constructor arm allocates its own fresh field location and
+    -- the unification of the second arm's location with @rst@'s fails, so the
+    -- copy repair tactic fires.  The two locations then turn out to denote the
+    -- same address -- both are @loc + 1 + 8@ -- and later location
+    -- simplification substitutes them to a single variable, leaving
+    -- @_copy_T [l, l] rst@.  The redundant copy is a missed optimization; the
+    -- self-indirection was a miscompilation.
+    --
+    -- Emitting the argument unchanged is correct for exactly the reason above:
+    -- @lin == lout@ means the result location is where the argument already
+    -- lives, so the copy's result IS the argument.
+    AppE f _cty [lin,lout] [arg] | isCopyFunName f && lin == lout ->
+      pure arg
 
     -- This AppE copies data from 'lin' to 'lout'. When this becomes an
     -- indirection node, 'lout' is the _pointer_, and 'lin' the _pointee_.
@@ -81,6 +270,16 @@ removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv env2 ex =
             (VarE indirection)
         oth -> error $ "removeCopies: Multiple indirection constructors: " ++ sdoc oth
 
+    -- See Note [An identity copy is not an indirection].  The binding is
+    -- substituted away rather than rebound: @cpy@ and its argument denote the
+    -- same value at the same location, and leaving a packed @let cpy = rst@
+    -- behind would ask Cursorize to produce a fresh (start, end) witness pair
+    -- for a value that already has one.
+    LetE (v,_locs,_ty@(PackedTy _ _), (AppE f _cty [lin,lout] [arg@VarE{}])) bod
+      | isCopyFunName f && lin == lout ->
+      removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv oenv env2
+        (gSubstE (VarE v) arg bod)
+
     LetE (v,locs,ty@(PackedTy tycon _), (AppE f _cty [lin,lout] [arg])) bod | isCopyFunName f -> do
       -- Get the indirection datacon for this type
       let indrDcon = filter isIndirectionTag $ getConOrdering ddefs tycon
@@ -94,7 +293,7 @@ removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv env2 ex =
                                   SingleR vr -> fromRegVarToLocVar $ (SingleR vr)
                                   r@(SoARv _ _) -> fromRegVarToLocVar r
           LetE (v,locs,ty, Ext $ IndirectionE tycon dcon (lout , reg_lout) (lin, reg_lin) arg) <$>
-            removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv (extendVEnv v ty env2) bod
+            removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv oenv (extendVEnv v ty env2) bod
         oth -> error $ "removeCopies: Multiple indirection constructors: " ++ sdoc oth
 
     Ext ext ->
@@ -102,7 +301,7 @@ removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv env2 ex =
         -- Update lenv with a binding for loc
         LetLocE loc FreeLE bod -> do
           Ext <$> LetLocE loc FreeLE <$>
-            removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv env2 bod
+            removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv oenv env2 bod
         StartOfPkdCursor cur -> pure $ Ext $ StartOfPkdCursor cur
         TagCursor a b -> pure $ Ext $ TagCursor a b
         LetLocE loc rhs bod -> do
@@ -126,7 +325,7 @@ removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv env2 ex =
                                            ) fieldLocs
                            in SoARv dconReg fldRegs
           Ext <$> LetLocE loc rhs <$>
-            removeCopiesExp keepCopiesForMutableGC ddefs fundefs (M.insert loc reg lenv) env2 bod
+            removeCopiesExp keepCopiesForMutableGC ddefs fundefs (M.insert loc reg lenv) (learnOffset loc rhs oenv) env2 bod
        -- Straightforward recursion
         RetE{} -> return ex
         AddFixed{} -> return ex
@@ -156,7 +355,7 @@ removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv env2 ex =
     MkProdE ls -> MkProdE <$> mapM go ls
     LetE (v,locs,ty, rhs) bod ->
       LetE <$> (v,locs,ty,) <$> go rhs <*>
-        removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv (extendVEnv v ty env2) bod
+        removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv oenv (extendVEnv v ty env2) bod
     CaseE scrt mp -> do
       let (VarE v) = scrt
           PackedTy _ tyloc = lookupVEnv v env2
@@ -173,11 +372,11 @@ removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv env2 ex =
     MapE{}  -> error $ "go: TODO MapE"
     FoldE{} -> error $ "go: TODO FoldE"
   where
-    go = removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv env2
+    go = removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv oenv env2
     docase reg lenv1 env21 (dcon,vlocs,bod) = do
       -- Update the envs with bindings for pattern matched variables and locations.
       -- The locations point to the same region as the scrutinee.
       let (vars,locs) = unzip vlocs
           lenv1' = foldr (\lc acc -> M.insert lc reg acc) lenv1 locs
           env21' = extendPatternMatchEnv dcon ddefs vars locs env21
-      (dcon,vlocs,) <$> (removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv1' env21' bod)
+      (dcon,vlocs,) <$> (removeCopiesExp keepCopiesForMutableGC ddefs fundefs lenv1' oenv env21' bod)

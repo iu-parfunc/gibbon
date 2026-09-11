@@ -17,7 +17,7 @@ sideEffect x = if x <= 0
                else let r = sideEffect (x - 1)
                      in r + 3
 
-{-# ANN mapCall "OPT:CanVectorize" #-}
+{-# ANN mapCall "OPT:MayVectorize" #-}
 mapCall :: L -> L
 mapCall lst = case lst of
                 N -> N

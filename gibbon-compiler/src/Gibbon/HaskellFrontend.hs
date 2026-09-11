@@ -78,6 +78,9 @@ parseMode :: ParseMode
 parseMode = defaultParseMode { extensions = [ EnableExtension ScopedTypeVariables
                                             , EnableExtension CPP
                                             , EnableExtension TypeApplications
+                                            -- lets `Int 8` parse as a promoted
+                                            -- numeric type argument
+                                            , EnableExtension DataKinds
                                             ]
                                             ++ (extensions defaultParseMode)
                              }
@@ -165,16 +168,28 @@ type TypeSynEnv = M.Map TyCon Ty0
 
 desugarModule :: (Show a,  Pretty a)
               => Config -> IORef ParseState -> [String] -> FilePath -> Module a -> IO (PassM Prog0)
-desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) = do
+desugarModule cfg pstate_ref import_route dir (Module _ head_mb module_pragmas imports decls) = do
   let type_syns = foldl collectTypeSynonyms M.empty decls
       -- Since top-level functions and their types can't be declared in
       -- single top-level declaration we first collect types and then collect
       -- definitions.
       funtys = foldr (collectTopTy type_syns) M.empty decls
+      -- An {-# ANN ... #-} pragma that is the very first thing in the file
+      -- (before any decl, including the one it targets -- a natural place to
+      -- write a datatype's layout annotation) is not parsed as a decl-level
+      -- 'AnnPragma' by haskell-src-exts: it is folded into this module's
+      -- leading-pragma list as 'AnnModulePragma' instead, same as a
+      -- '{-# LANGUAGE ... #-}' pragma would be. Silently discarding that list
+      -- (as this function used to) would make such an annotation vanish with
+      -- no diagnostic and the type it named quietly default to Linear/AoS.
+      -- Extract and interpret them exactly like a decl-level annotation.
+      leading_annotation_toplevels =
+        [ parseAnnotation ann' | AnnModulePragma _ ann' <- module_pragmas ]
   imported_progs :: [PassM Prog0] <- mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
   let prog = do
-        toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
-        let (defs,_vars,funs,inlines,funannots,main, memlayouts) = foldr classify init_acc toplevels
+        toplevels' <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
+        let toplevels = leading_annotation_toplevels ++ toplevels'
+            (defs,_vars,funs,inlines,funannots,main, memlayouts) = foldr classify init_acc toplevels
             defs' = updateMemoryLayout defs memlayouts
             funs' = foldr (\v acc -> M.update (\fn@(FunDef{funMeta}) -> Just (fn { funMeta = funMeta { funInline = Inline }})) v acc) funs inlines
             funs'' = M.foldrWithKey applyFunAnnots funs' funannots
@@ -346,7 +361,8 @@ moduleNameToSlashes (ModuleName _ s) = dots_to_slashes s
 
 builtinTys :: S.Set Var
 builtinTys = S.fromList $
-    [ "Int", "Float", "Bool", "Sym", "SymHash", "IntHash", "SymSet", "SymDict", "Arena", "Vector" ]
+    [ "Int", "Int8", "Int16", "Int32", "Int64"
+    , "Float", "Bool", "Sym", "SymHash", "IntHash", "SymSet", "SymDict", "Arena", "Vector" ]
 
 keywords :: S.Set Var
 keywords = S.fromList $ map toVar $
@@ -376,13 +392,20 @@ desugarTopType type_syns ty =
              tyvars = tyVarsInTy ty'
         in ForAll tyvars ty'
 
+-- | Desugar a surface type into 'Ty0'.  Bare @Int@ always means 'IntTy W64';
+-- write an explicit width (@Int8@/@Int16@/@Int32@/@Int64@, or the
+-- parameterized @Int 8@ .. @Int 64@ below) for anything else.
 desugarType :: (Show a,  Pretty a) => TypeSynEnv -> Type a -> Ty0
 desugarType type_syns ty =
   case ty of
     H.TyVar _ (Ident _ t) -> L0.TyVar $ UserTv (toVar t)
     TyTuple _ Boxed tys   -> ProdTy (map (desugarType type_syns) tys)
     TyCon _ (Special _ (UnitCon _))     -> ProdTy []
-    TyCon _ (UnQual _ (Ident _ "Int"))  -> IntTy
+    TyCon _ (UnQual _ (Ident _ "Int"))   -> IntTy W64
+    TyCon _ (UnQual _ (Ident _ "Int8"))  -> IntTy W8
+    TyCon _ (UnQual _ (Ident _ "Int16")) -> IntTy W16
+    TyCon _ (UnQual _ (Ident _ "Int32")) -> IntTy W32
+    TyCon _ (UnQual _ (Ident _ "Int64")) -> IntTy W64
     TyCon _ (UnQual _ (Ident _ "Char")) -> CharTy
     TyCon _ (UnQual _ (Ident _ "Float"))-> FloatTy
     TyCon _ (UnQual _ (Ident _ "Bool")) -> BoolTy
@@ -398,6 +421,18 @@ desugarType type_syns ty =
                          t2' = desugarType type_syns t2
                      in ArrowTy [t1'] t2'
     TyParen _ ty1 -> desugarType type_syns ty1
+    -- Parameterized width: `Int 8`, `Int 16`, `Int 32`, `Int 64`.  Needs
+    -- DataKinds, which parseMode enables; the argument arrives as a promoted
+    -- numeric literal.  Equivalent to the named forms Int8/Int16/Int32/Int64.
+    TyApp _ (TyCon _ (UnQual _ (Ident _ "Int"))) (TyPromoted _ (PromotedInteger _ n _)) ->
+      case n of
+        8  -> IntTy W8
+        16 -> IntTy W16
+        32 -> IntTy W32
+        64 -> IntTy W64
+        _  -> error $ "desugarType: unsupported integer width " ++ show n
+                      ++ "; Gibbon supports Int 8, Int 16, Int 32 and Int 64."
+
     TyApp _ tycon arg ->
       let ty' = desugarType type_syns tycon in
       case ty' of
@@ -463,45 +498,54 @@ unCurryTy ty1 =
 
 -- ^ A map between SExp-frontend prefix function names, and Gibbon
 -- abstract Primops.
+-- Source operators start with an UNRESOLVED width; L0 infers it from the
+-- operands (or from an expected integer type) and range-checks any literal.
 primMap :: M.Map String (Prim a)
 primMap = M.fromList
-  [ ("+", AddP)
-  , ("-", SubP)
-  , ("*", MulP)
-  , ("/", DivP)
-  , ("div", DivP)
-  , ("^", ExpP)
+  [ ("+", AddP IntPrimUnresolved)
+  , ("-", SubP IntPrimUnresolved)
+  , ("*", MulP IntPrimUnresolved)
+  , ("/", DivP IntPrimUnresolved)
+  , ("div", DivP IntPrimUnresolved)
+  , ("^", ExpP IntPrimUnresolved)
   , (".+.", FAddP)
   , (".-.", FSubP)
   , (".*.", FMulP)
   , ("./.", FDivP)
   , ("sqrt", FSqrtP)
-  , ("==", EqIntP)
+  , ("==", EqIntP IntPrimUnresolved)
   , (".==.", EqFloatP)
   , ("*==*", EqCharP)
-  , ("<", LtP)
-  , (">", GtP)
-  , ("<=", LtEqP)
-  , (">=", GtEqP)
+  , ("<", LtP IntPrimUnresolved)
+  , (">", GtP IntPrimUnresolved)
+  , ("<=", LtEqP IntPrimUnresolved)
+  , (">=", GtEqP IntPrimUnresolved)
   , (".<.", FLtP)
   , (".>.", FGtP)
   , (".<=.", FLtEqP)
   , (".>=.", FGtEqP)
   , ("tan", FTanP)
-  , ("mod", ModP)
+  , ("mod", ModP IntPrimUnresolved)
   , ("||" , OrP)
   , ("&&", AndP)
   , ("eqsym", EqSymP)
   , ("rand", RandP)
   , ("frand", FRandP)
-  , ("intToFloat", IntToFloatP)
+  , ("intToFloat", IntToFloatP IntPrimUnresolved)
   , ("floatToInt", FloatToIntP)
+    -- Explicit integer-width conversions.  The NAME fixes the destination
+    -- width only; the source starts unresolved and L0 reads it off the
+    -- operand.  See 'IntConvertP'.
+  , ("toInt8",  IntConvertP IntPrimUnresolved W8)
+  , ("toInt16", IntConvertP IntPrimUnresolved W16)
+  , ("toInt32", IntConvertP IntPrimUnresolved W32)
+  , ("toInt64", IntConvertP IntPrimUnresolved W64)
   , ("sizeParam", SizeParam)
   , ("getNumProcessors", GetNumProcessors)
   , ("True", MkTrue)
   , ("False", MkFalse)
   , ("gensym", Gensym)
-  , ("printint", PrintInt)
+  , ("printint", PrintInt IntPrimUnresolved)
   , ("printchar", PrintChar)
   , ("printfloat", PrintFloat)
   , ("printbool", PrintBool)
@@ -524,7 +568,8 @@ desugarExp :: (Show a, Pretty a) => TypeSynEnv -> TopTyEnv -> Exp a -> PassM Exp
 desugarExp type_syns toplevel e =
   case e of
     Paren _ (ExpTypeSig _ (App _ (H.Var _ f) (Lit _ lit)) tyc)
-        | (qnameToStr f) == "error" -> pure $ PrimAppE (ErrorP (litToString lit) (desugarType type_syns tyc)) []
+        | (qnameToStr f) == "error" -> do
+            pure $ PrimAppE (ErrorP (litToString lit) (desugarType type_syns tyc)) []
     -- Paren _ (App _ (H.Var _ f) (Lit _ lit))
     --     | (qnameToStr f) == "error" -> pure $ PrimAppE (ErrorP (litToString lit
     Paren _ e2 -> desugarExp type_syns toplevel e2
@@ -621,7 +666,14 @@ desugarExp type_syns toplevel e =
                     pure $ TimeIt e2' ty True
                   else if f == "error"
                   then case e2 of
-                         Lit _ lit -> pure $ PrimAppE (ErrorP (litToString lit) IntTy) [] -- assume int (!)
+                         -- `error` never returns, so its result type is
+                         -- whatever the context needs -- Bool, Int8, ProdTy,
+                         -- etc. -- not just Int, and not just W64 among Ints.
+                         -- A fresh metavariable lets ordinary unification
+                         -- pick it up from context, exactly like
+                         -- `writePackedFile`/`timeit`/`iterate` above.
+                         Lit _ lit -> do ty <- newMetaTy
+                                         pure $ PrimAppE (ErrorP (litToString lit) ty) []
                          _ -> error "desugarExp: error expects String literal."
                   else if f == "par"
                   then do
@@ -902,9 +954,15 @@ desugarExp type_syns toplevel e =
           let op' = desugarOp op
           pure $ PrimAppE op' [e1', e2']
 
+    -- A negated integer literal is one signed literal, not a subtraction:
+    -- desugaring @-128@ to @0 - 128@ would make @128 :: Int8@ unrepresentable
+    -- and so put the low end of every width out of reach.  Anything else that
+    -- is negated keeps ordinary subtraction semantics.
+    NegApp _ e1
+      | Just i <- intLitValue e1 -> pure $ LitE LitUnresolved (negate i)
     NegApp _ e1 -> do
       e1' <- desugarExp type_syns toplevel e1
-      pure $ PrimAppE SubP [LitE 0, e1']
+      pure $ PrimAppE subP64 [mkLitE64 0, e1']
 
     _ -> error ("desugarExp: Unsupported expression: " ++ prettyPrint e)
 
@@ -956,6 +1014,37 @@ collectTypeSynonyms env d =
            Just{} -> error $ "collectTypeSynonyms: Multiple type synonym declarations: " ++ show tycon
     _ -> env
 
+-- | Interpret an @{-# ANN ... #-}@ pragma's payload.
+--
+-- The only recognized forms are @{-# ANN type T "Factored" #-}@,
+-- @{-# ANN type T "Linear" #-}@, and @{-# ANN fn "OPT:..." #-}@ for the three
+-- known optimization opt-ins. Anything else -- a typo'd layout string, a
+-- different spelling of a layout annotation such as
+-- @{-# ANN T (Layout "SoA") #-}@, an unrecognized OPT: string -- is a hard
+-- error naming the accepted forms, not a silently-ignored pragma: an
+-- unrecognized *layout* annotation in particular must never let a datatype
+-- fall through to the Linear/AoS default as if no annotation had been
+-- written at all.
+parseAnnotation :: Annotation a -> TopLevel
+parseAnnotation annotation =
+  case annotation of
+    TypeAnn _ (Ident _ tycon) (Lit _ (String _ "Factored" _)) -> MemLayoutTy tycon FullyFactored
+    TypeAnn _ (Ident _ tycon) (Lit _ (String _ "Linear" _)) -> MemLayoutTy tycon Linear
+    Ann _ (Ident _ fn) (Lit _ (String _ "OPT:MayVectorize" _)) -> HFunAnnot (toVar fn) MayVectorize
+    Ann _ (Ident _ fn) (Lit _ (String _ "OPT:StoreScalarCounts" _)) -> HFunAnnot (toVar fn) StoreScalarCounts
+    Ann _ (Ident _ fn) (Lit _ (String _ "OPT:SelectiveBufferSharing" _)) -> HFunAnnot (toVar fn) SelectiveBufferSharing
+    _ -> error $
+           "Unsupported {-# ANN ... #-} pragma: " ++ prettyPrint annotation ++
+           "\nThe only recognized forms are:" ++
+           "\n  {-# ANN type T \"Factored\" #-}  -- fully factored (SoA) memory layout" ++
+           "\n  {-# ANN type T \"Linear\" #-}    -- linear (AoS) memory layout (the default)" ++
+           "\n  {-# ANN fn \"OPT:MayVectorize\" #-}  -- promise: fn's recursive calls are independent," ++
+           "\n                                    -- so it MAY be loopified/vectorized. Metadata only --" ++
+           "\n                                    -- turns nothing on by itself; see --opt-loopification," ++
+           "\n                                    -- --opt-selective-buffer-sharing, --opt-vectorization." ++
+           "\n  {-# ANN fn \"OPT:StoreScalarCounts\" #-}" ++
+           "\n  {-# ANN fn \"OPT:SelectiveBufferSharing\" #-}"
+
 collectTopLevel :: (Show a,  Pretty a) => TypeSynEnv -> TopTyEnv -> Decl a -> PassM (Maybe TopLevel)
 collectTopLevel type_syns env decl =
   let toplevel = env in
@@ -966,14 +1055,7 @@ collectTopLevel type_syns env decl =
     -- 'collectTypeSynonyms'.
     TypeDecl{} -> pure Nothing
 
-    AnnPragma _ annotation -> 
-      case annotation of 
-            TypeAnn _ (Ident _ tycon) (Lit _ (String _ "Factored" _)) -> pure $ Just (MemLayoutTy tycon FullyFactored)
-            TypeAnn _ (Ident _ tycon) (Lit _ (String _ "Linear" _)) -> pure $ Just (MemLayoutTy tycon Linear)
-            Ann _ (Ident _ fn) (Lit _ (String _ "OPT:CanVectorize" _)) -> pure $ Just (HFunAnnot (toVar fn) CanVectorize)
-            Ann _ (Ident _ fn) (Lit _ (String _ "OPT:StoreScalarCounts" _)) -> pure $ Just (HFunAnnot (toVar fn) StoreScalarCounts)
-            Ann _ (Ident _ fn) (Lit _ (String _ "OPT:SelectiveBufferSharing" _)) -> pure $ Just (HFunAnnot (toVar fn) SelectiveBufferSharing)
-            _ -> error "Memory Layout not yet supported!"
+    AnnPragma _ annotation -> pure $ Just (parseAnnotation annotation)
 
 
     DataDecl _ (DataType _) _ctx decl_head cons _deriving_binds -> do
@@ -1053,19 +1135,21 @@ collectTopLevel type_syns env decl =
     _ -> error $ "collectTopLevel: Unsupported top-level expression: " ++ show decl
 
 
--- pure $ LitE (litToInt lit)
 desugarLiteral :: Literal a -> PassM Exp0
 desugarLiteral lit =
   case lit of
-    (Int _ i _)  -> pure $ LitE (fromIntegral i)
+    -- A source integer literal keeps the parser's arbitrary-precision value and
+    -- an *unresolved* width; L0 decides the width from context (or defaults it
+    -- to W64) and range-checks it there.  Never truncate it here.
+    (Int _ i _)  -> pure $ LitE LitUnresolved i
     (Char _ chr _) -> pure $ CharE chr
     (Frac _ i _) -> pure $ FloatE (fromRational i)
     (String _ str _) -> do
       vec <- gensym (toVar "vec")
       let n = length str
-          init_vec = LetE (vec,[],VectorTy CharTy, PrimAppE (VAllocP CharTy) [LitE n])
+          init_vec = LetE (vec,[],VectorTy CharTy, PrimAppE (VAllocP CharTy) [mkLitE64 n])
           fn i c b = LetE ("_",[],VectorTy CharTy,
-                           PrimAppE (InplaceVUpdateP CharTy) [VarE vec, LitE i, CharE c])
+                           PrimAppE (InplaceVUpdateP CharTy) [VarE vec, mkLitE64 i, CharE c])
                      b
           add_chars = foldr (\(i,chr) acc -> fn i chr acc) (VarE vec)
                         (reverse $ zip [0..n-1] str)
@@ -1073,6 +1157,16 @@ desugarLiteral lit =
 
     _ -> error ("desugarLiteral: Only integer litrals are allowed: " ++ prettyPrint lit)
 
+
+-- | The value of a syntactic integer literal, looking through parentheses.
+-- Deliberately arbitrary-precision: the range check happens in L0, once the
+-- literal's width is known.
+intLitValue :: Exp a -> Maybe Integer
+intLitValue e =
+  case e of
+    Lit _ (Int _ i _) -> Just i
+    Paren _ e1        -> intLitValue e1
+    _                 -> Nothing
 
 litToInt :: Literal a -> Int
 litToInt (Int _ i _) = (fromIntegral i)

@@ -32,7 +32,15 @@ module Gibbon.Language.Syntax
     lookupFEnvLocVar, extendVEnvLocVar, extendsVEnvLocVar, lookupVEnvLocVar
 
     -- * Expresssions and thier types
-  , PreExp(..), Prim(..), UrTy(..)
+  , PreExp(..), Prim(..), UrTy(..), IntWidth(..), intWidthBytes, narrowToIntWidth
+  , LitAnn(..), litWidth, litWidthL0, intWidthRange, intWidthFits, mkLitE64
+  , wrapInt, wrapAdd, wrapSub, wrapMul, wrapNegate, wrapPow
+  , ArithError(..), arithErrorMessage, checkedQuot, checkedRem
+  , IntPrimAnn(..), intPrimWidth, intPrimAnnOf, setIntPrimWidth, setIntPrimAnn
+  , intConvertWidths, intConvertDest
+  , isIntArithPrim, isIntCmpPrim, isWidthSensitivePrim
+  , addP64, subP64, mulP64, divP64, modP64, expP64
+  , eqIntP64, ltP64, gtP64, ltEqP64, gtEqP64, printIntP64
 
     -- * Functors for recursion-schemes
   , PreExpF(..), PrimF(..), UrTyF(..)
@@ -86,9 +94,26 @@ type Tag     = Word8
 type IsBoxed = Bool
 
 
-data FunOpt = CanVectorize
+-- | 'MayVectorize' is pure per-function metadata: the user's promise that a
+-- function's recursive calls are independent, so it MAY be safely loopified
+-- and vectorized. Writing this annotation never itself turns any
+-- optimization on -- that is controlled entirely by CLI flags
+-- (@--opt-loopification@, @--opt-selective-buffer-sharing@,
+-- @--opt-vectorization@). The compiler never mutates this constructor.
+--
+-- 'Loopified' is the compiler's OWN internal signal, never parsed from
+-- source (there is no @OPT:Loopified@ pragma): 'LoopifyTraversals' and
+-- 'LoopifyFlatTraversals' stamp it onto a function's 'funOpt' only after
+-- successfully rewriting that function into loopified form. Downstream
+-- passes ('SelectiveBufferSharing', 'LoopifiedTraversalFusion',
+-- 'VectorizeTraversals') key off 'Loopified', not 'MayVectorize' -- a
+-- function can carry 'MayVectorize' without loopification having actually
+-- succeeded (the pass's own legality checks rejected it), and those
+-- downstream passes must not touch such a function.
+data FunOpt = MayVectorize
             | StoreScalarCounts
             | SelectiveBufferSharing
+            | Loopified
         deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 data MemoryLayout = 
@@ -455,7 +480,8 @@ lookupFEnvLocVar loc env2 = (fEnv env2) # loc
 --
 data PreExp (ext :: Type -> Type -> Type) loc dec =
      VarE Var              -- ^ Variable reference
-   | LitE Int              -- ^ Numeric literal
+   | LitE LitAnn Integer   -- ^ Numeric literal, annotated with its width.
+     -- ^ Build compiler-generated ones with 'mkLitE64'.
    | CharE Char            -- ^ A character literal
    | FloatE Double         -- ^ Floating point literal
    | LitSymE Var           -- ^ A quoted symbol literal
@@ -510,6 +536,124 @@ data PreExp (ext :: Type -> Type -> Type) loc dec =
 
   deriving (Show, Read, Eq, Ord, Generic, NFData, Functor, Foldable, Traversable, Out)
 
+-- | A compiler-generated 64-bit integer literal: sizes, byte offsets, tags,
+-- loop counters, trip counts and the like.  These are fixed-width by
+-- construction and are never subject to contextual literal typing.
+--
+-- Source literals are NOT built with this; the frontend emits
+-- @LitE LitUnresolved n@ and lets L0 decide the width.
+mkLitE64 :: Int -> PreExp ext loc dec
+mkLitE64 n = LitE (LitWidth W64) (toInteger n)
+
+--------------------------------------------------------------------------------
+-- Width-sensitive integer primitives
+--------------------------------------------------------------------------------
+
+-- | Compiler-generated 64-bit integer primitives: cursor arithmetic, byte
+-- offsets, sizes, loop and trip counters, tags.  These are nullary so that
+-- migrating a construction site is a token swap, with no parenthesisation.
+--
+-- Source operators are NOT built with these; the frontends emit
+-- @AddP IntPrimUnresolved@ and let L0 infer the width.
+addP64, subP64, mulP64, divP64, modP64, expP64 :: Prim ty
+addP64 = AddP (IntPrimWidth W64)
+subP64 = SubP (IntPrimWidth W64)
+mulP64 = MulP (IntPrimWidth W64)
+divP64 = DivP (IntPrimWidth W64)
+modP64 = ModP (IntPrimWidth W64)
+expP64 = ExpP (IntPrimWidth W64)
+
+eqIntP64, ltP64, gtP64, ltEqP64, gtEqP64 :: Prim ty
+eqIntP64 = EqIntP (IntPrimWidth W64)
+ltP64    = LtP    (IntPrimWidth W64)
+gtP64    = GtP    (IntPrimWidth W64)
+ltEqP64  = LtEqP  (IntPrimWidth W64)
+gtEqP64  = GtEqP  (IntPrimWidth W64)
+
+printIntP64 :: Prim ty
+printIntP64 = PrintInt (IntPrimWidth W64)
+
+-- | The width annotation of a width-sensitive integer primitive, if it has
+-- one.  'Nothing' for every other primitive.
+intPrimAnnOf :: Prim ty -> Maybe IntPrimAnn
+intPrimAnnOf p =
+  case p of
+    AddP a -> Just a ; SubP a -> Just a ; MulP a -> Just a
+    DivP a -> Just a ; ModP a -> Just a ; ExpP a -> Just a
+    EqIntP a -> Just a ; LtP a -> Just a ; GtP a -> Just a
+    LtEqP a -> Just a ; GtEqP a -> Just a
+    PrintInt a -> Just a
+    IntConvertP a _ -> Just a
+    IntToFloatP a -> Just a
+    _ -> Nothing
+
+-- | Replace the width annotation of a width-sensitive integer primitive.
+-- Any other primitive is returned unchanged.
+setIntPrimWidth :: IntWidth -> Prim ty -> Prim ty
+setIntPrimWidth w = setIntPrimAnn (IntPrimWidth w)
+
+-- | Replace the annotation of a width-sensitive integer primitive.
+--
+-- Useful for *normalising* before an equality test or map lookup: the
+-- annotation is part of the constructor, so @AddP (IntPrimWidth W8)@ and
+-- @AddP IntPrimUnresolved@ are different keys.
+setIntPrimAnn :: IntPrimAnn -> Prim ty -> Prim ty
+setIntPrimAnn a p =
+  case p of
+    AddP _ -> AddP a ; SubP _ -> SubP a ; MulP _ -> MulP a
+    DivP _ -> DivP a ; ModP _ -> ModP a ; ExpP _ -> ExpP a
+    EqIntP _ -> EqIntP a ; LtP _ -> LtP a ; GtP _ -> GtP a
+    LtEqP _ -> LtEqP a ; GtEqP _ -> GtEqP a
+    PrintInt _ -> PrintInt a
+    -- Only the SOURCE annotation is replaced; the destination width is fixed
+    -- by the surface primitive and is never inferred.
+    IntConvertP _ dst -> IntConvertP a dst
+    IntToFloatP _ -> IntToFloatP a
+    _ -> p
+
+-- | Binary integer arithmetic: operands and result all share the width.
+isIntArithPrim :: Prim ty -> Bool
+isIntArithPrim p =
+  case p of
+    AddP{} -> True ; SubP{} -> True ; MulP{} -> True
+    DivP{} -> True ; ModP{} -> True ; ExpP{} -> True
+    _ -> False
+
+-- | Binary integer comparison: operands share the width, result is 'BoolTy'.
+isIntCmpPrim :: Prim ty -> Bool
+isIntCmpPrim p =
+  case p of
+    EqIntP{} -> True ; LtP{} -> True ; GtP{} -> True
+    LtEqP{} -> True ; GtEqP{} -> True
+    _ -> False
+
+-- | Every primitive whose typing depends on an integer width annotation.
+isWidthSensitivePrim :: Prim ty -> Bool
+isWidthSensitivePrim p = isIntArithPrim p || isIntCmpPrim p ||
+                         case p of { PrintInt{} -> True
+                                   ; IntConvertP{} -> True
+                                   ; IntToFloatP{} -> True
+                                   ; _ -> False }
+
+-- | The (source, destination) widths of an explicit integer conversion.
+--
+-- Structural, not an equality test: the annotation is part of the
+-- constructor, so comparing against a fixed @IntConvertP IntPrimUnresolved W8@
+-- would silently miss every resolved node.
+intConvertWidths :: Prim ty -> Maybe (IntWidth, IntWidth)
+intConvertWidths p =
+  case p of
+    IntConvertP a dst -> Just (intPrimWidth a, dst)
+    _ -> Nothing
+
+-- | The destination width of an explicit integer conversion, ignoring the
+-- (possibly still unresolved) source.  Safe to call inside L0.
+intConvertDest :: Prim ty -> Maybe IntWidth
+intConvertDest p =
+  case p of
+    IntConvertP _ dst -> Just dst
+    _ -> Nothing
+
 
 --------------------------------------------------------------------------------
 -- Primitives
@@ -518,15 +662,51 @@ data PreExp (ext :: Type -> Type -> Type) loc dec =
 -- | Some of these primitives are (temporarily) tagged directly with
 -- their return types.
 data Prim ty
-          = AddP | SubP | MulP -- ^ May need more numeric primitives...
-          | DivP | ModP        -- ^ Integer division and modulus
-          | ExpP               -- ^ Exponentiation
+          -- | Integer arithmetic.  Width-polymorphic but width-HOMOGENEOUS:
+          -- both operands and the result share the annotated width.
+          = AddP IntPrimAnn | SubP IntPrimAnn | MulP IntPrimAnn
+          | DivP IntPrimAnn | ModP IntPrimAnn  -- ^ Integer division and modulus
+          | ExpP IntPrimAnn                    -- ^ Exponentiation
           | RandP              -- ^ Generate a random number.
-                               --   Translates to 'rand()' in C.
-          | EqIntP             -- ^ Equality on Int
-          | LtP | GtP          -- ^ (<) and (>) for Int's
-          | LtEqP | GtEqP      -- ^ <= and >=
-          | FAddP | FSubP | FMulP | FDivP | FExpP | FRandP | EqFloatP | EqCharP | FLtP | FGtP | FLtEqP | FGtEqP | FSqrtP | IntToFloatP | FloatToIntP
+                               --   Translates to 'rand()' in C.  Always W64.
+          -- | Integer comparisons.  Operands share the annotated width; the
+          -- result is 'BoolTy', so the result context never selects the width.
+          | EqIntP IntPrimAnn  -- ^ Equality on Int
+          | LtP IntPrimAnn | GtP IntPrimAnn          -- ^ (<) and (>) for Int's
+          | LtEqP IntPrimAnn | GtEqP IntPrimAnn      -- ^ <= and >=
+          -- | Explicit, deterministic integer-width conversion.
+          --
+          -- @IntConvertP src dst@ converts an operand of type @IntTy src@ to
+          -- the unique signed @dst@-bit two's-complement value congruent to it
+          -- modulo 2^dst.  Truncating, never saturating, never an overflow
+          -- report.
+          --
+          -- INVARIANT: BOTH widths are carried.  The destination alone would
+          -- not be enough: every level below L0 must be able to check the
+          -- operand's type and the result's type without reconstructing or
+          -- guessing the source.  The destination is fixed by the surface name
+          -- (@toInt8@ .. @toInt64@) and is concrete from birth; the source
+          -- starts 'IntPrimUnresolved' in the Haskell frontend and is resolved
+          -- by L0 from the operand (an unconstrained operand defaults to W64).
+          -- No unresolved source may cross L0 -> L1; 'toL1Prim' raises an ICE.
+          --
+          -- The destination context must NEVER select the source: @toInt8 300@
+          -- means "convert the Int64 literal 300", not "the Int8 literal 300"
+          -- (which would be a spurious range error and would erase the
+          -- conversion).  'tcExpChecked' only pushes an expected width into
+          -- 'isIntArithPrim' nodes, and this is not one.
+          | IntConvertP IntPrimAnn IntWidth
+          | FAddP | FSubP | FMulP | FDivP | FExpP | FRandP | EqFloatP | EqCharP | FLtP | FGtP | FLtEqP | FGtEqP | FSqrtP
+          -- | Integer -> float.  Carries the operand's exact source width, so
+          -- the node stays self-describing and L1-L4 can validate the operand
+          -- type rather than assuming W64.  Same unresolved-source rules as
+          -- 'IntConvertP'.
+          | IntToFloatP IntPrimAnn
+          -- | Float -> integer.  Deliberately W64-result-only: there is no
+          -- surface syntax for a narrow float->int, and inferring the
+          -- destination from context would be exactly the implicit conversion
+          -- this design forbids.  Write @toInt8 (floatToInt f)@ instead.
+          | FloatToIntP
           | FTanP              -- ^ Translates to 'tan()' in C.
           | EqSymP             -- ^ Equality on Sym
           | EqBenchProgP String
@@ -543,7 +723,7 @@ data Prim ty
           | IsBig   -- ^ Check the size of constructors with size.
           | GetNumProcessors -- ^ Return the number of processors
 
-          | PrintInt   -- ^ Print an integer to standard out
+          | PrintInt IntPrimAnn -- ^ Print an integer of the annotated width to standard out
           | PrintChar   -- ^ Print a character to standard out
           | PrintFloat -- ^ Print a floating point number to standard out
           | PrintBool  -- ^ Print a boolean to standard out
@@ -649,8 +829,229 @@ data Prim ty
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.  This data is parameterized to allow
 -- annotation on Packed types later on.
+-- | Width of a machine integer, in bits.  Gibbon's surface `Int` is `W64`;
+-- `Int8`/`Int16`/`Int32`/`Int64` (and the parameterized `Int 8` … `Int 64`)
+-- select the others.  Widths never mix implicitly: the only operation that
+-- crosses widths will be the explicit conversion primitives `toInt8`,
+-- `toInt16`, `toInt32` and `toInt64`, which are planned but not yet
+-- implemented.  (There is no `IntCastP` constructor; an earlier comment here
+-- named one that never existed.)
+data IntWidth = W8 | W16 | W32 | W64
+  deriving (Show, Read, Ord, Eq, Generic, NFData, Out, Bounded, Enum)
+
+-- | The width annotation carried by a width-sensitive integer primitive
+-- (arithmetic, integer comparison, and 'PrintInt').
+--
+-- Deliberately a distinct type from 'LitAnn', even though the shape matches.
+-- A literal's width can be chosen by an expected type flowing inward; an
+-- operator's width is fixed by agreement among its operands, and 'PrintInt'
+-- has no result context at all.  Keeping the types apart stops 'litWidth' and
+-- 'intPrimWidth' being used interchangeably.
+--
+-- INVARIANT: 'IntPrimUnresolved' appears only in L0, on an operator that came
+-- from source and whose width has not been inferred yet.  No unresolved
+-- width-sensitive primitive may cross the L0 -> L1 boundary; 'toL1Prim' raises
+-- an internal compiler error if one does.
+data IntPrimAnn = IntPrimUnresolved
+                | IntPrimWidth IntWidth
+  deriving (Show, Read, Ord, Eq, Generic, NFData, Out)
+
+-- | The concrete width of a primitive annotation.  Errors on an unresolved
+-- one: past L0 that is an internal compiler error, never an excuse to fall
+-- back to 'W64'.
+intPrimWidth :: IntPrimAnn -> IntWidth
+intPrimWidth (IntPrimWidth w) = w
+intPrimWidth IntPrimUnresolved =
+  error "intPrimWidth: width-sensitive integer primitive still carries an unresolved width; it must be resolved by the end of L0 typechecking."
+
+-- | The width annotation carried by an integer literal.
+--
+-- A literal that comes from source text starts out as 'LitUnresolved': its
+-- width is decided by the context it appears in (see @tcExpChecked@ in
+-- "Gibbon.L0.Typecheck"), and an unconstrained one is defaulted to 'W64'
+-- exactly once, at the end of L0 typechecking.  Compiler-generated literals
+-- (sizes, offsets, loop counters, tags, ...) are built with 'mkLitE64' and are
+-- concrete from birth, so \"not inferred yet\" is never confused with
+-- \"deliberately 64-bit\".
+--
+-- INVARIANT: no 'LitUnresolved' survives the L0 -> L1 boundary; 'toL1Exp'
+-- raises an internal compiler error if one does.  'litWidth' likewise refuses
+-- to guess.
+data LitAnn = LitUnresolved
+            | LitWidth IntWidth
+  deriving (Show, Read, Ord, Eq, Generic, NFData, Out)
+
+-- | The concrete width of a literal annotation.  Errors on an unresolved
+-- literal: past L0 that is an internal compiler error, not a defaulting
+-- opportunity.
+litWidth :: LitAnn -> IntWidth
+litWidth (LitWidth w) = w
+litWidth LitUnresolved =
+  error "litWidth: integer literal still carries an unresolved width; every literal must be resolved by the end of L0 typechecking."
+
+-- | Like 'litWidth', but tolerates an unresolved literal by reporting the
+-- width it would default to.  Only L0 itself may use this, because only in L0
+-- can a literal legitimately still be unresolved.
+litWidthL0 :: LitAnn -> IntWidth
+litWidthL0 LitUnresolved = W64
+litWidthL0 (LitWidth w)  = w
+
+-- | Signed range of a machine integer of the given width, inclusive.
+intWidthRange :: IntWidth -> (Integer, Integer)
+intWidthRange w = let bits = 8 * toInteger (intWidthBytes w)
+                  in (negate (2 ^ (bits - 1)), 2 ^ (bits - 1) - 1)
+
+-- | Does this value fit in a signed integer of the given width?
+intWidthFits :: IntWidth -> Integer -> Bool
+intWidthFits w n = let (lo,hi) = intWidthRange w in n >= lo && n <= hi
+
+-- | Size in bytes of a machine integer of the given width.
+-- | The unique signed N-bit two's-complement value congruent to @n@ modulo
+-- 2^N, for @N@ = the given width's bit count.
+--
+-- This is THE semantics of the explicit @toInt8@ .. @toInt64@ conversions, and
+-- the interpreters and the generated C must agree on it exactly.  Computed in
+-- 'Integer', so there is no host-'Int' overflow anywhere along the way; the
+-- caller converts to a fixed-width representation only after the result is
+-- known to fit.
+narrowToIntWidth :: IntWidth -> Integer -> Integer
+narrowToIntWidth w n =
+  let bits = 8 * toInteger (intWidthBytes w)
+      modulus = 2 ^ bits
+      half = 2 ^ (bits - 1)
+      m = n `mod` modulus          -- Haskell's `mod` is already non-negative here
+  in if m < half then m else m - modulus
+
+--------------------------------------------------------------------------------
+-- Deterministic integer arithmetic
+--------------------------------------------------------------------------------
+
+-- $arith
+--
+-- THE definition of what @+@, @-@, @*@, @\/@, @%@ and @^@ mean on a Gibbon
+-- @Int8@\/@Int16@\/@Int32@\/@Int64@.  Everything that evaluates width-annotated
+-- integer arithmetic -- the L1\/L2 interpreter, the L4 interpreter, and any
+-- future constant folder -- must call these and nothing else, so that there is
+-- exactly one place where the answer is decided and the generated C has
+-- exactly one specification to match.
+--
+-- For width @N@, with @modulus = 2^N@ and @wrap@ = 'wrapInt' (the unique signed
+-- @N@-bit two's-complement value congruent modulo @modulus@):
+--
+-- > a + b     ==  wrap (a + b)
+-- > a - b     ==  wrap (a - b)
+-- > a * b     ==  wrap (a * b)
+-- > negate a  ==  wrap (0 - a)          -- so negate MIN == MIN
+-- > a ^ b     ==  wrap (a ^ b)   (b >= 0, by modular repeated squaring)
+-- > a ^ b     ==  wrap 1         (b <  0, see 'wrapPow')
+-- > a / b     ==  wrap (a `quot` b)     -- truncates toward zero, like C
+-- > a % b     ==  wrap (a `rem`  b)     -- sign of the dividend, like C
+--
+-- and division or remainder by zero is an 'ArithError', never an uncontrolled
+-- exception and never C undefined behaviour.
+--
+-- Two rules about how these are written, both of which have already caused
+-- real bugs in this compiler:
+--
+--   * every intermediate is an 'Integer'.  The overflowing product is NEVER
+--     formed in host 'Int' or 'Int64' and normalized afterwards, because that
+--     first step is exactly the thing being specified away.
+--   * division and remainder use @quot@\/@rem@, NEVER @div@\/@mod@.  Haskell's
+--     @div@\/@mod@ floor toward negative infinity (@(-7) \`div\` 3 == -3@)
+--     while C's @\/@ and @%@ truncate toward zero (@-7 \/ 3 == -2@).
+--     Substituting one for the other silently changes every negative division
+--     in every compiled program.
+
+-- | The unique signed value of the given width congruent to the argument
+-- modulo 2^N.  Alias of 'narrowToIntWidth', named for its role as the
+-- normalizer of arithmetic results rather than as the @toIntN@ conversion.
+wrapInt :: IntWidth -> Integer -> Integer
+wrapInt = narrowToIntWidth
+
+-- | Modular addition, subtraction and multiplication at the given width.
+wrapAdd, wrapSub, wrapMul :: IntWidth -> Integer -> Integer -> Integer
+wrapAdd w a b = wrapInt w (a + b)
+wrapSub w a b = wrapInt w (a - b)
+wrapMul w a b = wrapInt w (a * b)
+
+-- | Modular negation.  Note @wrapNegate w MIN == MIN@: the negation of the most
+-- negative value is not representable, and wraps back to itself.  Source-level
+-- negation is represented as @0 - a@, so this agrees with 'wrapSub' by
+-- construction.
+wrapNegate :: IntWidth -> Integer -> Integer
+wrapNegate w a = wrapInt w (negate a)
+
+-- | Modular exponentiation at the given width.
+--
+-- The reduction happens at every squaring step, so the intermediate never
+-- exceeds the modulus and a huge exponent costs @O(log e)@ multiplications of
+-- bounded numbers rather than @O(e)@ multiplications of growing ones.
+--
+-- Negative exponent: returns @wrap 1@, for every base and every width.  That
+-- is not an arbitrary pick.  Before this was specified, the C helper returned
+-- @1@ for a negative exponent for every base except @2@ (where it evaluated
+-- @1 << pow@ with a negative shift count -- undefined behaviour), and the
+-- interpreter threw @Negative exponent@ instead of producing a value at all.
+-- @1@ is what compiled code already produced in the general case and it is
+-- total, so it is adopted everywhere and the interpreter is moved onto it.
+--
+-- @0 ^ 0 == 1@, which both sides already agreed on.
+wrapPow :: IntWidth -> Integer -> Integer -> Integer
+wrapPow w b e
+  | e < 0     = wrapInt w 1
+  | otherwise = wrapInt w (go (b `mod` modulus) e 1)
+  where
+    modulus = 2 ^ (8 * toInteger (intWidthBytes w))
+    -- Ordinary square-and-multiply, reducing after every step.  Operating on
+    -- the non-negative residues is sound because congruence mod 2^N is
+    -- preserved by multiplication; the single 'wrapInt' above maps the final
+    -- residue into the signed range.
+    go _    0 acc = acc
+    go base k acc =
+      let acc' = if odd k then (acc * base) `mod` modulus else acc
+      in go ((base * base) `mod` modulus) (k `div` 2) acc'
+
+-- | The two ways integer division can fail.  Kept as a datatype rather than a
+-- string so that a consumer cannot invent a third case or misspell one, and so
+-- that GHC reports every site that has to handle them.
+data ArithError = DivideByZero | RemainderByZero
+  deriving (Show, Read, Ord, Eq, Generic, NFData, Out)
+
+-- | The user-facing text for a failed division.  The interpreters and the
+-- generated C both report exactly this, so a program that dies this way is
+-- recognisable regardless of which one ran it.
+arithErrorMessage :: ArithError -> String
+arithErrorMessage DivideByZero    = "Gibbon: integer division by zero"
+arithErrorMessage RemainderByZero = "Gibbon: integer remainder by zero"
+
+-- | Truncating-toward-zero division at the given width, matching C's @\/@.
+--
+-- @quot@, not @div@.  The only case where the result is not already in range
+-- is @MIN \/ -1@, whose true quotient is @2^(N-1)@; 'wrapInt' carries it to
+-- @MIN@, which is what two's-complement hardware produces and what C leaves
+-- undefined.  A zero divisor is reported rather than evaluated.
+checkedQuot :: IntWidth -> Integer -> Integer -> Either ArithError Integer
+checkedQuot _ _ 0 = Left DivideByZero
+checkedQuot w a b = Right (wrapInt w (a `quot` b))
+
+-- | Remainder with the sign of the dividend at the given width, matching C's
+-- @%@.
+--
+-- @rem@, not @mod@.  @MIN % -1@ is exactly @0@ in 'Integer', so no wrapping is
+-- needed for it, but the result is normalized anyway so that the two functions
+-- have the same shape and neither can drift.
+checkedRem :: IntWidth -> Integer -> Integer -> Either ArithError Integer
+checkedRem _ _ 0 = Left RemainderByZero
+checkedRem w a b = Right (wrapInt w (a `rem` b))
+
+intWidthBytes :: IntWidth -> Int
+intWidthBytes W8  = 1
+intWidthBytes W16 = 2
+intWidthBytes W32 = 4
+intWidthBytes W64 = 8
+
 data UrTy loc
-  = IntTy
+  = IntTy IntWidth
   | CharTy
   | FloatTy
   | SymTy -- ^ Symbols used in writing compiler passes.

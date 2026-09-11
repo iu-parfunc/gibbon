@@ -92,6 +92,7 @@ library
                        Gibbon.Passes.LoopifyFlatTraversals
                        Gibbon.Passes.LoopifiedTraversalFusion
                        Gibbon.Passes.VectorizeTraversals
+                       Gibbon.Passes.AssignScalarCountSlots
                        Gibbon.Passes.ScalarCountPropagation
                        Gibbon.Passes.MutableCursorFutures
                        Gibbon.Passes.Unariser
@@ -183,8 +184,17 @@ test-suite test-gibbon
                        srcloc, pretty, time,
                        mtl, transformers,
                        tasty, tasty-hunit, tasty-th,
-                       text, bytestring
+                       text, bytestring, optparse-applicative
   other-modules:       RouteEnds
+                       OutputCompare
+                       OutputCompareTests
+                       TimingOutputContract
+                       IntWidths
+                       IntWidthsPipeline
+                       IntWidthsCompat
+                       IntConversions
+                       IntArithmetic
+                       CArithModes
                        InferEffects
                        InferLocations
                        Unariser
@@ -192,6 +202,8 @@ test-suite test-gibbon
                        HoistBoundsCheck
                        AddRAN
                        LoopifyTraversals
+                       ReorderScalarWrites
+                       AssignScalarCountSlots
                        ScalarCountPropagation
                        SelectiveBufferSharing
                        VectorizeTraversals
@@ -218,6 +230,7 @@ executable test-gibbon-examples
 
   default-language:    Haskell2010
   other-modules:       TestRunner
+                       OutputCompare
   ghc-options:         -Wall -rtsopts -fdefer-typed-holes
                        -main-is BenchRunner
   default-extensions:  OverloadedStrings NamedFieldPuns

@@ -11,6 +11,12 @@ module Gibbon.L3.Syntax
     -- * Extended language
     E3Ext(..), Prog3, DDef3, DDefs3, FunDef3, FunDefs3 , Exp3, Ty3
   , Scalar(..), mkScalar, scalarToTy
+  , isIntScalar, intScalarWidth, intScalarWidthMaybe, intS64
+  , VecOp(..), vecOpName, simdScalarBytes, simdLanes
+  , simdRegisterBytes, simdRegisterBytesAvx2
+  , simdScalarEnabled, simdCapable, simdLanesValid, simdLanesValidAny
+  , simdLogicalStride, simdGroups, simdStrideValid, orderedCmps
+  , VecCmpOp(..), vecCmpOp, vecCmpName
 
     -- * Functions
   , eraseLocMarkers, mapMExprs, cursorizeTy, toL3Prim, updateAvailVars
@@ -160,11 +166,23 @@ data E3Ext loc dec =
   | EndTagAllocation Var       -- ^ Marks the end of tag allocation.
   | StartScalarsAllocation Var -- ^ Marks the beginning of scalar allocation.
   | EndScalarsAllocation Var   -- ^ Marks the end of scalar allocation.
-  | ScalarCountBump DataCon [Var]
+  | ScalarCountBump DataCon [(Var, Int)]
     -- ^ Constructor-level homogeneous-buffer count instrumentation. The
     -- DataCon is the semantic event; the Vars are the affected SoA output
     -- buffers for this constructor, including the dcon buffer and any scalar
     -- field buffers.
+    --
+    -- The Int is the buffer's deferred-count slot: 'Cursorize' emits the
+    -- buffer's position in the SoA cursor array, and 'AssignScalarCountSlots'
+    -- rebases it to a program-global slot.  See Note [Deferred scalar counts].
+  | ScalarCountBind Int Int Var
+    -- ^ Bind deferred-count slots [base, base+len) to the regions owning the
+    -- buffers of an SoA end-cursor array, immediately BEFORE a producer call.
+    -- The region is allocated by the caller, so its footer is already live.
+  | ScalarCountFinalize Int Int Var
+    -- ^ Flush deferred-count slots [base, base+len) into their footers,
+    -- immediately AFTER a producer call.  Growth accounts for every chunk but
+    -- the last; this accounts for the last one.
   | ScalarCountSet Var Var
     -- ^ Set homogeneous-buffer count metadata for a chunk.  The first Var is
     -- the output region footer/end cursor, and the second Var is the count to
@@ -205,7 +223,7 @@ data E3Ext loc dec =
     -- ^ Lane-wise SIMD division, for scalar kinds with backend support.
   | VecMod Scalar Int (PreExp E3Ext loc dec) (PreExp E3Ext loc dec)
     -- ^ Lane-wise SIMD modulus, for scalar kinds with backend support.
-  | VecEq Scalar Int (PreExp E3Ext loc dec) (PreExp E3Ext loc dec)
+  | VecCmp Scalar Int VecCmpOp (PreExp E3Ext loc dec) (PreExp E3Ext loc dec)
     -- ^ Lane-wise equality producing an all-bits mask in the same register type.
   | VecSelect Scalar Int (PreExp E3Ext loc dec) (PreExp E3Ext loc dec) (PreExp E3Ext loc dec)
     -- ^ Lane-wise select: mask, then-value, else-value.
@@ -295,7 +313,9 @@ instance FreeVars (E3Ext l d) where
       EndTagAllocation v -> S.singleton v
       StartScalarsAllocation v -> S.singleton v
       EndScalarsAllocation v -> S.singleton v
-      ScalarCountBump _ footers -> S.fromList footers
+      ScalarCountBump _ footers -> S.fromList (L.map fst footers)
+      ScalarCountBind _ _ ends -> S.singleton ends
+      ScalarCountFinalize _ _ ends -> S.singleton ends
       ScalarCountSet footer count -> S.fromList [footer, count]
       ScalarCountCopyAll _ dstEnds srcEnds -> S.fromList [dstEnds, srcEnds]
       ReadScalarCount v -> S.singleton v
@@ -314,7 +334,7 @@ instance FreeVars (E3Ext l d) where
       VecMul _ _ a b -> gFreeVars a `S.union` gFreeVars b
       VecDiv _ _ a b -> gFreeVars a `S.union` gFreeVars b
       VecMod _ _ a b -> gFreeVars a `S.union` gFreeVars b
-      VecEq _ _ a b -> gFreeVars a `S.union` gFreeVars b
+      VecCmp _ _ _ a b -> gFreeVars a `S.union` gFreeVars b
       VecSelect _ _ m a b -> S.unions [gFreeVars m, gFreeVars a, gFreeVars b]
       VecStore _ _ ref val -> S.insert ref (gFreeVars val)
       SSPush _ a b _ -> S.fromList [a,b]
@@ -341,8 +361,10 @@ instance (Out l, Show l, Typeable (PreExp E3Ext l (UrTy l))) => Typeable (E3Ext 
     gRecoverType _ _ (CastPtr {}) = error "gRecoverType: CastPtr not handled"
     gRecoverType _ _ (BoundsCheckVector {}) = error "gRecoverType: BoundsCheckVector not handled"
     gRecoverType _ _ (ScalarCountSet {}) = ProdTy []
+    gRecoverType _ _ (ScalarCountBind {}) = ProdTy []
+    gRecoverType _ _ (ScalarCountFinalize {}) = ProdTy []
     gRecoverType _ _ (ScalarCountCopyAll {}) = ProdTy []
-    gRecoverType _ _ (ReadScalarCount {}) = IntTy
+    gRecoverType _ _ (ReadScalarCount {}) = (IntTy W64)
     gRecoverType _ _ (ReadScalarCountFirstFooter {}) = CursorTy
     gRecoverType _ _ (ReadScalarCountNextFooter {}) = CursorTy
     gRecoverType _ _ (ForE {}) = ProdTy []
@@ -355,7 +377,7 @@ instance (Out l, Show l, Typeable (PreExp E3Ext l (UrTy l))) => Typeable (E3Ext 
     gRecoverType _ _ (VecMul s lanes _ _) = SimdTy (scalarToTy s) lanes
     gRecoverType _ _ (VecDiv s lanes _ _) = SimdTy (scalarToTy s) lanes
     gRecoverType _ _ (VecMod s lanes _ _) = SimdTy (scalarToTy s) lanes
-    gRecoverType _ _ (VecEq s lanes _ _) = SimdTy (scalarToTy s) lanes
+    gRecoverType _ _ (VecCmp s lanes _ _ _) = SimdTy (scalarToTy s) lanes
     gRecoverType _ _ (VecSelect s lanes _ _ _) = SimdTy (scalarToTy s) lanes
     gRecoverType _ _ (VecStore {}) = ProdTy []
     gRecoverType _ _ (WriteTagPacked {}) = CursorTy
@@ -372,8 +394,10 @@ instance (Out l, Show l, Typeable (PreExp E3Ext l (UrTy l))) => Typeable (E3Ext 
     gRecoverTypeLoc _ _ (CastPtr {}) = error "gRecoverType: CastPtr not handled"
     gRecoverTypeLoc _ _ (BoundsCheckVector {}) = error "gRecoverType: BoundsCheckVector not handled"
     gRecoverTypeLoc _ _ (ScalarCountSet {}) = ProdTy []
+    gRecoverTypeLoc _ _ (ScalarCountBind {}) = ProdTy []
+    gRecoverTypeLoc _ _ (ScalarCountFinalize {}) = ProdTy []
     gRecoverTypeLoc _ _ (ScalarCountCopyAll {}) = ProdTy []
-    gRecoverTypeLoc _ _ (ReadScalarCount {}) = IntTy
+    gRecoverTypeLoc _ _ (ReadScalarCount {}) = (IntTy W64)
     gRecoverTypeLoc _ _ (ReadScalarCountFirstFooter {}) = CursorTy
     gRecoverTypeLoc _ _ (ReadScalarCountNextFooter {}) = CursorTy
     gRecoverTypeLoc _ _ (ForE {}) = ProdTy []
@@ -386,7 +410,7 @@ instance (Out l, Show l, Typeable (PreExp E3Ext l (UrTy l))) => Typeable (E3Ext 
     gRecoverTypeLoc _ _ (VecMul s lanes _ _) = SimdTy (scalarToTy s) lanes
     gRecoverTypeLoc _ _ (VecDiv s lanes _ _) = SimdTy (scalarToTy s) lanes
     gRecoverTypeLoc _ _ (VecMod s lanes _ _) = SimdTy (scalarToTy s) lanes
-    gRecoverTypeLoc _ _ (VecEq s lanes _ _) = SimdTy (scalarToTy s) lanes
+    gRecoverTypeLoc _ _ (VecCmp s lanes _ _ _) = SimdTy (scalarToTy s) lanes
     gRecoverTypeLoc _ _ (VecSelect s lanes _ _ _) = SimdTy (scalarToTy s) lanes
     gRecoverTypeLoc _ _ (VecStore {}) = ProdTy []
     gRecoverTypeLoc _ _ (WriteTagPacked {}) = CursorTy
@@ -430,7 +454,7 @@ instance HasSubstitutableExt E3Ext l d => SubstitutableExt (PreExp E3Ext l d) (E
       VecMul s lanes a b -> VecMul s lanes (gSubst old new a) (gSubst old new b)
       VecDiv s lanes a b -> VecDiv s lanes (gSubst old new a) (gSubst old new b)
       VecMod s lanes a b -> VecMod s lanes (gSubst old new a) (gSubst old new b)
-      VecEq s lanes a b -> VecEq s lanes (gSubst old new a) (gSubst old new b)
+      VecCmp s lanes c a b -> VecCmp s lanes c (gSubst old new a) (gSubst old new b)
       VecSelect s lanes m a b -> VecSelect s lanes (gSubst old new m) (gSubst old new a) (gSubst old new b)
       VecStore s lanes ref val -> VecStore s lanes ref (gSubst old new val)
       MakeCursorArray{}    -> ext
@@ -459,7 +483,7 @@ instance HasSubstitutableExt E3Ext l d => SubstitutableExt (PreExp E3Ext l d) (E
       VecMul s lanes a b -> VecMul s lanes (gSubstE old new a) (gSubstE old new b)
       VecDiv s lanes a b -> VecDiv s lanes (gSubstE old new a) (gSubstE old new b)
       VecMod s lanes a b -> VecMod s lanes (gSubstE old new a) (gSubstE old new b)
-      VecEq s lanes a b -> VecEq s lanes (gSubstE old new a) (gSubstE old new b)
+      VecCmp s lanes c a b -> VecCmp s lanes c (gSubstE old new a) (gSubstE old new b)
       VecSelect s lanes m a b -> VecSelect s lanes (gSubstE old new m) (gSubstE old new a) (gSubstE old new b)
       VecStore s lanes ref val -> VecStore s lanes ref (gSubstE old new val)
       MakeCursorArray{}    -> ext
@@ -516,7 +540,10 @@ instance HasRenamable E3Ext l d => Renamable (E3Ext l d) where
       EndTagAllocation v -> EndTagAllocation (go v)
       StartScalarsAllocation v -> StartScalarsAllocation (go v)
       EndScalarsAllocation v -> EndScalarsAllocation (go v)
-      ScalarCountBump dcon footers -> ScalarCountBump dcon (L.map go footers)
+      ScalarCountBump dcon footers ->
+        ScalarCountBump dcon (L.map (\(v, slot) -> (go v, slot)) footers)
+      ScalarCountBind base len ends -> ScalarCountBind base len (go ends)
+      ScalarCountFinalize base len ends -> ScalarCountFinalize base len (go ends)
       ScalarCountSet footer count -> ScalarCountSet (go footer) (go count)
       ScalarCountCopyAll len dstEnds srcEnds -> ScalarCountCopyAll len (go dstEnds) (go srcEnds)
       ReadScalarCount v -> ReadScalarCount (go v)
@@ -534,7 +561,7 @@ instance HasRenamable E3Ext l d => Renamable (E3Ext l d) where
       VecMul s lanes a b -> VecMul s lanes (go a) (go b)
       VecDiv s lanes a b -> VecDiv s lanes (go a) (go b)
       VecMod s lanes a b -> VecMod s lanes (go a) (go b)
-      VecEq s lanes a b -> VecEq s lanes (go a) (go b)
+      VecCmp s lanes c a b -> VecCmp s lanes c (go a) (go b)
       VecSelect s lanes m a b -> VecSelect s lanes (go m) (go a) (go b)
       VecStore s lanes ref val -> VecStore s lanes (go ref) (go val)
       SSPush a b c d -> SSPush a (go b) (go c) d
@@ -550,11 +577,21 @@ instance HasRenamable E3Ext l d => Renamable (E3Ext l d) where
       go :: forall a. Renamable a => a -> a
       go = gRename env
 
-data Scalar = IntS | CharS | FloatS | SymS | BoolS
+-- | The kind of a scalar value stored in a packed buffer.
+--
+-- The integer scalar carries its exact width: L3 is fully typed, so there is
+-- no such thing as an unresolved scalar width here.  'mkScalar' and
+-- 'scalarToTy' are exact inverses on integers -- nothing maps @IntS w@ back to
+-- @IntTy W64@.
+--
+-- CAUTION: because the width is part of the constructor, @IntS W8 /= IntS W64@.
+-- Never write @s == IntS ...@ or @s \`elem\` [IntS, ...]@ when the intent is
+-- "any integer scalar"; use 'isIntScalar', or match @IntS{}@.
+data Scalar = IntS IntWidth | CharS | FloatS | SymS | BoolS
   deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
 
 mkScalar :: Out a => UrTy a -> Scalar
-mkScalar IntTy  = IntS
+mkScalar (IntTy w) = IntS w
 mkScalar CharTy = CharS
 mkScalar FloatTy= FloatS
 mkScalar SymTy  = SymS
@@ -562,11 +599,296 @@ mkScalar BoolTy = BoolS
 mkScalar ty = error $ "mkScalar: Not a scalar type: " ++ sdoc ty
 
 scalarToTy :: Scalar -> UrTy a
-scalarToTy IntS  = IntTy
+scalarToTy (IntS w) = IntTy w
 scalarToTy CharS = CharTy
 scalarToTy FloatS= FloatTy
 scalarToTy SymS  = SymTy
 scalarToTy BoolS = BoolTy
+
+-- | Is this scalar an integer, of any width?  Use this instead of comparing
+-- against a particular 'IntS'.
+--------------------------------------------------------------------------------
+-- The SIMD capability matrix
+--
+-- ONE source of truth, shared by 'Gibbon.Passes.VectorizeTraversals' (which
+-- decides whether to emit vector IR) and 'Gibbon.Passes.Codegen' (which decides
+-- whether it can lower that IR).  A vectorizer "yes" paired with a backend "no"
+-- is a compiler crash; a backend "yes" paired with a vectorizer "no" is dead
+-- code that will rot.  Both sides call 'simdCapable', and a unit test asserts
+-- they agree over the whole (op x scalar) space.
+--------------------------------------------------------------------------------
+
+-- | A vector operation the backend can be asked to emit.  Typed rather than
+-- stringly: the old code passed operation names around as 'String', so a typo
+-- degraded silently into "unsupported" instead of failing to compile.  Codegen
+-- still needs a name for the emitted helper, but it derives it from this with
+-- 'vecOpName' rather than accepting one from a caller.
+data VecOp = VecOpBroadcast | VecOpLoad | VecOpStore
+           | VecOpAdd | VecOpSub | VecOpMul | VecOpDiv | VecOpMod
+           | VecOpEq | VecOpLt | VecOpGt | VecOpLtEq | VecOpGtEq
+           | VecOpSelect
+  deriving (Show, Read, Ord, Eq, Generic, NFData, Out, Bounded, Enum)
+
+vecOpName :: VecOp -> String
+vecOpName op =
+  case op of
+    VecOpBroadcast -> "broadcast"
+    VecOpLoad -> "load"
+    VecOpStore -> "store"
+    VecOpAdd -> "add"
+    VecOpSub -> "sub"
+    VecOpMul -> "mul"
+    VecOpDiv -> "div"
+    VecOpMod -> "mod"
+    VecOpEq -> "eq"
+    VecOpLt -> "lt"
+    VecOpGt -> "gt"
+    VecOpLtEq -> "le"
+    VecOpGtEq -> "ge"
+    VecOpSelect -> "select"
+
+-- | Which comparison a 'VecCmp' node performs.
+--
+-- Typed rather than a string, and separate from 'VecOp' so a comparison node
+-- cannot be built holding, say, 'VecOpAdd'.  'vecCmpOp' maps it into the
+-- capability vocabulary, so the vectorizer and the backend still consult ONE
+-- matrix.
+data VecCmpOp = VecCmpEq | VecCmpLt | VecCmpGt | VecCmpLtEq | VecCmpGtEq
+  deriving (Show, Read, Ord, Eq, Generic, NFData, Out, Bounded, Enum)
+
+vecCmpOp :: VecCmpOp -> VecOp
+vecCmpOp c =
+  case c of
+    VecCmpEq -> VecOpEq
+    VecCmpLt -> VecOpLt
+    VecCmpGt -> VecOpGt
+    VecCmpLtEq -> VecOpLtEq
+    VecCmpGtEq -> VecOpGtEq
+
+vecCmpName :: VecCmpOp -> String
+vecCmpName = vecOpName . vecCmpOp
+
+-- | Bytes occupied by one lane holding @scalar@.
+--
+-- Total, and a property of the ACTUAL scalar -- never of a compiler flag.  An
+-- integer's width comes from 'intWidthBytes', so adding W16/W8 SIMD needs no
+-- change here.
+simdScalarBytes :: Scalar -> Int
+simdScalarBytes (IntS w) = intWidthBytes w
+simdScalarBytes SymS = 8
+simdScalarBytes FloatS = 4
+simdScalarBytes CharS = 1
+simdScalarBytes BoolS = 1
+
+-- | Width in bytes of the baseline SSE2 vector register.
+simdRegisterBytes :: Int
+simdRegisterBytes = 16
+
+-- | Width in bytes of the AVX2 vector register.
+--
+-- Every lane count is derived from whichever of these two the compilation
+-- selected, so the vectorizer and the backend cannot disagree about how many
+-- elements a register holds or how far a cursor advances.
+simdRegisterBytesAvx2 :: Int
+simdRegisterBytesAvx2 = 32
+
+-- | The lane count that exactly tiles the 128-bit register for @scalar@.
+--
+-- W64 -> 2, W32 -> 4, W16 -> 8, W8 -> 16.  This is the single definition of
+-- "how many elements fit"; the vectorizer and the backend both use it, so they
+-- cannot disagree about cursor arithmetic.
+simdLanes :: Int -> Scalar -> Int
+simdLanes regBytes s = regBytes `div` simdScalarBytes s
+
+-- | Does this (scalar, lanes) pair exactly fill the register?  Anything else is
+-- malformed IR and must fail loudly rather than emit a short or overlong access.
+simdLanesValid :: Int -> Scalar -> Int -> Bool
+simdLanesValid regBytes scalar lanes =
+  lanes == simdLanes regBytes scalar
+    && lanes * simdScalarBytes scalar == regBytes
+
+-- | Does this (scalar, lanes) pair exactly fill a SIMD register of SOME width
+-- this backend emits helpers for -- 128-bit SSE2 or 256-bit AVX2?
+--
+-- The backend's pure naming path only sees the lane count the IR carries, not
+-- the width the compilation selected, so it asks this rather than pinning one
+-- width.  A malformed pair such as @(IntS W32, 2)@ still fails loudly; only a
+-- whole register of a supported width passes.
+simdLanesValidAny :: Scalar -> Int -> Bool
+simdLanesValidAny scalar lanes =
+  any (\rb -> simdLanesValid rb scalar lanes)
+      [simdRegisterBytes, simdRegisterBytesAvx2]
+
+-- | The number of LOGICAL RECORDS one vector iteration of a fused loop
+-- processes, given every scalar written by that loop.
+--
+-- A fused loopified traversal can write several independent scalar buffers of
+-- DIFFERENT widths in one @ForE@.  They must all advance in lockstep over the
+-- same records, but their registers hold different numbers of elements
+-- (W64->2, W32->4, W16->8, W8->16).  The stride is therefore the widest lane
+-- count present, so that every participating scalar covers the stride with an
+-- INTEGRAL number of full registers:
+--
+-- >  simdGroups stride s  =  stride \/ simdLanes s
+--
+-- Lane counts are all powers of two and the stride is the maximum of them, so
+-- that division is always exact.  The floor of 4 keeps a W64-only loop at its
+-- historical stride of 4 (2 groups of 2 lanes), so a W64-only loop's output
+-- is unaffected.
+--
+-- Worked example, a loop writing all four integer widths: stride 16, and one
+-- iteration covers the same sixteen records for each field --
+--
+-- >  W8 : 1 group  x 16 lanes x 1 byte  = 16 bytes
+-- >  W16: 2 groups x  8 lanes x 2 bytes = 32 bytes
+-- >  W32: 4 groups x  4 lanes x 4 bytes = 64 bytes
+-- >  W64: 8 groups x  2 lanes x 8 bytes = 128 bytes
+--
+-- In every row @groups * lanes == stride@, so each cursor advances exactly
+-- @stride * simdScalarBytes@ and no buffer runs ahead of another.
+simdLogicalStride :: Int -> [Scalar] -> Int
+simdLogicalStride _ [] = 4
+simdLogicalStride regBytes scalars = max 4 (maximum (map (simdLanes regBytes) scalars))
+
+-- | Registers of @scalar@ needed to cover one logical stride.  Exact by
+-- construction: see 'simdLogicalStride'.
+simdGroups :: Int -> Int -> Scalar -> Int
+simdGroups regBytes stride scalar = stride `div` simdLanes regBytes scalar
+
+-- | Does @stride@ tile every one of these scalars with whole registers?  A
+-- shape that fails this is rejected rather than vectorized with a cursor that
+-- would drift past live data.
+simdStrideValid :: Int -> Int -> [Scalar] -> Bool
+simdStrideValid regBytes stride scalars =
+  all (\s -> stride `mod` simdLanes regBytes s == 0
+             && simdGroups regBytes stride s >= 1) scalars
+
+-- | Is @scalar@ eligible for the SIMD path at all?
+--
+-- W32 and W64 have emitted SIMD helpers.  W16 and W8 have correct lane counts
+-- above and correct helper naming below, but no emitted helpers yet, so they
+-- stay scalar -- adding them is a matter of writing the helpers and flipping
+-- these two cases, not another representation change.
+simdScalarEnabled :: Scalar -> Bool
+simdScalarEnabled s =
+  case s of
+    IntS W64 -> True
+    IntS W32 -> True
+    IntS W16 -> True
+    IntS W8  -> True
+    SymS     -> True
+    FloatS   -> True
+    CharS    -> True
+    BoolS    -> True
+
+-- | Is @op@ on @scalar@ a GENUINELY PACKED operation on this backend?
+--
+-- "Genuinely packed" means the emitted helper computes all lanes in vector
+-- registers.  An operation whose only implementation would spill the register
+-- to a scalar array and loop over lanes is NOT capable here: it is slower than
+-- the scalar loop it replaced, and calling it SIMD would be a lie.  Such an
+-- operation makes the whole candidate loop stay scalar.
+--
+-- Specifically for W32 at baseline SSE2:
+--
+--   * add\/sub\/eq are single instructions (@_mm_add_epi32@, @_mm_sub_epi32@,
+--     @_mm_cmpeq_epi32@); select is three bitwise ops; broadcast\/load\/store
+--     are @_mm_set1_epi32@ \/ @_mm_loadu_si128@ \/ @_mm_storeu_si128@.
+--   * mul IS supported, but not as @_mm_mullo_epi32@, which is SSE4.1.  Gibbon
+--     emits a verified baseline-SSE2 sequence instead: two @_mm_mul_epu32@ plus
+--     shuffle\/interleave, which computes the low 32 bits of each product.  A C
+--     compiler given @-msse4.1@ may recognise and replace that sequence, but
+--     Gibbon does not select @_mm_mullo_epi32@ itself.
+--   * div and mod are NOT: SSE2 has no packed signed integer divide, and no
+--     emulation is planned.
+--
+-- W64 keeps its original lane-spilling mul\/div\/mod helpers.  Those are honestly documented at their
+-- definitions as NOT being an acceleration; they are retained only because
+-- removing them would change accepted W64 output.
+simdCapable :: VecOp -> Scalar -> Bool
+simdCapable op scalar
+  | not (simdScalarEnabled scalar) = False
+  | otherwise =
+      case scalar of
+        -- W64 gets data movement, add/sub and the equality-mask + select pair,
+        -- and nothing else.
+        --
+        -- SSE2 has no packed signed 64-bit compare at all (even
+        -- _mm_cmpgt_epi64 is SSE4.2), so the four ordered comparisons stay
+        -- scalar; a blanket `True` would have silently claimed them.
+        --
+        -- MULTIPLY is excluded: at two lanes it is a LOSS, not an
+        -- acceleration, and a vectorizer that emits slower code than it
+        -- replaced is worse than one that declines.  The helper no longer
+        -- spills -- it is three packed 32x32->64 multiplies plus two shifts
+        -- and two adds -- but that is seven instructions for two lanes
+        -- against one `imul` per lane scalar.  Measured on a 431-operation
+        -- kernel: 1.370 instructions per source operation vectorized against
+        -- 0.750 scalar, i.e. 0.55x; the vectorized loop took 2.86s where the
+        -- scalar loop took 0.55s.  Widening to AVX2 does not rescue it --
+        -- four lanes still cost more than four `imul`s.
+        --
+        -- DIVIDE and MODULUS stay, even though their helpers do spill to a
+        -- scalar array and loop over lanes.  The trade is not the same one:
+        -- a 64-bit integer division is tens of cycles, so the spill is noise
+        -- beside it, whereas a 3-cycle multiply is entirely swamped by it.
+        -- W64 is also the only integer width at which division vectorizes at
+        -- all, so dropping it would leave the guarded-division machinery
+        -- ('dagSpeculatesPartialOp' and the tests that pin it) exercising
+        -- nothing.
+        IntS W64 -> op /= VecOpMul && op `notElem` orderedCmps
+        -- W32 has a packed multiply: SSE2 has no
+        -- _mm_mullo_epi32, but two _mm_mul_epu32 plus shuffles compute the low
+        -- 32 bits of all four products in registers, and it measured faster
+        -- than the scalar loop.  Divide/modulus have no packed form at all.
+        IntS W32 -> op `elem` (VecOpMul : movementAndAddSub)
+        -- W16 additionally gets a GENUINE packed multiply: `_mm_mullo_epi16`
+        -- is baseline SSE2 (unlike `_mm_mullo_epi32`, which is SSE4.1).
+        IntS W16 -> op `elem` (VecOpMul : movementAndAddSub)
+        -- W8 likewise: unpack to 16-bit lanes, _mm_mullo_epi16, mask, repack.
+        IntS W8  -> op `elem` (VecOpMul : movementAndAddSub)
+        SymS     -> op `elem` [VecOpBroadcast, VecOpLoad, VecOpStore, VecOpAdd, VecOpSub]
+        CharS    -> op `elem` [VecOpBroadcast, VecOpLoad, VecOpStore, VecOpAdd, VecOpSub]
+        BoolS    -> op `elem` [VecOpBroadcast, VecOpLoad, VecOpStore, VecOpAdd, VecOpSub]
+        -- Float has _mm_cmplt_ps and friends, but this backend emits no
+        -- helpers for them, so ordered float comparisons stay scalar too.
+        FloatS   -> op /= VecOpMod && op `notElem` orderedCmps
+  where
+    -- The narrow-integer baseline: data movement, add/sub, and the
+    -- equality-mask + bitwise-select pair.  Every one of these is a single
+    -- packed SSE2 instruction (or three bitwise ones for select) at W32, W16
+    -- and W8.  Deliberately omits VecOpDiv and VecOpMod at every narrow width
+    -- -- SSE2 has no packed signed integer divide or modulus -- and omits
+    -- VecOpMul except where a genuine packed multiply exists.
+    movementAndAddSub = [ VecOpBroadcast, VecOpLoad, VecOpStore
+                        , VecOpAdd, VecOpSub, VecOpEq, VecOpSelect ]
+                        ++ orderedCmps
+
+-- | The four ordered signed comparisons.  Available packed at W8/W16/W32 via
+-- @_mm_cmpgt_epi{8,16,32}@ (plus a mask complement for <= and >=); NOT
+-- available at W64 or for floats on this backend.
+orderedCmps :: [VecOp]
+orderedCmps = [VecOpLt, VecOpGt, VecOpLtEq, VecOpGtEq]
+
+isIntScalar :: Scalar -> Bool
+isIntScalar IntS{} = True
+isIntScalar _      = False
+
+-- | The exact width of an integer scalar.  Errors on any other scalar rather
+-- than inventing a width.
+intScalarWidth :: Scalar -> IntWidth
+intScalarWidth (IntS w) = w
+intScalarWidth s = error $ "intScalarWidth: not an integer scalar: " ++ show s
+
+-- | 'intScalarWidth' as a total function.
+intScalarWidthMaybe :: Scalar -> Maybe IntWidth
+intScalarWidthMaybe (IntS w) = Just w
+intScalarWidthMaybe _        = Nothing
+
+-- | The compiler-internal 64-bit integer scalar: tags, counts, offsets and the
+-- legacy paths that predate variable widths.
+intS64 :: Scalar
+intS64 = IntS W64
 
 
 -- Takes in a Loc and checks if a mutable locations points to that loc
@@ -999,7 +1321,10 @@ eraseLocMarkers (DDef tyargs tyname ls layout) = DDef tyargs tyname (L.map go ls
 cursorizeTy :: M.Map FreeVarsTy Var -> MutableLocPtsToEnv -> MutableLocOldValueEnv -> Bool -> Maybe L2.Modality -> UrTy LocVar -> UrTy b
 cursorizeTy fenv mutLocsEnv oldLocsToMutEnv isTailAndOverrideModality modality ty =
   case ty of
-    IntTy     -> IntTy
+    -- A program integer keeps its exact width through cursorization.  This
+    -- previously collapsed every width to W64, silently erasing Int8/16/32
+    -- from every let binder, function type and constructor field it touched.
+    IntTy w     -> IntTy w
     CharTy    -> CharTy
     FloatTy   -> FloatTy
     SymTy     -> SymTy
@@ -1057,7 +1382,7 @@ updateAvailVars :: [Var] -> [Var] -> Exp3 -> Exp3
 updateAvailVars froms tos ex =
   case ex of
     VarE v          -> VarE v
-    LitE _          -> ex
+    LitE{}          -> ex
     CharE _         -> ex
     FloatE{}        -> ex
     LitSymE _       -> ex
@@ -1101,8 +1426,8 @@ updateAvailVars froms tos ex =
           Ext $ VecDiv scalar lanes (go a) (go b)
         VecMod scalar lanes a b ->
           Ext $ VecMod scalar lanes (go a) (go b)
-        VecEq scalar lanes a b ->
-          Ext $ VecEq scalar lanes (go a) (go b)
+        VecCmp scalar lanes c a b ->
+          Ext $ VecCmp scalar lanes c (go a) (go b)
         VecSelect scalar lanes m a b ->
           Ext $ VecSelect scalar lanes (go m) (go a) (go b)
         VecStore scalar lanes ref val ->

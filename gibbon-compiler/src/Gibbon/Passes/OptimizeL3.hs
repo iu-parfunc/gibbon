@@ -173,6 +173,8 @@ removeReDefsExp env ex =
     Ext (EndScalarsAllocation v) -> do
       pure $ (Ext $ EndScalarsAllocation v)
     Ext ScalarCountBump{} -> pure ex
+    Ext ScalarCountBind{} -> pure ex
+    Ext ScalarCountFinalize{} -> pure ex
     Ext ScalarCountSet{} -> pure ex
     Ext ScalarCountCopyAll{} -> pure ex
     Ext (ReadScalarCount v) ->
@@ -215,10 +217,10 @@ removeReDefsExp env ex =
       a' <- go a
       b' <- go b
       pure $ Ext $ VecMod scalar lanes a' b'
-    Ext (VecEq scalar lanes a b) -> do
+    Ext (VecCmp scalar lanes cmp a b) -> do
       a' <- go a
       b' <- go b
-      pure $ Ext $ VecEq scalar lanes a' b'
+      pure $ Ext $ VecCmp scalar lanes cmp a' b'
     Ext (VecSelect scalar lanes mask thenv elsev) -> do
       mask' <- go mask
       thenv' <- go thenv

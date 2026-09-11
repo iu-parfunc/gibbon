@@ -1,22 +1,24 @@
--- @BENCH adt_fields=25
+-- ColorOctree: ColorOctree (Linear).
+-- Functions: absI, sum8, mixSeed, cSumR, cSumG, cSumB, cCount,
+-- buildColorOctree. ...
 data ColorOctree
-  = CNode Int  -- sumR
-          Int  -- sumG
-          Int  -- sumB
-          Int  -- pixel count
-          Int  -- level
-          Int  -- bboxMinR
-          Int  -- bboxMinG
-          Int  -- bboxMinB
-          Int  -- bboxMaxR
-          Int  -- bboxMaxG
-          Int  -- bboxMaxB
-          Int  -- variance proxy
-          Int  -- energy proxy
-          Int  -- bucket flags
+  = CNode Int64  -- sumR
+          Int64  -- sumG
+          Int64  -- sumB
+          Int64  -- pixel count
+          Int64  -- level
+          Int64  -- bboxMinR
+          Int64  -- bboxMinG
+          Int64  -- bboxMinB
+          Int64  -- bboxMaxR
+          Int64  -- bboxMaxG
+          Int64  -- bboxMaxB
+          Int64  -- variance proxy
+          Int64  -- energy proxy
+          Int64  -- bucket flags
           ColorOctree ColorOctree ColorOctree ColorOctree
           ColorOctree ColorOctree ColorOctree ColorOctree
-  | CPixel Int Int Int
+  | CPixel Int64 Int64 Int64
   | CEmpty
 
 {-# ANN type ColorOctree "Linear" #-}
@@ -30,28 +32,28 @@ sum8 a b c d e f g h = a + b + c + d + e + f + g + h
 mixSeed :: Int -> Int -> Int
 mixSeed s salt = s * 1103 + salt * 97 + 13
 
-cSumR :: ColorOctree -> Int
+cSumR :: ColorOctree -> Int64
 cSumR t =
   case t of
     CNode r _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ -> r
     CPixel r _ _ -> r
     CEmpty -> 0
 
-cSumG :: ColorOctree -> Int
+cSumG :: ColorOctree -> Int64
 cSumG t =
   case t of
     CNode _ g _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ -> g
     CPixel _ g _ -> g
     CEmpty -> 0
 
-cSumB :: ColorOctree -> Int
+cSumB :: ColorOctree -> Int64
 cSumB t =
   case t of
     CNode _ _ b _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ -> b
     CPixel _ _ b -> b
     CEmpty -> 0
 
-cCount :: ColorOctree -> Int
+cCount :: ColorOctree -> Int64
 cCount t =
   case t of
     CNode _ _ _ cnt _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ -> cnt
@@ -98,7 +100,7 @@ buildColorOctree depth level seed =
         flags = mod (absI (mixSeed seed 29)) 8
     in CNode sr sg sb cnt level minR minG minB maxR maxG maxB varP energy flags c0 c1 c2 c3 c4 c5 c6 c7
 
-paletteEntriesQuantized :: ColorOctree -> Int -> Int -> Int
+paletteEntriesQuantized :: ColorOctree -> Int64 -> Int64 -> Int64
 paletteEntriesQuantized t maxDepth theta =
   case t of
     CNode _ _ _ cnt lvl minR minG minB maxR maxG maxB varP energy flags a b c d e f g h ->
@@ -118,7 +120,7 @@ paletteEntriesQuantized t maxDepth theta =
     CPixel _ _ _ -> 1
     CEmpty -> 0
 
-quantizationErrorProxy :: ColorOctree -> Int -> Int -> Int -> Int
+quantizationErrorProxy :: ColorOctree -> Int64 -> Int64 -> Int64 -> Int64
 quantizationErrorProxy t maxDepth eta weight =
   case t of
     CNode sr sg sb cnt lvl _ _ _ _ _ _ _ _ _ a b c d e f g h ->

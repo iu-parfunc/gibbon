@@ -34,7 +34,7 @@ For example,
 
     ddtree :: DDefs Ty1
     ddtree = fromListDD [DDef (toVar "Tree")
-                          [ ("Leaf",[(False,IntTy)])
+                          [ ("Leaf",[(False,(IntTy W64))])
                           , ("Node",[ (False,PackedTy "Tree" ())
                                     , (False,PackedTy "Tree" ())])
                           ]]
@@ -43,7 +43,7 @@ becomes,
 
     ddtree :: DDefs Ty1
     ddtree = fromListDD [DDef (toVar "Tree")
-                         [ ("Leaf"   ,[(False,IntTy)])
+                         [ ("Leaf"   ,[(False,(IntTy W64))])
                          , ("Node",  [ (False,PackedTy "Tree" ())
                                      , (False,PackedTy "Tree" ())])
                          , ("Node^", [ (False, CursorTy) -- random access node
@@ -268,7 +268,7 @@ withRANDDefs needRANsTyCons ddfs = M.map go ddfs
                                            tys'   = [(False, r) | r <- ranTyFields] ++ tys
                                            dcon'  = toAbsRANDataCon dcon
 
-                                           _tys''  = (False,IntTy) : [(False,IntTy) | _ <- [1..n]] ++ tys
+                                           _tys''  = (False,(IntTy W64)) : [(False,(IntTy W64)) | _ <- [1..n]] ++ tys
                                            -- dcon'' = toRelRANDataCon dcon
                                        -- in [(dcon',tys'),(dcon'',tys'')] ++ acc)
                                        in [(dcon',tys')] ++ acc)
@@ -320,7 +320,7 @@ mkRANs ranTys needRANsExp =
                       -- request a RAN for a literal iff it occurs after a
                       -- packed datatype. So there has to be random access
                       -- node that's generated before this.
-                      LitE{}    -> Ext (L1.AddFixed (fromJust mb_most_recent_ran) (fromJust (sizeOfTy IntTy)))
+                      LitE ann _ -> Ext (L1.AddFixed (fromJust mb_most_recent_ran) (fromJust (sizeOfTy (IntTy (litWidth ann)))))
                       FloatE{}  -> Ext (L1.AddFixed (fromJust mb_most_recent_ran) (fromJust (sizeOfTy FloatTy)))
                       LitSymE{} -> Ext (L1.AddFixed (fromJust mb_most_recent_ran) (fromJust (sizeOfTy SymTy)))
                       oth -> error $ "addRANExp: Expected trivial expression, got: " ++ sdoc oth
@@ -541,28 +541,28 @@ genRelOffsetsFunNameFn needRANsTyCons ddfs DDef{tyName, dataCons} = do
                          let size_binds acc = foldr
                                                 (\(sz,y,ty) acc ->
                                                      if isPackedTy ty
-                                                     then LetE (sz,[],IntTy,PrimAppE RequestSizeOf [VarE y]) acc
-                                                     else LetE (sz,[],IntTy,LitE (fromJust $ sizeOfTy ty)) acc)
+                                                     then LetE (sz,[],(IntTy W64),PrimAppE RequestSizeOf [VarE y]) acc
+                                                     else LetE (sz,[],(IntTy W64),mkLitE64 (fromJust $ sizeOfTy ty)) acc)
                                                 acc (L.zip3 size_vars ys tys)
                          offset_vars <- mapM (\_ -> gensym "offset_") [0..(num_offsets-1)]
                          let need_offsets = reverse $ L.take num_offsets (reverse xs)
                          let addp ls = case ls of
-                                         []       -> LitE 0
-                                         (x:y:[]) -> PrimAppE AddP [VarE x, VarE y]
-                                         (x:rst)  -> PrimAppE AddP [VarE x, addp rst]
+                                         []       -> mkLitE64 0
+                                         (x:y:[]) -> PrimAppE addP64 [VarE x, VarE y]
+                                         (x:rst)  -> PrimAppE addP64 [VarE x, addp rst]
                          let offset_binds acc = foldr
                                                   (\(ov, x) acc ->
                                                      let idx_of_x    = fromJust $ L.elemIndex x xs
                                                          idx_of_ov   = fromJust $ L.elemIndex ov offset_vars
                                                          offsets_infront = length (L.drop idx_of_ov offset_vars) - 1
                                                          have_to_add = L.take idx_of_x size_vars
-                                                         rhs = PrimAppE AddP [LitE $ (fromJust (sizeOfTy IntTy)) * offsets_infront,
+                                                         rhs = PrimAppE addP64 [mkLitE64 $ (fromJust (sizeOfTy (IntTy W64))) * offsets_infront,
                                                                               addp have_to_add]
-                                                     in LetE (ov,[],IntTy,rhs) acc)
+                                                     in LetE (ov,[],(IntTy W64),rhs) acc)
                                                   acc (zip offset_vars need_offsets)
                          dcon_size <- gensym "size_dcon"
-                         let size_offsets = LitE $ 1 + (fromJust (sizeOfTy IntTy)) * length offset_vars
-                             dcon_size_bind acc = LetE (dcon_size,[],IntTy, PrimAppE AddP [size_offsets, addp size_vars] ) acc
+                         let size_offsets = mkLitE64 $ 1 + (fromJust (sizeOfTy (IntTy W64))) * length offset_vars
+                             dcon_size_bind acc = LetE (dcon_size,[],(IntTy W64), PrimAppE addP64 [size_offsets, addp size_vars] ) acc
                              dcon_args = [dcon_size] ++ offset_vars ++  ys
                              dcon' = toRelRANDataCon dcon
                          pure $ bod0 $ size_binds $ offset_binds $ dcon_size_bind $ DataConE () dcon' (map VarE dcon_args)

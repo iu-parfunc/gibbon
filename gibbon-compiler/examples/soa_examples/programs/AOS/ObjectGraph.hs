@@ -1,8 +1,11 @@
--- @BENCH adt_fields=5
+-- ObjectGraph: Heap (Linear).
+-- Functions: buildHeap, totalHeapSize, countMarked, countLarge, liveBytes,
+-- deadBytes, countSurvivors, sumObjIds. ...
+-- Annotated: MayVectorize on sweepUnmarked, touchHotObjects.
 data Heap
-  = Obj Int    -- object id
-        Int    -- size
-        Int    -- mark bit
+  = Obj Int64    -- object id
+        Int64    -- size
+        Int64    -- mark bit
         Heap
         Heap
   | Null
@@ -115,7 +118,7 @@ clearMarks h =
 
 -- Sweep phase:
 -- reclaim unmarked objects by zeroing size, and clear mark bits for next cycle.
-{-# ANN sweepUnmarked "OPT:CanVectorize" #-}
+{-# ANN sweepUnmarked "OPT:MayVectorize" #-}
 sweepUnmarked :: Heap -> Heap
 sweepUnmarked h =
   case h of
@@ -141,7 +144,7 @@ inflateSizes h k =
 
 -- Mutator-style update:
 -- periodically "touch" hot objects, setting mark and increasing size.
-{-# ANN touchHotObjects "OPT:CanVectorize" #-}
+{-# ANN touchHotObjects "OPT:MayVectorize" #-}
 touchHotObjects :: Heap -> Int -> Int -> Heap
 touchHotObjects h stride delta =
   case h of
@@ -212,12 +215,12 @@ gibbon_main =
                 sObjIds = iterate (sumObjIds heap)
                 _ = printsym (quote "End")
                 _ = printsym (quote "NEWLINE")
-                _ = printsym (quote "Running pass sweepUnmarked (map, uses=5): ")
+                _ = printsym (quote "Running pass sweepUnmarked (map, uses=5, shared=1): ")
                 _ = printsym (quote "NEWLINE")
                 heapSwept = iterate (sweepUnmarked heap)
                 _ = printsym (quote "End")
                 _ = printsym (quote "NEWLINE")
-                _ = printsym (quote "Running pass touchHotObjects (map, uses=5): ")
+                _ = printsym (quote "Running pass touchHotObjects (map, uses=5, shared=1): ")
                 _ = printsym (quote "NEWLINE")
                 heapHot = iterate (touchHotObjects heap 4 12)
                 _  = printsym (quote "End")

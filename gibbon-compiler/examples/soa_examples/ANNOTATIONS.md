@@ -81,6 +81,34 @@ _ = printsym (quote "Running pass SumArea (fold, uses=1): ")
 `uses` should count every distinct ADT field the pass reads or writes.
 Include recursive child traversals if you want buffer counts to be accurate.
 
+### Optional: `ilp=N` on map passes
+
+The annotation is a comma-separated `key=value` list, so more keys can be added
+without breaking older programs. The only other key currently understood is
+`ilp=N` — the number of **independent dependence chains** in the pass body:
+
+```haskell
+-- one serial Horner chain: each multiply waits on the previous one
+_ = printsym (quote "Running pass mapSer8 (map, uses=1, ilp=1): ")
+
+-- two chains that can issue in parallel
+_ = printsym (quote "Running pass mapChain4 (map, uses=1, ilp=2): ")
+```
+
+It feeds the *Map passes — vectorization vs loop+share scalar* table in the
+layout-version report. ILP matters there because it sets the ceiling a map pass
+can reach: at the same arithmetic intensity, `ilp=1` is latency-bound (packed
+multiply has worse latency than scalar `imul`) while `ilp=2` gets close to the
+throughput ceiling. Measured on `MapIntensityV2.hs`, the asymptotic speedup is
+1.56× at ILP 1 versus 2.21× at ILP 2.
+
+Omit it and the column shows `--`; nothing else changes. Unrecognised keys are
+parsed and ignored, so the syntax is forward compatible.
+
+Note that the companion `mul/el` column is **not** annotated — it is measured by
+disassembling the scalar build, because declared arithmetic has repeatedly been
+optimized away without notice. See `check_intensity_codegen.py`.
+
 ---
 
 ## Complete Example — DomTree.hs

@@ -23,7 +23,9 @@ module Gibbon.Passes.VectorizeTraversals
   ( vectorizeTraversals
   ) where
 
-import Control.Monad (guard, forM)
+import Control.Monad (guard, forM, foldM)
+import Control.Monad.State.Strict (StateT, runStateT, get, modify')
+import Control.Monad.Trans.Class (lift)
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -33,66 +35,104 @@ import Gibbon.Common
 import Gibbon.DynFlags
 import Gibbon.Language
 import qualified Gibbon.L3.Syntax as L3
+import Gibbon.Passes.LoopifyTraversals ( EffectClass(..), scalarExprClass )
 
 type Bind3 = (Var, [()], L3.Ty3, L3.Exp3)
+
+-- | The two byte widths every lane computation depends on.
+--
+-- These were both plain 'Int' parameters called @intBytes@, with the register
+-- width left implicit as a constant.  Bundling them makes it impossible to
+-- pass the machine integer width where the register width was meant -- an
+-- error that would not fail to compile and would emit cursor arithmetic that
+-- silently walks off the end of a buffer.
+data SimdCfg = SimdCfg
+  { scIntBytes :: Int   -- ^ Width of a machine @GibInt@, in bytes.
+  , scRegBytes :: Int   -- ^ Width of one SIMD register, in bytes: 16 for
+                        --   baseline SSE2, 32 for AVX2.
+  }
 
 vectorizeTraversals :: L3.Prog3 -> PassM L3.Prog3
 vectorizeTraversals prog@Prog{fundefs} = do
   dflags <- getDynFlags
-  if not (gopt Opt_EnableVectorization dflags)
+  let loopificationOn = gopt Opt_EnableLoopification dflags || gopt Opt_AutoLoopification dflags
+  if gopt Opt_EnableVectorization dflags && not loopificationOn
+    then error $
+      "vectorizeTraversals: --opt-vectorization is enabled, but neither " ++
+      "--opt-loopification nor --auto-loopification is.\n" ++
+      "Vectorization only ever rewrites loops loopification already " ++
+      "produced, so it has nothing to do without it.\n" ++
+      "Add --opt-loopification (with --store-scalar-field-counts) or " ++
+      "--auto-loopification to the compile command."
+  else if not (gopt Opt_EnableVectorization dflags)
     then pure prog
     else do
-      let intBytes = if gopt Opt_Int32 dflags then 4 else 8
-      fds' <- mapM (vectorizeFun intBytes) (M.elems fundefs)
+      -- The byte width of the one integer scalar this backend can vectorize
+      -- (IntS W64).  A narrow integer scalar never reaches this point at all
+      -- -- 'scalarSupported' below keeps it on the scalar path.  GibInt itself
+      -- is unconditionally
+      -- 8 bytes, matching 'Gibbon.Passes.Codegen.simdScalarWidthBytes'.
+      -- Baseline SSE2 unless the compilation asked for the best SIMD the
+      -- machine has, which is what --opt-vectorization means unless
+      -- --simd-baseline-sse2 opts back out.  Every lane count, cursor bump
+      -- and trip count downstream derives from this one choice.
+      -- ONE decision, shared with the C compiler: 'simdIsaOf' also chooses the
+      -- -m flag the generated C is compiled with, so Gibbon's vectorizer and
+      -- the C compiler's auto-vectorizer can never target different
+      -- instruction sets.  Every lane count, cursor bump and trip count
+      -- downstream derives from this.
+      let cfg = SimdCfg { scIntBytes = 8
+                        , scRegBytes = simdIsaRegisterBytes (simdIsaOf dflags) }
+      fds' <- mapM (vectorizeFun cfg) (M.elems fundefs)
       pure $ prog { fundefs = M.fromList [ (funName f, f) | f <- fds' ] }
 
-vectorizeFun :: Int -> L3.FunDef3 -> PassM L3.FunDef3
-vectorizeFun intBytes fn@FunDef{funMeta, funBody}
-  | CanVectorize `notElem` funOpt funMeta = pure fn
+vectorizeFun :: SimdCfg -> L3.FunDef3 -> PassM L3.FunDef3
+vectorizeFun cfg fn@FunDef{funMeta, funBody}
+  | Loopified `notElem` funOpt funMeta = pure fn
   | otherwise = do
-      body' <- vectorizeExp intBytes funBody
+      body' <- vectorizeExp cfg funBody
       pure $ fn { funBody = body' }
 
-vectorizeExp :: Int -> L3.Exp3 -> PassM L3.Exp3
-vectorizeExp intBytes ex =
+vectorizeExp :: SimdCfg -> L3.Exp3 -> PassM L3.Exp3
+vectorizeExp cfg ex =
   case ex of
     LetE (v, locs, ty, Ext (L3.ForE idx bound loopBody)) bod -> do
-      bod' <- vectorizeExp intBytes bod
-      case matchSimdLoop intBytes idx loopBody of
+      bod' <- vectorizeExp cfg bod
+      case matchSimdLoop cfg idx loopBody of
         Just simdLoop -> do
-          bound' <- vectorizeExp intBytes bound
-          vecLoop <- mkVectorizedScalarLoop intBytes idx bound' loopBody simdLoop
+          bound' <- vectorizeExp cfg bound
+          vecLoop <- mkVectorizedScalarLoop cfg idx bound' loopBody simdLoop
           pure $ LetE (v, locs, ty, vecLoop) bod'
         Nothing -> do
-          bound' <- vectorizeExp intBytes bound
-          loopBody' <- vectorizeExp intBytes loopBody
+          bound' <- vectorizeExp cfg bound
+          loopBody' <- vectorizeExp cfg loopBody
           pure $ LetE (v, locs, ty, Ext (L3.ForE idx bound' loopBody')) bod'
 
     LetE (v, locs, ty, rhs) bod -> do
-      rhs' <- vectorizeExp intBytes rhs
-      bod' <- vectorizeExp intBytes bod
+      rhs' <- vectorizeExp cfg rhs
+      bod' <- vectorizeExp cfg bod
       pure $ LetE (v, locs, ty, rhs') bod'
 
-    IfE tst a b -> IfE <$> vectorizeExp intBytes tst <*> vectorizeExp intBytes a <*> vectorizeExp intBytes b
+    IfE tst a b -> IfE <$> vectorizeExp cfg tst <*> vectorizeExp cfg a <*> vectorizeExp cfg b
     CaseE scrt brs -> do
-      scrt' <- vectorizeExp intBytes scrt
-      brs' <- mapM (\(dc, vs, rhs) -> (dc, vs,) <$> vectorizeExp intBytes rhs) brs
+      scrt' <- vectorizeExp cfg scrt
+      brs' <- mapM (\(dc, vs, rhs) -> (dc, vs,) <$> vectorizeExp cfg rhs) brs
       pure $ CaseE scrt' brs'
-    MkProdE es -> MkProdE <$> mapM (vectorizeExp intBytes) es
-    ProjE i e -> ProjE i <$> vectorizeExp intBytes e
-    PrimAppE p es -> PrimAppE p <$> mapM (vectorizeExp intBytes) es
-    DataConE loc dc es -> DataConE loc dc <$> mapM (vectorizeExp intBytes) es
-    AppE f c locs es -> AppE f c locs <$> mapM (vectorizeExp intBytes) es
-    SpawnE f locs es -> SpawnE f locs <$> mapM (vectorizeExp intBytes) es
-    WithArenaE v e -> WithArenaE v <$> vectorizeExp intBytes e
-    TimeIt e ty isIter -> TimeIt <$> vectorizeExp intBytes e <*> pure ty <*> pure isIter
-    MapE (v, ty, rhs) bod -> MapE . (v, ty,) <$> vectorizeExp intBytes rhs <*> vectorizeExp intBytes bod
+    MkProdE es -> MkProdE <$> mapM (vectorizeExp cfg) es
+    ProjE i e -> ProjE i <$> vectorizeExp cfg e
+    PrimAppE p es -> PrimAppE p <$> mapM (vectorizeExp cfg) es
+    DataConE loc dc es -> DataConE loc dc <$> mapM (vectorizeExp cfg) es
+    AppE f c locs es -> AppE f c locs <$> mapM (vectorizeExp cfg) es
+    SpawnE f locs es -> SpawnE f locs <$> mapM (vectorizeExp cfg) es
+    WithArenaE v e -> WithArenaE v <$> vectorizeExp cfg e
+    TimeIt e ty isIter -> TimeIt <$> vectorizeExp cfg e <*> pure ty <*> pure isIter
+    MapE (v, ty, rhs) bod -> MapE . (v, ty,) <$> vectorizeExp cfg rhs <*> vectorizeExp cfg bod
     FoldE (v1, t1, rhs1) (v2, t2, rhs2) bod ->
-      FoldE <$> ((v1, t1,) <$> vectorizeExp intBytes rhs1)
-            <*> ((v2, t2,) <$> vectorizeExp intBytes rhs2)
-            <*> vectorizeExp intBytes bod
+      FoldE <$> ((v1, t1,) <$> vectorizeExp cfg rhs1)
+            <*> ((v2, t2,) <$> vectorizeExp cfg rhs2)
+            <*> vectorizeExp cfg bod
 
-    Ext ext -> Ext <$> vectorizeExt intBytes ext
+    Ext ext -> Ext <$> vectorizeExt cfg ext
     VarE{} -> pure ex
     LitE{} -> pure ex
     CharE{} -> pure ex
@@ -100,47 +140,61 @@ vectorizeExp intBytes ex =
     LitSymE{} -> pure ex
     SyncE -> pure ex
 
-vectorizeExt :: Int -> L3.E3Ext () L3.Ty3 -> PassM (L3.E3Ext () L3.Ty3)
-vectorizeExt intBytes ext =
+vectorizeExt :: SimdCfg -> L3.E3Ext () L3.Ty3 -> PassM (L3.E3Ext () L3.Ty3)
+vectorizeExt cfg ext =
   case ext of
-    L3.WriteScalar s v rhs -> L3.WriteScalar s v <$> vectorizeExp intBytes rhs
-    L3.WriteTagPacked v rhs -> L3.WriteTagPacked v <$> vectorizeExp intBytes rhs
+    L3.WriteScalar s v rhs -> L3.WriteScalar s v <$> vectorizeExp cfg rhs
+    L3.WriteTagPacked v rhs -> L3.WriteTagPacked v <$> vectorizeExp cfg rhs
     L3.WriteCursorSelectiveIndirection a b c mask ->
-      L3.WriteCursorSelectiveIndirection a b c <$> vectorizeExp intBytes mask
-    L3.WriteTaggedCursor v rhs -> L3.WriteTaggedCursor v <$> vectorizeExp intBytes rhs
-    L3.WriteCursorMutable v rhs -> L3.WriteCursorMutable v <$> vectorizeExp intBytes rhs
-    L3.WriteList v rhs ty -> L3.WriteList v <$> vectorizeExp intBytes rhs <*> pure ty
-    L3.WriteVector v rhs ty -> L3.WriteVector v <$> vectorizeExp intBytes rhs <*> pure ty
-    L3.AddCursor v rhs -> L3.AddCursor v <$> vectorizeExp intBytes rhs
-    L3.BumpCursorMutable v rhs -> L3.BumpCursorMutable v <$> vectorizeExp intBytes rhs
-    L3.AddrOfCursor rhs -> L3.AddrOfCursor <$> vectorizeExp intBytes rhs
-    L3.RetE es -> L3.RetE <$> mapM (vectorizeExp intBytes) es
-    L3.LetAvail vs bod -> L3.LetAvail vs <$> vectorizeExp intBytes bod
-    L3.ForE idx bound bod -> L3.ForE idx <$> vectorizeExp intBytes bound <*> vectorizeExp intBytes bod
-    L3.WhileCursor ref bod -> L3.WhileCursor ref <$> vectorizeExp intBytes bod
-    L3.WhileCursorEnd ref end bod -> L3.WhileCursorEnd ref end <$> vectorizeExp intBytes bod
-    L3.VecBroadcast s lanes val -> L3.VecBroadcast s lanes <$> vectorizeExp intBytes val
+      L3.WriteCursorSelectiveIndirection a b c <$> vectorizeExp cfg mask
+    L3.WriteTaggedCursor v rhs -> L3.WriteTaggedCursor v <$> vectorizeExp cfg rhs
+    L3.WriteCursorMutable v rhs -> L3.WriteCursorMutable v <$> vectorizeExp cfg rhs
+    L3.WriteList v rhs ty -> L3.WriteList v <$> vectorizeExp cfg rhs <*> pure ty
+    L3.WriteVector v rhs ty -> L3.WriteVector v <$> vectorizeExp cfg rhs <*> pure ty
+    L3.AddCursor v rhs -> L3.AddCursor v <$> vectorizeExp cfg rhs
+    L3.BumpCursorMutable v rhs -> L3.BumpCursorMutable v <$> vectorizeExp cfg rhs
+    L3.AddrOfCursor rhs -> L3.AddrOfCursor <$> vectorizeExp cfg rhs
+    L3.RetE es -> L3.RetE <$> mapM (vectorizeExp cfg) es
+    L3.LetAvail vs bod -> L3.LetAvail vs <$> vectorizeExp cfg bod
+    L3.ForE idx bound bod -> L3.ForE idx <$> vectorizeExp cfg bound <*> vectorizeExp cfg bod
+    L3.WhileCursor ref bod -> L3.WhileCursor ref <$> vectorizeExp cfg bod
+    L3.WhileCursorEnd ref end bod -> L3.WhileCursorEnd ref end <$> vectorizeExp cfg bod
+    L3.VecBroadcast s lanes val -> L3.VecBroadcast s lanes <$> vectorizeExp cfg val
     L3.VecLoad{} -> pure ext
-    L3.VecAdd s lanes a b -> L3.VecAdd s lanes <$> vectorizeExp intBytes a <*> vectorizeExp intBytes b
-    L3.VecSub s lanes a b -> L3.VecSub s lanes <$> vectorizeExp intBytes a <*> vectorizeExp intBytes b
-    L3.VecMul s lanes a b -> L3.VecMul s lanes <$> vectorizeExp intBytes a <*> vectorizeExp intBytes b
-    L3.VecDiv s lanes a b -> L3.VecDiv s lanes <$> vectorizeExp intBytes a <*> vectorizeExp intBytes b
-    L3.VecMod s lanes a b -> L3.VecMod s lanes <$> vectorizeExp intBytes a <*> vectorizeExp intBytes b
-    L3.VecEq s lanes a b -> L3.VecEq s lanes <$> vectorizeExp intBytes a <*> vectorizeExp intBytes b
-    L3.VecSelect s lanes m a b -> L3.VecSelect s lanes <$> vectorizeExp intBytes m <*> vectorizeExp intBytes a <*> vectorizeExp intBytes b
-    L3.VecStore s lanes ref val -> L3.VecStore s lanes ref <$> vectorizeExp intBytes val
-    L3.Assert rhs -> L3.Assert <$> vectorizeExp intBytes rhs
+    L3.VecAdd s lanes a b -> L3.VecAdd s lanes <$> vectorizeExp cfg a <*> vectorizeExp cfg b
+    L3.VecSub s lanes a b -> L3.VecSub s lanes <$> vectorizeExp cfg a <*> vectorizeExp cfg b
+    L3.VecMul s lanes a b -> L3.VecMul s lanes <$> vectorizeExp cfg a <*> vectorizeExp cfg b
+    L3.VecDiv s lanes a b -> L3.VecDiv s lanes <$> vectorizeExp cfg a <*> vectorizeExp cfg b
+    L3.VecMod s lanes a b -> L3.VecMod s lanes <$> vectorizeExp cfg a <*> vectorizeExp cfg b
+    L3.VecCmp s lanes c a b -> L3.VecCmp s lanes c <$> vectorizeExp cfg a <*> vectorizeExp cfg b
+    L3.VecSelect s lanes m a b -> L3.VecSelect s lanes <$> vectorizeExp cfg m <*> vectorizeExp cfg a <*> vectorizeExp cfg b
+    L3.VecStore s lanes ref val -> L3.VecStore s lanes ref <$> vectorizeExp cfg val
+    L3.Assert rhs -> L3.Assert <$> vectorizeExp cfg rhs
     _ -> pure ext
 
 data ScalarDag
   = DagRead Var
-  | DagInvariant L3.Exp3
+  | DagInvariant [Bind3] L3.Exp3
   | DagBin (Prim L3.Ty3) ScalarDag ScalarDag
   | DagIf CondDag ScalarDag ScalarDag
+  -- | A value computed ONCE and referred to by name.
+  --
+  -- Without these two constructors the DAG is a tree and 'resolveVarRhs'
+  -- re-expands a let-bound variable at every use, so a chain of bindings each
+  -- used twice costs 2^depth -- the 431-operation arithmetic kernel reached
+  -- 66k lines of C at 143 operations and exhausted 8 GB at 431.  A 'DagLet'
+  -- keeps the binding, and every use is a constant-size 'DagShared'.
+  --
+  -- 'DagLet' nodes are only ever built around the ROOT, and only for variables
+  -- bound in the loop body's straight-line binding list, so the value they
+  -- name is one the scalar loop also evaluated unconditionally.  That is what
+  -- lets every traversal below treat them as ordinary unconditional positions.
+  | DagLet Var ScalarDag ScalarDag
+  | DagShared Var
   deriving (Show, Eq)
 
 data CondDag
-  = CondEq L3.Scalar ScalarDag ScalarDag
+  = CondCmp L3.Scalar L3.VecCmpOp ScalarDag ScalarDag
   deriving (Show, Eq)
 
 data VectorDag
@@ -148,10 +202,12 @@ data VectorDag
   | VDagInvariant Var
   | VDagBin (Prim L3.Ty3) VectorDag VectorDag
   | VDagIf VectorCondDag VectorDag VectorDag
+  | VDagLet Var VectorDag VectorDag
+  | VDagShared Var
   deriving (Show, Eq)
 
 data VectorCondDag
-  = VCondEq L3.Scalar VectorDag VectorDag
+  = VCondCmp L3.Scalar L3.VecCmpOp VectorDag VectorDag
   deriving (Show, Eq)
 
 data SimdOp = SimdOp
@@ -170,12 +226,18 @@ data PreparedSimdOp = PreparedSimdOp
   }
   deriving (Show, Eq)
 
-newtype SimdLoop = SimdLoop
-  { slOps :: [SimdOp]
+-- | A loop the vectorizer accepted, together with the ONE logical stride every
+-- one of its scalar buffers advances by (see 'L3.simdLogicalStride').  The
+-- stride is computed once, from all the loop's scalars together, and then used
+-- for the trip counts, the group counts and the cursor bumps -- so those three
+-- cannot drift apart.
+data SimdLoop = SimdLoop
+  { slStride :: Int
+  , slOps :: [SimdOp]
   }
 
-mkVectorizedScalarLoop :: Int -> Var -> L3.Exp3 -> L3.Exp3 -> SimdLoop -> PassM L3.Exp3
-mkVectorizedScalarLoop intBytes _idx bound scalarLoopBody SimdLoop{slOps} = do
+mkVectorizedScalarLoop :: SimdCfg -> Var -> L3.Exp3 -> L3.Exp3 -> SimdLoop -> PassM L3.Exp3
+mkVectorizedScalarLoop cfg _idx bound scalarLoopBody SimdLoop{slStride, slOps} = do
   vecCount <- gensym "simd_vec_count"
   tailCount <- gensym "simd_tail_count"
   vecLoopIdx <- gensym "simd_i"
@@ -183,66 +245,89 @@ mkVectorizedScalarLoop intBytes _idx bound scalarLoopBody SimdLoop{slOps} = do
   vecLoopUnit <- gensym "simd_vec_loop"
   tailLoopUnit <- gensym "simd_tail_loop"
   prepared <- forM slOps $ \SimdOp{soScalar, soInRefs, soOutRef, soDag} -> do
-    (broadcasts, vdag) <- prepareVectorDag intBytes soScalar soDag
+    (broadcasts, vdag) <- prepareVectorDag cfg soScalar soDag
     pure (broadcasts, PreparedSimdOp soScalar soInRefs soOutRef vdag)
   let broadcasts = concatMap fst prepared
       ops = map snd prepared
-      stride = case ops of
-                 op:_ -> vectorStride intBytes (poScalar op)
-                 [] -> error "mkVectorizedScalarLoop: empty SIMD operation list"
+      -- The loop-level stride, decided once in 'matchSimdLoop' from ALL the
+      -- loop's scalars.  Never re-derived per scalar: that is exactly how the
+      -- trip count and the cursor bumps would come to disagree.
+      stride = slStride
       unitTy = ProdTy []
-  vecBody <- mkVectorLoopBody intBytes stride ops
+  vecBody <- mkVectorLoopBody cfg stride ops
   let binds =
-        [ (vecCount, [], IntTy, PrimAppE DivP [bound, LitE (fromIntegral stride)])
-        , (tailCount, [], IntTy, PrimAppE ModP [bound, LitE (fromIntegral stride)])
+        [ (vecCount, [], (IntTy W64), PrimAppE divP64 [bound, mkLitE64 (fromIntegral stride)])
+        , (tailCount, [], (IntTy W64), PrimAppE modP64 [bound, mkLitE64 (fromIntegral stride)])
         ] ++ broadcasts ++
         [ (vecLoopUnit, [], unitTy, Ext (L3.ForE vecLoopIdx (VarE vecCount) vecBody))
         , (tailLoopUnit, [], unitTy, Ext (L3.ForE tailLoopIdx (VarE tailCount) scalarLoopBody))
         ]
   pure $ mkLets binds (MkProdE [])
 
-prepareVectorDag :: Int -> L3.Scalar -> ScalarDag -> PassM ([Bind3], VectorDag)
-prepareVectorDag intBytes scalar dag =
+prepareVectorDag :: SimdCfg -> L3.Scalar -> ScalarDag -> PassM ([Bind3], VectorDag)
+prepareVectorDag cfg scalar dag =
   case dag of
     DagRead ref -> pure ([], VDagRead ref)
-    DagInvariant ex -> do
+    DagInvariant deps ex -> do
+      -- Re-emit the body-local bindings this invariant needs, outside the loop
+      -- and ahead of it, under fresh names so that two invariants sharing a
+      -- dependency cannot bind the same variable twice.
+      (depBinds, sub) <-
+        foldM (\(acc, sb) (dv, _, dty, drhs) -> do
+                 dv' <- gensym "simd_invariant_dep"
+                 pure ( acc ++ [(dv', [], dty, substInvariantVars sb drhs)]
+                      , M.insert dv dv' sb ))
+              ([], M.empty) deps
       scalarV <- gensym "simd_invariant_scalar"
       v <- gensym "simd_invariant_vec"
-      let lanes = vectorLanes intBytes scalar
+      let lanes = vectorLanes cfg scalar
           scalarTy = L3.scalarToTy scalar
           vecTy = L3.SimdTy scalarTy lanes
-      pure ( [ (scalarV, [], scalarTy, ex)
+      pure ( depBinds ++
+             [ (scalarV, [], scalarTy, substInvariantVars sub ex)
              , (v, [], vecTy, Ext (L3.VecBroadcast scalar lanes (VarE scalarV)))
              ]
            , VDagInvariant v)
+    DagShared v -> pure ([], VDagShared v)
+    DagLet v rhs bod -> do
+      (rb, rv) <- prepareVectorDag cfg scalar rhs
+      (bb, bv) <- prepareVectorDag cfg scalar bod
+      pure (rb ++ bb, VDagLet v rv bv)
     DagBin prim a b -> do
-      (ab, av) <- prepareVectorDag intBytes scalar a
-      (bb, bv) <- prepareVectorDag intBytes scalar b
+      (ab, av) <- prepareVectorDag cfg scalar a
+      (bb, bv) <- prepareVectorDag cfg scalar b
       pure (ab ++ bb, VDagBin prim av bv)
     DagIf cond thenDag elseDag -> do
-      (cb, cvec) <- prepareVectorCondDag intBytes cond
-      (tb, tvec) <- prepareVectorDag intBytes scalar thenDag
-      (eb, evec) <- prepareVectorDag intBytes scalar elseDag
+      (cb, cvec) <- prepareVectorCondDag cfg cond
+      (tb, tvec) <- prepareVectorDag cfg scalar thenDag
+      (eb, evec) <- prepareVectorDag cfg scalar elseDag
       pure (cb ++ tb ++ eb, VDagIf cvec tvec evec)
 
-prepareVectorCondDag :: Int -> CondDag -> PassM ([Bind3], VectorCondDag)
-prepareVectorCondDag intBytes cond =
+prepareVectorCondDag :: SimdCfg -> CondDag -> PassM ([Bind3], VectorCondDag)
+prepareVectorCondDag cfg cond =
   case cond of
-    CondEq scalar a b -> do
-      (ab, av) <- prepareVectorDag intBytes scalar a
-      (bb, bv) <- prepareVectorDag intBytes scalar b
-      pure (ab ++ bb, VCondEq scalar av bv)
+    CondCmp scalar cmp a b -> do
+      (ab, av) <- prepareVectorDag cfg scalar a
+      (bb, bv) <- prepareVectorDag cfg scalar b
+      pure (ab ++ bb, VCondCmp scalar cmp av bv)
 
 -- | Emit one logical stride of vector work.  Fused loopified traversals can put
 -- several independent scalar-buffer writes in the same `ForE`; this routine
 -- handles all of them together.  Loads are keyed by (scalar kind, cursor ref),
 -- so a DAG that mentions the same input more than once still performs one vector
 -- load per group.
-mkVectorLoopBody :: Int -> Int -> [PreparedSimdOp] -> PassM L3.Exp3
-mkVectorLoopBody intBytes _stride ops = do
-  let maxGroups = maximum (map (vectorGroups intBytes . poScalar) ops)
+mkVectorLoopBody :: SimdCfg -> Int -> [PreparedSimdOp] -> PassM L3.Exp3
+mkVectorLoopBody cfg stride ops = do
+  -- Group counts come from the LOOP's stride, so a narrow field emits fewer,
+  -- wider registers than a wide one while both cover the same records:
+  -- at stride 16, W8 emits 1 group, W16 2, W32 4, W64 8.  A field appears in
+  -- group indices [0 .. itsGroups-1], so the W8 buffer is loaded once and the
+  -- W64 buffer eight times, and every cursor ends the iteration having
+  -- advanced exactly @stride * scalarBytes@.
+  let groupsOf scalar = L3.simdGroups (scRegBytes cfg) stride scalar
+      maxGroups = maximum (map (groupsOf . poScalar) ops)
   groups <- forM [0 .. maxGroups - 1] $ \groupIx -> do
-    let groupOps = filter (\op -> groupIx < vectorGroups intBytes (poScalar op)) ops
+    let groupOps = filter (\op -> groupIx < groupsOf (poScalar op)) ops
         readKeys = L.nub
           [ (poScalar op, ref)
           | op <- groupOps
@@ -257,29 +342,29 @@ mkVectorLoopBody intBytes _stride ops = do
     loaded <- forM readKeys $ \(scalar, ref) -> do
       loadV <- gensym "simd_load"
       bumpIn <- gensym "simd_bump_in"
-      let lanes = vectorLanes intBytes scalar
+      let lanes = vectorLanes cfg scalar
           vecTy = L3.SimdTy (L3.scalarToTy scalar) lanes
-          bytes = fromIntegral (vectorBytes intBytes scalar)
+          bytes = fromIntegral (vectorBytes cfg scalar)
       pure ( ((scalar, ref), loadV)
            , [ (loadV, [], vecTy, Ext (L3.VecLoad scalar lanes ref))
-             , (bumpIn, [], unitTy, Ext (L3.BumpCursorMutable ref (LitE bytes)))
+             , (bumpIn, [], unitTy, Ext (L3.BumpCursorMutable ref (mkLitE64 bytes)))
              ]
            )
     skipped <- forM skipKeys $ \(scalar, ref) -> do
       bumpIn <- gensym "simd_skip_in"
-      let bytes = fromIntegral (vectorBytes intBytes scalar)
-      pure (bumpIn, [], unitTy, Ext (L3.BumpCursorMutable ref (LitE bytes)))
+      let bytes = fromIntegral (vectorBytes cfg scalar)
+      pure (bumpIn, [], unitTy, Ext (L3.BumpCursorMutable ref (mkLitE64 bytes)))
     let loadEnv = M.fromList (map fst loaded)
         loadBinds = concatMap snd loaded
     opBinds <- forM groupOps $ \PreparedSimdOp{poScalar, poOutRef, poDag} -> do
       storeU <- gensym "simd_store"
       bumpOut <- gensym "simd_bump_out"
-      (dagBinds, resultV) <- emitVectorDag intBytes poScalar loadEnv poDag
-      let lanes = vectorLanes intBytes poScalar
-          bytes = fromIntegral (vectorBytes intBytes poScalar)
+      (dagBinds, resultV) <- emitVectorDag cfg poScalar loadEnv poDag
+      let lanes = vectorLanes cfg poScalar
+          bytes = fromIntegral (vectorBytes cfg poScalar)
       pure $ dagBinds ++
         [ (storeU, [], unitTy, Ext (L3.VecStore poScalar lanes poOutRef (VarE resultV)))
-        , (bumpOut, [], unitTy, Ext (L3.BumpCursorMutable poOutRef (LitE bytes)))
+        , (bumpOut, [], unitTy, Ext (L3.BumpCursorMutable poOutRef (mkLitE64 bytes)))
         ]
     pure $ loadBinds ++ skipped ++ concat opBinds
   pure $ mkLets (concat groups) (MkProdE [])
@@ -289,83 +374,118 @@ vectorReadRefs dag =
   case dag of
     VDagRead ref -> S.singleton ref
     VDagInvariant{} -> S.empty
+    -- A shared value's own reads are collected once, at its 'VDagLet'; the
+    -- references to it contribute nothing further.
+    VDagShared{} -> S.empty
+    VDagLet _ rhs bod -> vectorReadRefs rhs `S.union` vectorReadRefs bod
     VDagBin _ a b -> vectorReadRefs a `S.union` vectorReadRefs b
     VDagIf c a b -> vectorCondReadRefs c `S.union` vectorReadRefs a `S.union` vectorReadRefs b
 
 vectorCondReadRefs :: VectorCondDag -> S.Set Var
 vectorCondReadRefs cond =
   case cond of
-    VCondEq _ a b -> vectorReadRefs a `S.union` vectorReadRefs b
+    VCondCmp _ _ a b -> vectorReadRefs a `S.union` vectorReadRefs b
 
-emitVectorDag :: Int -> L3.Scalar -> M.Map (L3.Scalar, Var) Var -> VectorDag -> PassM ([Bind3], Var)
-emitVectorDag intBytes scalar loadEnv dag =
+emitVectorDag :: SimdCfg -> L3.Scalar -> M.Map (L3.Scalar, Var) Var -> VectorDag -> PassM ([Bind3], Var)
+emitVectorDag cfg scalar loadEnv = emitVectorDagIn cfg scalar loadEnv M.empty
+
+-- | Lower a vector DAG, carrying the registers that shared values landed in.
+emitVectorDagIn :: SimdCfg -> L3.Scalar -> M.Map (L3.Scalar, Var) Var -> M.Map Var Var
+                -> VectorDag -> PassM ([Bind3], Var)
+emitVectorDagIn cfg scalar loadEnv sharedEnv dag =
   case dag of
     VDagRead ref ->
       pure ([], fromMaybe (error $ "emitVectorDag: missing vector load for " ++ show (scalar, ref))
                           (M.lookup (scalar, ref) loadEnv))
     VDagInvariant v -> pure ([], v)
+    -- Emit the shared value once, then make every reference to it name the
+    -- register it landed in.  This is the whole point of the sharing nodes: a
+    -- value used k times costs one vector operation, not k.
+    VDagLet v rhs bod -> do
+      (rb, rv) <- emitVectorDagIn cfg scalar loadEnv sharedEnv rhs
+      (bb, bv) <- emitVectorDagIn cfg scalar loadEnv (M.insert v rv sharedEnv) bod
+      pure (rb ++ bb, bv)
+    VDagShared v ->
+      pure ([], fromMaybe (error $ "emitVectorDag: unbound shared node " ++ show v)
+                          (M.lookup v sharedEnv))
     VDagBin prim a b -> do
-      (ab, av) <- emitVectorDag intBytes scalar loadEnv a
-      (bb, bv) <- emitVectorDag intBytes scalar loadEnv b
+      (ab, av) <- emitVectorDagIn cfg scalar loadEnv sharedEnv a
+      (bb, bv) <- emitVectorDagIn cfg scalar loadEnv sharedEnv b
       out <- gensym "simd_binop"
-      let lanes = vectorLanes intBytes scalar
+      let lanes = vectorLanes cfg scalar
           vecTy = L3.SimdTy (L3.scalarToTy scalar) lanes
           rhs = vectorPrimExt scalar lanes prim (VarE av) (VarE bv)
       pure (ab ++ bb ++ [(out, [], vecTy, rhs)], out)
     VDagIf cond thenDag elseDag -> do
-      (cb, maskV) <- emitVectorCondDag intBytes loadEnv cond
-      (tb, thenV) <- emitVectorDag intBytes scalar loadEnv thenDag
-      (eb, elseV) <- emitVectorDag intBytes scalar loadEnv elseDag
+      (cb, maskV) <- emitVectorCondDag cfg loadEnv sharedEnv cond
+      (tb, thenV) <- emitVectorDagIn cfg scalar loadEnv sharedEnv thenDag
+      (eb, elseV) <- emitVectorDagIn cfg scalar loadEnv sharedEnv elseDag
       out <- gensym "simd_select"
-      let lanes = vectorLanes intBytes scalar
+      let lanes = vectorLanes cfg scalar
           vecTy = L3.SimdTy (L3.scalarToTy scalar) lanes
           rhs = Ext (L3.VecSelect scalar lanes (VarE maskV) (VarE thenV) (VarE elseV))
       pure (cb ++ tb ++ eb ++ [(out, [], vecTy, rhs)], out)
 
-emitVectorCondDag :: Int -> M.Map (L3.Scalar, Var) Var -> VectorCondDag -> PassM ([Bind3], Var)
-emitVectorCondDag intBytes loadEnv cond =
+emitVectorCondDag :: SimdCfg -> M.Map (L3.Scalar, Var) Var -> M.Map Var Var
+                  -> VectorCondDag -> PassM ([Bind3], Var)
+emitVectorCondDag cfg loadEnv sharedEnv cond =
   case cond of
-    VCondEq condScalar a b -> do
-      (ab, av) <- emitVectorDag intBytes condScalar loadEnv a
-      (bb, bv) <- emitVectorDag intBytes condScalar loadEnv b
+    VCondCmp condScalar cmp a b -> do
+      (ab, av) <- emitVectorDagIn cfg condScalar loadEnv sharedEnv a
+      (bb, bv) <- emitVectorDagIn cfg condScalar loadEnv sharedEnv b
       out <- gensym "simd_cmp"
-      let lanes = vectorLanes intBytes condScalar
+      let lanes = vectorLanes cfg condScalar
           vecTy = L3.SimdTy (L3.scalarToTy condScalar) lanes
-          rhs = Ext (L3.VecEq condScalar lanes (VarE av) (VarE bv))
+          rhs = Ext (L3.VecCmp condScalar lanes cmp (VarE av) (VarE bv))
       pure (ab ++ bb ++ [(out, [], vecTy, rhs)], out)
 
 vectorPrimExt :: L3.Scalar -> Int -> Prim L3.Ty3 -> L3.Exp3 -> L3.Exp3 -> L3.Exp3
 vectorPrimExt scalar lanes prim a b =
   case prim of
-    AddP  -> Ext (L3.VecAdd scalar lanes a b)
+    AddP{}  -> Ext (L3.VecAdd scalar lanes a b)
     FAddP -> Ext (L3.VecAdd scalar lanes a b)
-    SubP  -> Ext (L3.VecSub scalar lanes a b)
+    SubP{}  -> Ext (L3.VecSub scalar lanes a b)
     FSubP -> Ext (L3.VecSub scalar lanes a b)
-    MulP  -> Ext (L3.VecMul scalar lanes a b)
+    MulP{}  -> Ext (L3.VecMul scalar lanes a b)
     FMulP -> Ext (L3.VecMul scalar lanes a b)
-    DivP  -> Ext (L3.VecDiv scalar lanes a b)
+    DivP{}  -> Ext (L3.VecDiv scalar lanes a b)
     FDivP -> Ext (L3.VecDiv scalar lanes a b)
-    ModP  -> Ext (L3.VecMod scalar lanes a b)
+    ModP{}  -> Ext (L3.VecMod scalar lanes a b)
     _ -> error $ "vectorPrimExt: unsupported vector op " ++ show prim
 
-matchSimdLoop :: Int -> Var -> L3.Exp3 -> Maybe SimdLoop
-matchSimdLoop intBytes idx body = do
+matchSimdLoop :: SimdCfg -> Var -> L3.Exp3 -> Maybe SimdLoop
+matchSimdLoop cfg idx body = do
   binds <- flattenUnitLoopBody body
   let writes = writeScalarBinds binds
   guard (not (null writes))
   ops <- mapM (matchWrite binds idx) writes
-  let strides = S.fromList (map (vectorStride intBytes . soScalar) ops)
-  guard (S.size strides == 1)
   guard (all (scalarSupported . soScalar) ops)
+  -- ONE logical stride for the whole fused loop, derived from every scalar it
+  -- writes (see 'L3.simdLogicalStride').  A fused loopified traversal can put
+  -- several independent scalar-buffer writes of DIFFERENT widths in one
+  -- `ForE`; they must advance in lockstep over the same records even though
+  -- their registers hold different numbers of elements.  The stride is the
+  -- widest lane count present, so every participating scalar covers it with a
+  -- whole number of registers and each cursor advances exactly
+  -- @stride * scalarBytes@.
+  --
+  -- This replaces the previous blanket "all writes must share one lane width"
+  -- rejection, which left every mixed-width fused loop scalar.
+  let loopScalars = map soScalar ops
+      stride = L3.simdLogicalStride (scRegBytes cfg) loopScalars
+  -- Defensive: the division above is exact by construction (lane counts are
+  -- powers of two and the stride is their maximum), but a shape that somehow
+  -- fails it must stay scalar rather than emit a drifting cursor.
+  guard (L3.simdStrideValid (scRegBytes cfg) stride loopScalars)
   -- A `DagIf` is lowered to an unconditional evaluation of *both* arms followed
   -- by a `VecSelect` (see `emitVectorDag`).  That is only legal for total
   -- expressions: speculating a partial operation the scalar program had
   -- guarded turns a correct program into a trap (integer division by zero
   -- raises #DE / SIGFPE).  Leave such loops scalar.
   guard (all (not . dagSpeculatesPartialOp . soDag) ops)
-  guard (all (opHasRequiredBumps intBytes binds) ops)
-  guard (loopEffectsSafe intBytes ops binds)
-  pure $ SimdLoop ops
+  guard (all (opHasRequiredBumps cfg binds) ops)
+  guard (loopEffectsSafe cfg ops binds)
+  pure $ SimdLoop stride ops
 
 writeScalarBinds :: [Bind3] -> [(Int, Bind3)]
 writeScalarBinds binds = filter (isWriteScalar . snd) (zip [0..] binds)
@@ -400,30 +520,30 @@ nearestInputRefBefore binds writeIx scalar =
     , Just ref <- [derefSource cur binds]
     ]
 
-opHasRequiredBumps :: Int -> [Bind3] -> SimdOp -> Bool
-opHasRequiredBumps intBytes binds SimdOp{soScalar, soInRefs, soOutRef} =
-  all (\ref -> hasCursorBump intBytes ref soScalar binds) (S.toList soInRefs) &&
-  hasCursorBump intBytes soOutRef soScalar binds
+opHasRequiredBumps :: SimdCfg -> [Bind3] -> SimdOp -> Bool
+opHasRequiredBumps cfg binds SimdOp{soScalar, soInRefs, soOutRef} =
+  all (\ref -> hasCursorBump cfg ref soScalar binds) (S.toList soInRefs) &&
+  hasCursorBump cfg soOutRef soScalar binds
 
-loopEffectsSafe :: Int -> [SimdOp] -> [Bind3] -> Bool
-loopEffectsSafe intBytes ops binds =
+loopEffectsSafe :: SimdCfg -> [SimdOp] -> [Bind3] -> Bool
+loopEffectsSafe cfg ops binds =
   all safeEffect binds
   where
-    expected = expectedBumps intBytes ops
+    expected = expectedBumps cfg ops
     safeEffect (_, _, _, Ext ext) =
       case ext of
         L3.ReadScalar{} -> True
         L3.DerefMutCursor{} -> True
         L3.WriteScalar{} -> True
-        L3.BumpCursorMutable ref (LitE n) -> (ref, fromIntegral n) `elem` expected
+        L3.BumpCursorMutable ref (LitE _ n) -> (ref, fromIntegral n) `elem` expected
         _ -> False
     safeEffect _ = True
 
-expectedBumps :: Int -> [SimdOp] -> [(Var, Int)]
-expectedBumps intBytes ops = L.nub $ concatMap opBumps ops
+expectedBumps :: SimdCfg -> [SimdOp] -> [(Var, Int)]
+expectedBumps cfg ops = L.nub $ concatMap opBumps ops
   where
     opBumps SimdOp{soScalar, soInRefs, soOutRef} =
-      let bytes = scalarWidthBytes intBytes soScalar
+      let bytes = scalarWidthBytes cfg soScalar
       in (soOutRef, bytes) : [ (ref, bytes) | ref <- S.toList soInRefs ]
 
 -- | Flatten unit-valued loop bodies for recognition only.  Loop fusion wraps
@@ -553,7 +673,9 @@ extVars ext =
     L3.EndTagAllocation v -> S.singleton v
     L3.StartScalarsAllocation v -> S.singleton v
     L3.EndScalarsAllocation v -> S.singleton v
-    L3.ScalarCountBump _ vs -> S.fromList vs
+    L3.ScalarCountBump _ vs -> S.fromList (L.map fst vs)
+    L3.ScalarCountBind _ _ ends -> S.singleton ends
+    L3.ScalarCountFinalize _ _ ends -> S.singleton ends
     L3.ScalarCountSet a b -> S.fromList [a,b]
     L3.ScalarCountCopyAll _ a b -> S.fromList [a,b]
     L3.ReadScalarCount v -> S.singleton v
@@ -569,56 +691,217 @@ extVars ext =
     L3.VecMul _ _ a b -> expVars a `S.union` expVars b
     L3.VecDiv _ _ a b -> expVars a `S.union` expVars b
     L3.VecMod _ _ a b -> expVars a `S.union` expVars b
-    L3.VecEq _ _ a b -> expVars a `S.union` expVars b
+    L3.VecCmp _ _ _ a b -> expVars a `S.union` expVars b
     L3.VecSelect _ _ m a b -> S.unions [expVars m, expVars a, expVars b]
     L3.VecStore _ _ v rhs -> S.insert v (expVars rhs)
     L3.SSPush _ a b _ -> S.fromList [a,b]
     L3.SSPop _ a b -> S.fromList [a,b]
     L3.Assert rhs -> expVars rhs
 
+-- | The shared values discovered while building one write's DAG.
+--
+-- @dpOrder@ is most-recent-first, and a value is only appended after
+-- everything it needs, so reversing it yields dependency order.
+data DagPool = DagPool
+  { dpOrder :: [(Var, ScalarDag)]
+  , dpDone :: S.Set Var
+  , dpBusy :: S.Set Var
+  }
+
+emptyDagPool :: DagPool
+emptyDagPool = DagPool [] S.empty S.empty
+
+type DagM = StateT DagPool Maybe
+
+-- | Build the scalar DAG for a write's right-hand side, naming every value the
+-- loop body binds instead of re-expanding it at each use.
+--
+-- @binds0@ is the loop body's straight-line binding list, so a variable it
+-- binds names a value the scalar loop evaluated exactly once and
+-- unconditionally.  Those are the variables that become 'DagLet's, which is
+-- what makes the whole construction linear: without it, 'resolveVarRhs'
+-- re-expands a variable at every use and a chain of bindings each used twice
+-- costs 2^depth.
+--
+-- Bindings looked through inside a conditional arm (see 'administrativeBind')
+-- are deliberately NOT shared: a 'DagLet' sits at the root, and hoisting an
+-- arm-local computation there would move it out of the guard that dominates
+-- it.
 matchScalarDag :: L3.Scalar -> Var -> [Bind3] -> L3.Exp3 -> Maybe ScalarDag
-matchScalarDag scalar idx binds expr0 =
+matchScalarDag scalar idx binds0 expr0 = do
+  (root, pool) <- runStateT (matchScalarDagM scalar idx outer binds0 expr0) emptyDagPool
+  pure $ L.foldr (\(v, d) acc -> DagLet v d acc) root (reverse (dpOrder pool))
+  where
+    outer = S.fromList [ v | (v, _, _, _) <- binds0 ]
+
+matchScalarDagM :: L3.Scalar -> Var -> S.Set Var -> [Bind3] -> L3.Exp3 -> DagM ScalarDag
+matchScalarDagM scalar idx outer binds expr0 =
   case expr0 of
     VarE v ->
       case resolveVarRhs binds S.empty v of
         VarE v' | v == v' -> matchNonVar expr0
-        rhs -> matchScalarDag scalar idx binds rhs
+        rhs
+          | v `S.member` outer -> shareVar v rhs
+          | otherwise -> recur rhs
     _ -> matchNonVar expr0
   where
+    recur = matchScalarDagM scalar idx outer binds
+
+    -- Record @v@'s DAG once and hand back a reference to it.
+    --
+    -- A value whose DAG contains a partial operation is expanded inline
+    -- instead, exactly as before this sharing existed: 'dagSpeculatesPartialOp'
+    -- decides safety from the operation's POSITION, and moving a division to
+    -- the root would change the position it judges.  Divisions are rare and
+    -- shallow, so re-expanding them cannot drive the blow-up that sharing
+    -- exists to prevent.
+    shareVar v rhs = do
+      pool <- get
+      if v `S.member` dpDone pool
+        then pure (DagShared v)
+        else if v `S.member` dpBusy pool
+               then lift Nothing   -- cyclic binding: keep the loop scalar
+               else do
+                 modify' $ \p -> p { dpBusy = S.insert v (dpBusy p) }
+                 d <- recur rhs
+                 modify' $ \p -> p { dpBusy = S.delete v (dpBusy p) }
+                 if dagHasPartialOp d
+                   then pure d
+                   else do
+                     modify' $ \p -> p { dpOrder = (v, d) : dpOrder p
+                                       , dpDone = S.insert v (dpDone p) }
+                     pure (DagShared v)
+
     matchNonVar expr =
       case readValueInputRef scalar binds expr of
-        Just ref -> Just (DagRead ref)
+        Just ref -> pure (DagRead ref)
         Nothing
-          | isLoopInvariantScalarExpr scalar idx binds expr -> Just (DagInvariant expr)
+          | Just (deps, ex) <- loopInvariantHoistExpr scalar idx binds expr ->
+              pure (DagInvariant deps ex)
         Nothing ->
           case expr of
             PrimAppE prim [a, b]
               | simdPrimSupported scalar prim ->
-                  DagBin prim <$> matchScalarDag scalar idx binds a <*> matchScalarDag scalar idx binds b
+                  DagBin prim <$> recur a <*> recur b
             IfE tst thenExp elseExp ->
-              DagIf <$> matchCondDag scalar idx binds tst
-                    <*> matchScalarDag scalar idx binds thenExp
-                    <*> matchScalarDag scalar idx binds elseExp
-            _ -> Nothing
+              DagIf <$> matchCondDagM scalar idx outer binds tst
+                    <*> recur thenExp
+                    <*> recur elseExp
+            -- Look THROUGH an administrative let, never around it.
+            --
+            -- `LoopifyTraversals.anfScalarExpr` keeps the bindings it creates
+            -- for an `IfE` arm inside that arm, which is what stops a guarded
+            -- division being hoisted above its guard.  Those arms therefore
+            -- arrive here as `let anfN = ... in anfN` rather than a bare
+            -- variable, and without this case every conditional -- total ones
+            -- included -- would stop vectorising.
+            --
+            -- Extending the local environment is exactly "see through": the
+            -- binding is added to `binds` so `resolveVarRhs` can follow it, and
+            -- it is NOT lifted anywhere.  The DAG that results still describes
+            -- the arm, so `dagSpeculatesPartialOp` still sees a division inside
+            -- it and still refuses the loop.
+            LetE bnd bod
+              | administrativeBind bnd bod ->
+                  matchScalarDagM scalar idx outer (binds ++ [bnd]) bod
+            _ -> lift Nothing
 
-matchCondDag :: L3.Scalar -> Var -> [Bind3] -> L3.Exp3 -> Maybe CondDag
-matchCondDag resultScalar idx binds expr0 =
+matchCondDagM :: L3.Scalar -> Var -> S.Set Var -> [Bind3] -> L3.Exp3 -> DagM CondDag
+matchCondDagM resultScalar idx outer binds expr0 =
   case expr0 of
     VarE v ->
       case resolveVarRhs binds S.empty v of
         VarE v' | v == v' -> matchNonVar expr0
-        rhs -> matchCondDag resultScalar idx binds rhs
+        rhs -> matchCondDagM resultScalar idx outer binds rhs
     _ -> matchNonVar expr0
   where
+    scalarArg = matchScalarDagM resultScalar idx outer binds
+
     matchNonVar expr =
       case expr of
-        PrimAppE EqIntP [a, b]
-          | resultScalar == L3.IntS ->
-          CondEq L3.IntS <$> matchScalarDag L3.IntS idx binds a <*> matchScalarDag L3.IntS idx binds b
+        -- Every source comparison, not just equality.  Structural on the
+        -- annotated primitive (never `elem`), and gated on the SAME shared
+        -- capability matrix the backend consults -- so an ordered comparison
+        -- at a width with no packed instruction (W64, Float) answers Nothing
+        -- here and the whole loop stays scalar.
+        PrimAppE pr [a, b]
+          | Just cmp <- intCmpPrim pr
+          , L3.isIntScalar resultScalar
+          , L3.simdCapable (L3.vecCmpOp cmp) resultScalar ->
+          CondCmp resultScalar cmp <$> scalarArg a <*> scalarArg b
         PrimAppE EqFloatP [a, b]
-          | resultScalar == L3.FloatS ->
-          CondEq L3.FloatS <$> matchScalarDag L3.FloatS idx binds a <*> matchScalarDag L3.FloatS idx binds b
-        _ -> Nothing
+          | resultScalar == L3.FloatS
+          , L3.simdCapable L3.VecOpEq L3.FloatS ->
+          CondCmp L3.FloatS L3.VecCmpEq
+            <$> matchScalarDagM L3.FloatS idx outer binds a
+            <*> matchScalarDagM L3.FloatS idx outer binds b
+        -- Same administrative-let transparency as 'matchScalarDagM'; a
+        -- condition can be ANF'd into a let too.
+        LetE bnd bod
+          | administrativeBind bnd bod ->
+              matchCondDagM resultScalar idx outer (binds ++ [bnd]) bod
+        _ -> lift Nothing
+
+-- | May this binding be looked through when matching a scalar DAG, given the
+-- body it scopes over?
+--
+-- "Look through" must never become "discard".  The DAG has no representation
+-- for a binding: `resolveVarRhs` re-expands the variable at each use, so a
+-- binder used twice would duplicate its sub-DAG, and a binder used zero times
+-- would vanish from the vector body entirely.  Both are fine for a total,
+-- effect-free right-hand side -- recomputing or skipping pure total arithmetic
+-- changes nothing observable -- and neither is acceptable otherwise.
+--
+-- So the rule is: the RHS must be a scalar expression whose primitives are all
+-- classified, and it must be either
+--
+--   * total and effect-free, or
+--   * referenced exactly once in the body.
+--
+-- Anything else -- a read, a write, any 'Ext', an unclassified primitive,
+-- `ErrorP`, a trapping division bound but unused -- keeps the whole buffer loop
+-- scalar.  A conservative scalar fallback is always correct here; dropping or
+-- duplicating a right-hand side is not.
+administrativeBind :: Bind3 -> L3.Exp3 -> Bool
+administrativeBind (v, _, _, rhs) bod =
+  case scalarExprClass rhs of
+    Nothing -> False
+    Just EffTotal -> True
+    Just _ -> occurrencesOf v bod == 1
+
+-- | Free occurrences of a variable, counted over the shapes a scalar
+-- expression can take.  Any other form is opaque and reported as "many", so an
+-- expression this function does not understand can never be mistaken for a
+-- single-use one.
+occurrencesOf :: Var -> L3.Exp3 -> Int
+occurrencesOf v = go
+  where
+    go ex =
+      case ex of
+        VarE v' -> if v' == v then 1 else 0
+        LitE{} -> 0
+        CharE{} -> 0
+        FloatE{} -> 0
+        LitSymE{} -> 0
+        PrimAppE _ args -> sum (map go args)
+        ProjE _ e -> go e
+        IfE a b c -> sum (map go [a, b, c])
+        LetE (_, _, _, rhs) bod -> go rhs + go bod
+        _ -> 2   -- unknown shape: never treat as single-use
+
+-- | The comparison a width-annotated integer comparison primitive performs.
+--
+-- Structural: these primitives carry an 'IntPrimAnn', so an equality test
+-- against a bare constructor would silently match only one width.
+intCmpPrim :: Prim L3.Ty3 -> Maybe L3.VecCmpOp
+intCmpPrim pr =
+  case pr of
+    EqIntP{} -> Just L3.VecCmpEq
+    LtP{}    -> Just L3.VecCmpLt
+    GtP{}    -> Just L3.VecCmpGt
+    LtEqP{}  -> Just L3.VecCmpLtEq
+    GtEqP{}  -> Just L3.VecCmpGtEq
+    _ -> Nothing
 
 -- | Does this DAG evaluate a partial (potentially trapping) operation inside a
 -- conditional arm?
@@ -634,6 +917,11 @@ dagSpeculatesPartialOp dag =
   case dag of
     DagRead{} -> False
     DagInvariant{} -> False
+    DagShared{} -> False
+    -- A 'DagLet' sits outside every 'DagIf' by construction, so its
+    -- right-hand side occupies an unconditional position, exactly like the
+    -- scalar binding it came from.
+    DagLet _ rhs bod -> dagSpeculatesPartialOp rhs || dagSpeculatesPartialOp bod
     DagBin _ a b -> dagSpeculatesPartialOp a || dagSpeculatesPartialOp b
     DagIf cond thenDag elseDag ->
       condSpeculatesPartialOp cond ||
@@ -641,7 +929,7 @@ dagSpeculatesPartialOp dag =
       dagHasPartialOp elseDag
 
 condSpeculatesPartialOp :: CondDag -> Bool
-condSpeculatesPartialOp (CondEq _ a b) =
+condSpeculatesPartialOp (CondCmp _ _ a b) =
   dagSpeculatesPartialOp a || dagSpeculatesPartialOp b
 
 -- | Does this DAG contain a partial operation anywhere?
@@ -649,13 +937,20 @@ dagHasPartialOp :: ScalarDag -> Bool
 dagHasPartialOp dag =
   case dag of
     DagRead{} -> False
-    DagInvariant ex -> exprHasPartialPrim ex
+    -- Check the hoisted dependencies too, not just the invariant expression:
+    -- they are spliced outside the loop and so run even on a zero-trip loop,
+    -- which is precisely the hazard the partial-op exclusion exists to prevent.
+    DagInvariant deps ex ->
+      exprHasPartialPrim ex ||
+      any (\(_, _, _, rhs) -> exprHasPartialPrim rhs) deps
+    DagShared{} -> False
+    DagLet _ rhs bod -> dagHasPartialOp rhs || dagHasPartialOp bod
     DagBin prim a b -> isPartialPrim prim || dagHasPartialOp a || dagHasPartialOp b
     DagIf cond thenDag elseDag ->
       condHasPartialOp cond || dagHasPartialOp thenDag || dagHasPartialOp elseDag
 
 condHasPartialOp :: CondDag -> Bool
-condHasPartialOp (CondEq _ a b) = dagHasPartialOp a || dagHasPartialOp b
+condHasPartialOp (CondCmp _ _ a b) = dagHasPartialOp a || dagHasPartialOp b
 
 exprHasPartialPrim :: L3.Exp3 -> Bool
 exprHasPartialPrim ex =
@@ -669,8 +964,30 @@ exprHasPartialPrim ex =
 -- Integer division and remainder raise #DE on a zero divisor; float division is
 -- listed too because the vectorizer must not be the thing that decides an
 -- IEEE-special result is acceptable.
+-- | Structural constructor tests for the width-annotated integer primitives.
+-- Never compare these with (==) or `elem`: the width annotation is part of the
+-- constructor, so equality would only match one width.
+isAddSub :: Prim ty -> Bool
+isAddSub p = case p of { AddP{} -> True ; SubP{} -> True ; _ -> False }
+
+isAddSubMul :: Prim ty -> Bool
+isAddSubMul p = case p of { MulP{} -> True ; _ -> isAddSub p }
+
+isDivMod :: Prim ty -> Bool
+isDivMod p = case p of { DivP{} -> True ; ModP{} -> True ; _ -> False }
+
+isSimpleArithPrim :: Prim ty -> Bool
+isSimpleArithPrim p =
+  case p of
+    FAddP -> True ; FSubP -> True ; FMulP -> True
+    _     -> isAddSubMul p
+
 isPartialPrim :: Prim L3.Ty3 -> Bool
-isPartialPrim prim = prim `elem` [DivP, ModP, FDivP]
+isPartialPrim prim = case prim of
+                       DivP{} -> True
+                       ModP{} -> True
+                       FDivP  -> True
+                       _      -> False
 
 nonEmptyReadRefs :: ScalarDag -> Maybe (S.Set Var)
 nonEmptyReadRefs dag =
@@ -682,13 +999,15 @@ readRefs dag =
   case dag of
     DagRead ref -> S.singleton ref
     DagInvariant{} -> S.empty
+    DagShared{} -> S.empty
+    DagLet _ rhs bod -> readRefs rhs `S.union` readRefs bod
     DagBin _ a b -> readRefs a `S.union` readRefs b
     DagIf c a b -> condReadRefs c `S.union` readRefs a `S.union` readRefs b
 
 condReadRefs :: CondDag -> S.Set Var
 condReadRefs cond =
   case cond of
-    CondEq _ a b -> readRefs a `S.union` readRefs b
+    CondCmp _ _ a b -> readRefs a `S.union` readRefs b
 
 readValueInputRef :: L3.Scalar -> [Bind3] -> L3.Exp3 -> Maybe Var
 readValueInputRef scalar binds expr = do
@@ -727,11 +1046,82 @@ lookupBind v binds =
     Just (_, _, _, rhs) -> rhs
     Nothing -> VarE v
 
-isLoopInvariantScalarExpr :: L3.Scalar -> Var -> [Bind3] -> L3.Exp3 -> Bool
-isLoopInvariantScalarExpr _scalar idx binds expr =
-  idx `S.notMember` gFreeVars expr &&
-  isSimpleScalarExpr expr &&
-  not (exprContainsAnyRead binds expr)
+-- | Decide whether @expr@ can be hoisted out of the loop, and if so return the
+-- loop-body-local bindings it depends on (in dependency order) together with
+-- the expression itself.
+--
+-- `prepareVectorDag` splices hoisted binds *outside* the loop, where the loop
+-- body's own let-bindings are not in scope.  Hoisting an invariant that
+-- mentions a body-local variable therefore emitted a dangling reference:
+--
+--     Var loop_mut_<n>_buf1_anf0 not found   (L3/Typecheck.hs:1157)
+--
+-- triggered by a two-level invariant such as
+--
+--     t1 = k + 1        -- body-local, itself invariant
+--     m1 = t1 * 2       -- invariant, but mentions t1
+--     x1 = i * m1 + 1
+--
+-- A single-level invariant (@m1 = 2 * k@) worked only because @k@ is a function
+-- parameter and so already in scope outside the loop.
+--
+-- The dependencies are returned as BINDINGS rather than being substituted into
+-- one expression: L3 is in A-normal form and `Lower` rejects a nested
+-- @PrimAppE@ operand ("expected trivial in prim rand"), so the fix has to
+-- preserve the let-structure, not flatten it.
+--
+-- The invariance, totality and no-read checks are applied to every dependency
+-- as well as to the expression, so a variable whose right-hand side depends on
+-- the loop index or performs a read can no longer slip through behind a
+-- @VarE@.
+loopInvariantHoistExpr :: L3.Scalar -> Var -> [Bind3] -> L3.Exp3
+                       -> Maybe ([Bind3], L3.Exp3)
+loopInvariantHoistExpr _scalar idx binds expr
+  -- Screen the shape FIRST: `gFreeVars` errors out on L3 extensions such as
+  -- `DerefMutCursor`, so nothing that is not already a simple scalar form may
+  -- reach the dependency walk below.
+  | not (isSimpleScalarExpr expr) = Nothing
+  | otherwise = do
+  (_, deps) <- collectInvariantDeps binds (S.empty, []) expr
+  let exprs = expr : [ rhs | (_, _, _, rhs) <- deps ]
+  if all ok exprs && all (\e -> idx `S.notMember` gFreeVars e) exprs
+    then Just (deps, expr)
+    else Nothing
+  where
+    ok e = isSimpleScalarExpr e && not (exprContainsAnyRead binds e)
+
+-- | Transitively collect the loop-body-local bindings an expression depends on,
+-- in dependency order (a binding always appears after everything it needs).
+-- Variables not bound in the loop body are already in scope outside it and are
+-- left alone.  The @seen@ set makes cyclic bindings terminate rather than loop.
+collectInvariantDeps :: [Bind3] -> (S.Set Var, [Bind3]) -> L3.Exp3
+                     -> Maybe (S.Set Var, [Bind3])
+collectInvariantDeps binds st expr = foldM go st (S.toList (gFreeVars expr))
+  where
+    go (seen, acc) v
+      | v `S.member` seen = Just (seen, acc)
+      | otherwise =
+          case L.find (\(v', _, _, _) -> v == v') binds of
+            Nothing -> Just (S.insert v seen, acc)
+            -- Only descend into right-hand sides that are themselves simple
+            -- scalar forms.  A binding that reads a buffer or dereferences a
+            -- mutable cursor is not hoistable, and `gFreeVars` cannot even be
+            -- applied to it, so bail out rather than recursing.
+            Just b@(_, _, _, rhs)
+              | isSimpleScalarExpr rhs -> do
+                  (seen', acc') <- collectInvariantDeps binds (S.insert v seen, acc) rhs
+                  pure (seen', acc' ++ [b])
+              | otherwise -> Nothing
+
+-- | Rename variables in the restricted expression forms a hoisted invariant can
+-- contain.  Used to freshen dependency bindings so that two invariants sharing
+-- a dependency do not emit the same binder twice.
+substInvariantVars :: M.Map Var Var -> L3.Exp3 -> L3.Exp3
+substInvariantVars sub e =
+  case e of
+    VarE v -> VarE (M.findWithDefault v v sub)
+    PrimAppE p args -> PrimAppE p (map (substInvariantVars sub) args)
+    _ -> e
 
 exprContainsAnyRead :: [Bind3] -> L3.Exp3 -> Bool
 exprContainsAnyRead binds expr =
@@ -767,18 +1157,43 @@ isSimpleScalarExpr expr =
     FloatE{} -> True
     LitSymE{} -> True
     PrimAppE p args
-      | p `elem` [AddP, SubP, MulP, FAddP, FSubP, FMulP] ->
+      | isSimpleArithPrim p ->
           all isSimpleScalarExpr args
     _ -> False
 
+-- | The vector operation a scalar primitive would lower to, if any.
+--
+-- Structural, never an `elem` over annotated constructors: an integer
+-- primitive carries a width, so equality against a bare constructor silently
+-- stops matching every width but one.
+primVecOp :: Prim L3.Ty3 -> Maybe L3.VecOp
+primVecOp prim =
+  case prim of
+    AddP{} -> Just L3.VecOpAdd
+    SubP{} -> Just L3.VecOpSub
+    MulP{} -> Just L3.VecOpMul
+    DivP{} -> Just L3.VecOpDiv
+    ModP{} -> Just L3.VecOpMod
+    EqIntP{} -> Just L3.VecOpEq
+    FAddP -> Just L3.VecOpAdd
+    FSubP -> Just L3.VecOpSub
+    FMulP -> Just L3.VecOpMul
+    FDivP -> Just L3.VecOpDiv
+    EqFloatP -> Just L3.VecOpEq
+    _ -> Nothing
+
+-- | Can this primitive be vectorized at this scalar width?
+--
+-- Asks the ONE shared capability matrix ('L3.simdCapable'), so the vectorizer
+-- can never answer "yes" to something the backend cannot lower.  In
+-- particular @MulP@\/@DivP@\/@ModP@ at W32 answer False here, which leaves the
+-- whole candidate loop scalar rather than emitting vector IR whose helper
+-- would spill lanes to a scalar array.
 simdPrimSupported :: L3.Scalar -> Prim L3.Ty3 -> Bool
 simdPrimSupported scalar prim =
-  case scalar of
-    L3.FloatS -> prim `elem` [FAddP, FSubP, FMulP, FDivP]
-    L3.IntS -> prim `elem` [AddP, SubP, MulP, DivP, ModP]
-    L3.SymS -> prim `elem` [AddP, SubP]
-    L3.CharS -> prim `elem` [AddP, SubP]
-    L3.BoolS -> prim `elem` [AddP, SubP]
+  case primVecOp prim of
+    Nothing -> False
+    Just op -> L3.simdCapable op scalar
 
 resolveVarRhs :: [Bind3] -> S.Set Var -> Var -> L3.Exp3
 resolveVarRhs binds seen v
@@ -789,45 +1204,33 @@ resolveVarRhs binds seen v
           | v' /= v -> resolveVarRhs binds (S.insert v seen) v'
         rhs -> rhs
 
-hasCursorBump :: Int -> Var -> L3.Scalar -> [Bind3] -> Bool
-hasCursorBump intBytes ref scalar binds =
+hasCursorBump :: SimdCfg -> Var -> L3.Scalar -> [Bind3] -> Bool
+hasCursorBump cfg ref scalar binds =
   any matches binds
   where
-    bytes = scalarWidthBytes intBytes scalar
-    matches (_, _, _, Ext (L3.BumpCursorMutable ref' (LitE n))) = ref == ref' && n == fromIntegral bytes
+    bytes = scalarWidthBytes cfg scalar
+    matches (_, _, _, Ext (L3.BumpCursorMutable ref' (LitE _ n))) = ref == ref' && n == fromIntegral bytes
     matches _ = False
 
+-- | Which scalars the vectorizer can currently handle.
+--
+-- Structural, never an `elem` over constructors: the integer scalar carries a
+-- width, so a list comparison would silently answer False for every width but
+-- one.
+--
+-- A scalar with no emitted SIMD helper is declared unsupported here rather
+-- than have lane counts miscomputed for it, and is left on the scalar path.
 scalarSupported :: L3.Scalar -> Bool
-scalarSupported s = s `elem` [L3.IntS, L3.SymS, L3.FloatS, L3.CharS, L3.BoolS]
+scalarSupported = L3.simdScalarEnabled
 
--- | The logical unroll stride for the first prototype.  Int/Sym are 64-bit, so
--- SSE2 handles this as two 2-lane vector operations.  Float uses one 4-lane SSE
--- operation.  A future AVX2 backend can raise this to eight 32-bit lanes or four
--- 64-bit lanes by changing this layer and the backend lowering together.
-vectorStride :: Int -> L3.Scalar -> Int
-vectorStride _ L3.CharS = 16
-vectorStride _ L3.BoolS = 16
-vectorStride _ _ = 4
+vectorLanes :: SimdCfg -> L3.Scalar -> Int
+vectorLanes cfg = L3.simdLanes (scRegBytes cfg)
 
-vectorLanes :: Int -> L3.Scalar -> Int
-vectorLanes _ L3.FloatS = 4
-vectorLanes _ L3.CharS = 16
-vectorLanes _ L3.BoolS = 16
-vectorLanes intBytes L3.IntS = if intBytes == 4 then 4 else 2
-vectorLanes _ _ = 2
+vectorBytes :: SimdCfg -> L3.Scalar -> Int
+vectorBytes cfg scalar = vectorLanes cfg scalar * scalarWidthBytes cfg scalar
 
-vectorGroups :: Int -> L3.Scalar -> Int
-vectorGroups intBytes scalar = vectorStride intBytes scalar `div` vectorLanes intBytes scalar
-
-vectorBytes :: Int -> L3.Scalar -> Int
-vectorBytes intBytes scalar = vectorLanes intBytes scalar * scalarWidthBytes intBytes scalar
-
-scalarWidthBytes :: Int -> L3.Scalar -> Int
-scalarWidthBytes intBytes L3.IntS = intBytes
-scalarWidthBytes _ L3.SymS = 8
-scalarWidthBytes _ L3.FloatS = 4
-scalarWidthBytes _ L3.CharS = 1
-scalarWidthBytes _ L3.BoolS = 1
+scalarWidthBytes :: SimdCfg -> L3.Scalar -> Int
+scalarWidthBytes _ = L3.simdScalarBytes
 
 unLets3 :: L3.Exp3 -> ([Bind3], L3.Exp3)
 unLets3 (LetE b bod) =

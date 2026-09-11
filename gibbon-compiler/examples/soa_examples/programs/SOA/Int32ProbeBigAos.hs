@@ -10,7 +10,7 @@ mkBList n =
   else let rst = mkBList (n - 1)
        in BCons (n * 1000000) rst
 
-{-# ANN add1B "OPT:CanVectorize" #-}
+{-# ANN add1B "OPT:MayVectorize" #-}
 add1B :: BList -> BList
 add1B xs =
   case xs of

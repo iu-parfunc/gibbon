@@ -35,16 +35,16 @@ assertError exp expected =
 tester :: Exp -> Either (TCError Exp) Ty1
 tester = runExcept . (tcExp ddfs env)
   where env = Env2 M.empty funEnv
-        funEnv = M.fromList [ ("add", ([IntTy, IntTy], IntTy))
-                            , ("mul", ([IntTy, IntTy], IntTy))]
+        funEnv = M.fromList [ ("add", ([IntTy W64, IntTy W64], IntTy W64))
+                            , ("mul", ([IntTy W64, IntTy W64], IntTy W64))]
 
 ddfs :: DDefs Ty1
 ddfs = M.fromList
         [("Foo",
           DDef {tyName = "Foo",
                 tyArgs = [],
-                dataCons = [("A", [(False, IntTy)]),
-                            ("B", [(False, IntTy),(False, IntTy)])],
+                dataCons = [("A", [(False, IntTy W64)]),
+                            ("B", [(False, IntTy W64),(False, IntTy W64)])],
                  memLayout = Linear}),
          ("Nat",
            DDef {tyName = "Nat",
@@ -61,63 +61,63 @@ l1TypecheckerTests = $(testGroupGenerator)
 -- t6 :: Exp
 -- t6 = LetE ("d0",
 --               [],
---               SymDictTy IntTy,
---               PrimAppE (DictEmptyP IntTy) [])
+--               SymDictTy IntTy W64,
+--               PrimAppE (DictEmptyP IntTy W64) [])
 --      (LetE ("d21",
 --                [],
---                SymDictTy IntTy,
---                PrimAppE (DictInsertP IntTy) [VarE "d0",LitSymE "hi",LitE 200])
---       (LitE 44))
+--                SymDictTy IntTy W64,
+--                PrimAppE (DictInsertP IntTy W64) [VarE "d0",LitSymE "hi",mkLitE64 200])
+--       (mkLitE64 44))
 
 -- case_test_6 :: Assertion
--- case_test_6 = assertValue t6 IntTy
+-- case_test_6 = assertValue t6 IntTy W64
 
 t5 :: Exp
-t5 =  CaseE (DataConE () "B" [ LitE 2, LitE 4])
+t5 =  CaseE (DataConE () "B" [ mkLitE64 2, mkLitE64 4])
      [("A", [("x", ())], VarE "x"),
       ("B", [("x", ()),("y", ())], PrimAppE MkFalse [])]
 
 
 case_test_5 :: Assertion
 case_test_5 = assertError t5 expected
-  where expected =  GenericTC "Case branches have mismatched types: IntTy, BoolTy"
+  where expected =  GenericTC "Case branches have mismatched types: IntTy W64, BoolTy"
                     (PrimAppE MkFalse [])
 
 case_test_4 :: Assertion
 case_test_4 = assertError t4 expected
-  where expected = GenericTC "Expected these types to be the same: IntTy, BoolTy"
+  where expected = GenericTC "Expected these types to be the same: IntTy W64, BoolTy"
                    (PrimAppE MkTrue [])
 
 
 t4 :: Exp
 t4 = LetE ("ev",[], PackedTy "Foo" (), DataConE () "A" [PrimAppE MkTrue []]) $
      CaseE (VarE "ev")
-     [("A", [], (LitE 10)),
-      ("B", [("x", ()),("y", ())], LitE 200)]
+     [("A", [], (mkLitE64 10)),
+      ("B", [("x", ()),("y", ())], mkLitE64 200)]
 
 case_test_3 :: Assertion
-case_test_3 = assertValue t3 IntTy
+case_test_3 = assertValue t3 (IntTy W64)
 
 t3 :: Exp
-t3 = IfE (PrimAppE EqIntP [ LitE 1,  LitE 1])
-     (IfE ( PrimAppE EqIntP [ LitE 2,  LitE 2])
-       ( LitE 100)
-       ( LitE 1))
-     ( LitE 2)
+t3 = IfE (PrimAppE eqIntP64 [ mkLitE64 1,  mkLitE64 1])
+     (IfE ( PrimAppE eqIntP64 [ mkLitE64 2,  mkLitE64 2])
+       ( mkLitE64 100)
+       ( mkLitE64 1))
+     ( mkLitE64 2)
 
 case_test_2 :: Assertion
 case_test_2 = assertValue t2 (PackedTy "Foo" ())
 
 t2 :: Exp
-t2 =  DataConE () "A" [ LitE 10]
+t2 =  DataConE () "A" [ mkLitE64 10]
 
 
 case_test_1 :: Assertion
-case_test_1 = assertValue t1 IntTy
+case_test_1 = assertValue t1 (IntTy W64)
 
 t1 :: Exp
 t1 =  AppE "mul" UnknownTailType []
-     [LitE 10, AppE "add" UnknownTailType [] [LitE 40, LitE 2]]
+     [mkLitE64 10, AppE "add" UnknownTailType [] [mkLitE64 40, mkLitE64 2]]
 
 
 t1Prog :: Prog1
@@ -126,8 +126,8 @@ t1Prog = Prog {ddefs = M.fromList [],
                   [("mul2",
                     FunDef {funName = "mul2",
                             funArgs = ["x_y1"],
-                            funTy = ([IntTy,IntTy] , IntTy),
-                            funBody = PrimAppE MulP
+                            funTy = ([IntTy W64,IntTy W64] , IntTy W64),
+                            funBody = PrimAppE mulP64
                                       [(VarE "x_y1"), (VarE "x_y1")],
                             funMeta = FunMeta { funInline = Inline,
                                                 funRec = NotRec,
@@ -139,8 +139,8 @@ t1Prog = Prog {ddefs = M.fromList [],
                    ("add2",
                     FunDef {funName = "add2",
                             funArgs = ["x_y0"],
-                            funTy = ([IntTy,IntTy], IntTy),
-                            funBody = PrimAppE AddP
+                            funTy = ([IntTy W64,IntTy W64], IntTy W64),
+                            funBody = PrimAppE addP64
                                       [(VarE "x_y0"),
                                        (VarE "x_y0")],
                             funMeta = FunMeta { funInline = Inline,
@@ -150,8 +150,8 @@ t1Prog = Prog {ddefs = M.fromList [],
                                               }
                            })],
         mainExp = Just
-                  (  AppE "mul2" UnknownTailType [] [LitE 10, AppE "add2" UnknownTailType [] [LitE 40, LitE 2]]
-                  , IntTy)
+                  (  AppE "mul2" UnknownTailType [] [mkLitE64 10, AppE "add2" UnknownTailType [] [mkLitE64 40, mkLitE64 2]]
+                  , IntTy W64)
               }
 
 -- | upon successful typechecking, it just returns the same program

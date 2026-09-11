@@ -1,5 +1,5 @@
 -- Probe: an Int (64-bit -> two 2-lane groups) field and a Float (4-lane)
--- field mutated by the same CanVectorize map.  With --enable-loop-fusion the
+-- field mutated by the same MayVectorize map.  With --opt-loop-fusion the
 -- two per-buffer loops are fused into a single ForE, so the vectorizer must
 -- reconcile 2 int groups against 1 float group in one logical stride of 4.
 data MList = MCons Int Float MList | MNil
@@ -13,7 +13,7 @@ mkMList n =
   else let rst = mkMList (n - 1)
        in MCons n 2.0 rst
 
-{-# ANN mapMixed "OPT:CanVectorize" #-}
+{-# ANN mapMixed "OPT:MayVectorize" #-}
 mapMixed :: MList -> Int -> MList
 mapMixed xs k =
   case xs of

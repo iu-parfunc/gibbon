@@ -68,7 +68,7 @@ freshTyScheme (ForAll tvs ty) = do
 freshTy :: TyVarEnv Ty0 -> Ty0 -> PassM (TyVarEnv Ty0, Ty0)
 freshTy env ty =
   case ty of
-     IntTy    -> pure (env, ty)
+     IntTy{}    -> pure (env, ty)
      CharTy   -> pure (env, ty)
      FloatTy  -> pure (env, ty)
      SymTy0   -> pure (env, ty)
@@ -111,7 +111,7 @@ freshTys env tys =
 freshDictTy :: Monad m => M.Map Var Var -> Ty0 -> m Ty0
 freshDictTy m ty =
     case ty of
-     IntTy    -> pure ty
+     IntTy{}    -> pure ty
      CharTy   -> pure ty
      FloatTy  -> pure ty
      SymTy0   -> pure ty
@@ -160,7 +160,7 @@ freshDictTyScheme m (ForAll tvs ty) =
 freshExp :: VarEnv -> TyVarEnv Ty0 -> Exp0 -> PassM Exp0
 freshExp venv tvenv exp =
   case exp of
-    LitE i    -> return $ LitE i
+    LitE ann i -> return $ LitE ann i
     CharE c   -> return $ CharE c
     FloatE i  -> return $ FloatE i
     LitSymE v -> return $ LitSymE v
@@ -323,7 +323,7 @@ freshFun1 (FunDef nam nargs (targ,ty) bod meta) = do
 freshExp1 :: VarEnv -> L1.Exp1 -> PassM L1.Exp1
 freshExp1 vs exp =
   case exp of
-    LitE i    -> return $ LitE i
+    LitE ann i -> return $ LitE ann i
     CharE c   -> return $ CharE c
     FloatE i  -> return $ FloatE i
     LitSymE v -> return $ LitSymE v

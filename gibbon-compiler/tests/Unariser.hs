@@ -27,33 +27,33 @@ case_t1 = expected @=? actual
     actual = run test1
 
     test1 :: Exp3
-    test1 = LetE ("v1",[],ProdTy [IntTy, IntTy],
-                     MkProdE [LitE 1, LitE 2]) $
-            LetE ("v2",[],ProdTy [IntTy, ProdTy [IntTy, IntTy]],
-                     MkProdE [LitE 3, VarE "v1"]) $
-            LetE ("v6",[],ProdTy [IntTy, ProdTy [IntTy, IntTy]] ,
-                     MkProdE [LitE 1, MkProdE [LitE 1, LitE 2]]) $
-            LetE ("v4",[],ProdTy [IntTy, IntTy],
+    test1 = LetE ("v1",[],ProdTy [IntTy W64, IntTy W64],
+                     MkProdE [mkLitE64 1, mkLitE64 2]) $
+            LetE ("v2",[],ProdTy [IntTy W64, ProdTy [IntTy W64, IntTy W64]],
+                     MkProdE [mkLitE64 3, VarE "v1"]) $
+            LetE ("v6",[],ProdTy [IntTy W64, ProdTy [IntTy W64, IntTy W64]] ,
+                     MkProdE [mkLitE64 1, MkProdE [mkLitE64 1, mkLitE64 2]]) $
+            LetE ("v4",[],ProdTy [IntTy W64, IntTy W64],
                      ProjE 1 (VarE "v6")) $
-            LetE ("v3",[], ProdTy [IntTy, ProdTy [IntTy, ProdTy [IntTy, IntTy]]],
-                      MkProdE [LitE 4, VarE "v2"]) $
-            LetE ("v5",[], ProdTy [IntTy, ProdTy [IntTy, IntTy]],
+            LetE ("v3",[], ProdTy [IntTy W64, ProdTy [IntTy W64, ProdTy [IntTy W64, IntTy W64]]],
+                      MkProdE [mkLitE64 4, VarE "v2"]) $
+            LetE ("v5",[], ProdTy [IntTy W64, ProdTy [IntTy W64, IntTy W64]],
                      ProjE 1 (VarE "v3")) $
             VarE "v5"
 
     expected :: Exp3
-    expected =  LetE ("v1",[],ProdTy [IntTy, IntTy],
-                         MkProdE [LitE 1, LitE 2]) $
-                LetE ("v2",[],ProdTy [IntTy,IntTy,IntTy],
-                         MkProdE [LitE 3, ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1")]) $
-                LetE ("v6",[],ProdTy [IntTy,IntTy,IntTy] ,
-                         MkProdE [LitE 1, LitE 1, LitE 2]) $
-                LetE ("v4",[],ProdTy [IntTy, IntTy],
+    expected =  LetE ("v1",[],ProdTy [IntTy W64, IntTy W64],
+                         MkProdE [mkLitE64 1, mkLitE64 2]) $
+                LetE ("v2",[],ProdTy [IntTy W64,IntTy W64,IntTy W64],
+                         MkProdE [mkLitE64 3, ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1")]) $
+                LetE ("v6",[],ProdTy [IntTy W64,IntTy W64,IntTy W64] ,
+                         MkProdE [mkLitE64 1, mkLitE64 1, mkLitE64 2]) $
+                LetE ("v4",[],ProdTy [IntTy W64, IntTy W64],
                          MkProdE [ProjE 1 (VarE "v6"), ProjE 2 (VarE "v6")]) $
-                LetE ("v3",[], ProdTy [IntTy,IntTy,IntTy,IntTy],
-                         MkProdE [LitE 4, ProjE 0 (VarE "v2"), ProjE 1 (VarE "v2"),
+                LetE ("v3",[], ProdTy [IntTy W64,IntTy W64,IntTy W64,IntTy W64],
+                         MkProdE [mkLitE64 4, ProjE 0 (VarE "v2"), ProjE 1 (VarE "v2"),
                                      ProjE 2 (VarE "v2")]) $
-                LetE ("v5",[], ProdTy [IntTy,IntTy,IntTy],
+                LetE ("v5",[], ProdTy [IntTy W64,IntTy W64,IntTy W64],
                          MkProdE [ProjE 1 (VarE "v3"), ProjE 2 (VarE "v3"),
                                      ProjE 3 (VarE "v3")]) $
                 VarE "v5"
@@ -64,18 +64,18 @@ case_t2 = expected @=? actual
     actual = run test2
 
     test2 :: Exp3
-    test2 = LetE ("v1",[],ProdTy [IntTy, IntTy], MkProdE [LitE 1, LitE 2]) $
-            LetE ("v2",[],ProdTy [ProdTy [CursorTy, CursorTy], IntTy],
-                     MkProdE [VarE "v1", LitE 3]) $
-            LetE ("v3",[], IntTy, ProjE 1 (VarE "v2")) $
+    test2 = LetE ("v1",[],ProdTy [IntTy W64, IntTy W64], MkProdE [mkLitE64 1, mkLitE64 2]) $
+            LetE ("v2",[],ProdTy [ProdTy [CursorTy, CursorTy], IntTy W64],
+                     MkProdE [VarE "v1", mkLitE64 3]) $
+            LetE ("v3",[], IntTy W64, ProjE 1 (VarE "v2")) $
             VarE "v3"
 
     expected :: Exp3
-    expected = LetE ("v1",[],ProdTy [IntTy, IntTy],
-                        MkProdE [LitE 1, LitE 2]) $
-               LetE ("v2",[],ProdTy [CursorTy, CursorTy, IntTy],
-                        MkProdE [ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1"), LitE 3]) $
-               LetE ("v3",[], IntTy, ProjE 2 (VarE "v2")) $
+    expected = LetE ("v1",[],ProdTy [IntTy W64, IntTy W64],
+                        MkProdE [mkLitE64 1, mkLitE64 2]) $
+               LetE ("v2",[],ProdTy [CursorTy, CursorTy, IntTy W64],
+                        MkProdE [ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1"), mkLitE64 3]) $
+               LetE ("v3",[], IntTy W64, ProjE 2 (VarE "v2")) $
                VarE "v3"
 
 case_t3 :: Assertion
@@ -84,19 +84,19 @@ case_t3 = expected @=? actual
     actual = run test3
 
     test3 :: Exp3
-    test3 = LetE ("v1",[],ProdTy [IntTy, IntTy], MkProdE [LitE 1, LitE 2]) $
-            LetE ("v2",[],ProdTy [IntTy, ProdTy [IntTy, IntTy]],
-                     MkProdE [LitE 3, VarE "v1"]) $
-            LetE ("v3",[], IntTy,
+    test3 = LetE ("v1",[],ProdTy [IntTy W64, IntTy W64], MkProdE [mkLitE64 1, mkLitE64 2]) $
+            LetE ("v2",[],ProdTy [IntTy W64, ProdTy [IntTy W64, IntTy W64]],
+                     MkProdE [mkLitE64 3, VarE "v1"]) $
+            LetE ("v3",[], IntTy W64,
                      ProjE 1 (ProjE 1 (VarE "v2"))) $
             VarE "v3"
 
 
     expected :: Exp3
-    expected = LetE ("v1",[],ProdTy [IntTy, IntTy], MkProdE [LitE 1, LitE 2]) $
-               LetE ("v2",[],ProdTy [IntTy, IntTy, IntTy],
-                        MkProdE [LitE 3, ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1")]) $
-               LetE ("v3",[], IntTy,
+    expected = LetE ("v1",[],ProdTy [IntTy W64, IntTy W64], MkProdE [mkLitE64 1, mkLitE64 2]) $
+               LetE ("v2",[],ProdTy [IntTy W64, IntTy W64, IntTy W64],
+                        MkProdE [mkLitE64 3, ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1")]) $
+               LetE ("v3",[], IntTy W64,
                         ProjE 2 (VarE "v2")) $
                VarE "v3"
 
@@ -107,23 +107,23 @@ case_t4 = expected @=? actual
     actual = run test4
 
     test4 :: Exp3
-    test4 = LetE ("v1",[],ProdTy [IntTy, IntTy], MkProdE [LitE 1, LitE 2]) $
-            LetE ("v2",[],ProdTy [IntTy, ProdTy [IntTy, IntTy]],
-                     MkProdE [LitE 3, VarE "v1"]) $
-            LetE ("v3",[],ProdTy [IntTy, ProdTy [IntTy, ProdTy [IntTy, IntTy]]],
-                     MkProdE [LitE 4, VarE "v2"]) $
-            LetE ("v4",[], ProdTy [IntTy, ProdTy [IntTy, IntTy]],
+    test4 = LetE ("v1",[],ProdTy [IntTy W64, IntTy W64], MkProdE [mkLitE64 1, mkLitE64 2]) $
+            LetE ("v2",[],ProdTy [IntTy W64, ProdTy [IntTy W64, IntTy W64]],
+                     MkProdE [mkLitE64 3, VarE "v1"]) $
+            LetE ("v3",[],ProdTy [IntTy W64, ProdTy [IntTy W64, ProdTy [IntTy W64, IntTy W64]]],
+                     MkProdE [mkLitE64 4, VarE "v2"]) $
+            LetE ("v4",[], ProdTy [IntTy W64, ProdTy [IntTy W64, IntTy W64]],
                      ProjE 1 (VarE "v3")) $
             VarE "v4"
 
 
     expected :: Exp3
-    expected = LetE ("v1",[],ProdTy [IntTy, IntTy], MkProdE [LitE 1, LitE 2]) $
-               LetE ("v2",[],ProdTy [IntTy, IntTy, IntTy],
-                        MkProdE [LitE 3, ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1")]) $
-               LetE ("v3",[],ProdTy [IntTy, IntTy, IntTy, IntTy],
-                        MkProdE [LitE 4, ProjE 0 (VarE "v2"), ProjE 1 (VarE "v2"), ProjE 2 (VarE "v2")]) $
-               LetE ("v4",[], ProdTy [IntTy, IntTy, IntTy],
+    expected = LetE ("v1",[],ProdTy [IntTy W64, IntTy W64], MkProdE [mkLitE64 1, mkLitE64 2]) $
+               LetE ("v2",[],ProdTy [IntTy W64, IntTy W64, IntTy W64],
+                        MkProdE [mkLitE64 3, ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1")]) $
+               LetE ("v3",[],ProdTy [IntTy W64, IntTy W64, IntTy W64, IntTy W64],
+                        MkProdE [mkLitE64 4, ProjE 0 (VarE "v2"), ProjE 1 (VarE "v2"), ProjE 2 (VarE "v2")]) $
+               LetE ("v4",[], ProdTy [IntTy W64, IntTy W64, IntTy W64],
                         MkProdE [ProjE 1 (VarE "v3"), ProjE 2 (VarE "v3"), ProjE 3 (VarE "v3")]) $
                VarE "v4"
 
@@ -134,19 +134,19 @@ case_t5 = expected @=? actual
     actual = run test5
 
     test5 :: Exp3
-    test5 = LetE ("v1",[],ProdTy [IntTy, IntTy], MkProdE [LitE 1, LitE 2]) $
-            LetE ("v2",[],ProdTy [IntTy, ProdTy [IntTy, IntTy]],
-                     MkProdE [LitE 1, MkProdE [ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1")]]) $
-            LetE ("v3",[], ProdTy [IntTy, ProdTy [IntTy, IntTy]],
-                     MkProdE [LitE 1, MkProdE [LitE 2, ProjE 0 $ ProjE 1 (VarE "v2")]]) $
+    test5 = LetE ("v1",[],ProdTy [IntTy W64, IntTy W64], MkProdE [mkLitE64 1, mkLitE64 2]) $
+            LetE ("v2",[],ProdTy [IntTy W64, ProdTy [IntTy W64, IntTy W64]],
+                     MkProdE [mkLitE64 1, MkProdE [ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1")]]) $
+            LetE ("v3",[], ProdTy [IntTy W64, ProdTy [IntTy W64, IntTy W64]],
+                     MkProdE [mkLitE64 1, MkProdE [mkLitE64 2, ProjE 0 $ ProjE 1 (VarE "v2")]]) $
             VarE "v3"
 
     expected :: Exp3
-    expected = LetE ("v1",[],ProdTy [IntTy, IntTy], MkProdE [LitE 1, LitE 2]) $
-               LetE ("v2",[],ProdTy [IntTy, IntTy, IntTy],
-                        MkProdE [LitE 1, ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1")]) $
-               LetE ("v3",[], ProdTy [IntTy, IntTy, IntTy],
-                        MkProdE [LitE 1, LitE 2, ProjE 1 (VarE "v2")]) $
+    expected = LetE ("v1",[],ProdTy [IntTy W64, IntTy W64], MkProdE [mkLitE64 1, mkLitE64 2]) $
+               LetE ("v2",[],ProdTy [IntTy W64, IntTy W64, IntTy W64],
+                        MkProdE [mkLitE64 1, ProjE 0 (VarE "v1"), ProjE 1 (VarE "v1")]) $
+               LetE ("v3",[], ProdTy [IntTy W64, IntTy W64, IntTy W64],
+                        MkProdE [mkLitE64 1, mkLitE64 2, ProjE 1 (VarE "v2")]) $
                VarE "v3"
 
 

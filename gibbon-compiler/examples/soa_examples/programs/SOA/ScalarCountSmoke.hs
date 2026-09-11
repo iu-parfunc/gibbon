@@ -15,7 +15,7 @@ sumList xs =
     Nil -> 0
     Cons i f rst -> i + sumList rst
 
-{-# ANN add1List "OPT:CanVectorize" #-}
+{-# ANN add1List "OPT:MayVectorize" #-}
 add1List :: List -> List
 add1List xs =
   case xs of 

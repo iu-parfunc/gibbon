@@ -14,7 +14,7 @@ mkSList n =
            t = mod n 3
        in SCons t (n * 2) rst
 
-{-# ANN mapSel "OPT:CanVectorize" #-}
+{-# ANN mapSel "OPT:MayVectorize" #-}
 mapSel :: SList -> Int -> SList
 mapSel xs k =
   case xs of

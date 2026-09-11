@@ -1,8 +1,6 @@
--- Audit probe (int32 vectorizer): exercise the scalarized MUL / DIV / MOD
--- int32x4 helpers on negative operands, so the vectorized answers can be
--- compared element-by-element against the same program built without
--- --enable-vectorization.  gibbon_main returns the whole packed list so the
--- comparison is per element, not per sum.
+-- Int32VecArith: AList (Factored).
+-- Functions: mkAList, mapArith, digest, sumA, sumB, sumC.
+-- Annotated: MayVectorize on mapArith; StoreScalarCounts on mkAList.
 data AList = ACons Int Int Int AList | ANil
 {-# ANN type AList "Factored" #-}
 
@@ -15,7 +13,7 @@ mkAList n =
            s = if (mod n 2) == 0 then n else 0 - n
        in ACons (s * 7) (s * 13) (s + 5) rst
 
-{-# ANN mapArith "OPT:CanVectorize" #-}
+{-# ANN mapArith "OPT:MayVectorize" #-}
 mapArith :: AList -> Int -> AList
 mapArith xs k =
   case xs of

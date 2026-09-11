@@ -13,7 +13,7 @@ mkList n = if n <= 0
                  in CA n rst
 
 -- Rewrites CA -> CB while also bumping the scalar field.
-{-# ANN flipCon "OPT:CanVectorize" #-}
+{-# ANN flipCon "OPT:MayVectorize" #-}
 flipCon :: L -> L
 flipCon lst = case lst of
                 Nil -> Nil

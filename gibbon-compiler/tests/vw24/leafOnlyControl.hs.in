@@ -1,0 +1,36 @@
+-- VW-24 control: structurally identical tree, but the reduction recurses
+-- structurally to leaves (like OctTree_sumMass.hs/OctTree_countParticles.hs)
+-- instead of reading a cached parent field -- this shape was NEVER affected
+-- by VW-24 and must stay correct before and after the fix.
+data T = Leaf Int32
+       | Node Int32   -- ctl
+              Int32   -- agg (cached, but this control never reads it back)
+              T
+
+{-# ANN type T "Linear" #-}
+
+getAgg :: T -> Int32
+getAgg t =
+  case t of
+    Leaf v -> v
+    Node _ agg _ -> agg
+
+sumLeaves :: T -> Int32
+sumLeaves t =
+  case t of
+    Leaf v -> v
+    Node _ _ c0 -> sumLeaves c0
+
+buildT :: Int -> T
+buildT d =
+  if d == 0
+  then Leaf 7
+  else
+    let c0 = buildT (d - 1)
+        agg = getAgg c0
+    in Node 99 agg c0
+
+gibbon_main =
+  let t = buildT @D@
+      a = sumLeaves t
+  in a

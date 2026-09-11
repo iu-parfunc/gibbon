@@ -1,5 +1,7 @@
--- @BENCH adt_fields=11
-data List = Cons Int Int Int Int Int Int Int Int Int Int List | Nil
+-- LinearListReduction: List (Factored).
+-- Functions: mkList, reduce.
+-- Annotated: StoreScalarCounts on mkList.
+data List = Cons Int64 Int64 Int64 Int64 Int64 Int64 Int64 Int64 Int64 Int64 List | Nil
 
 
 {-# ANN type List "Factored" #-}

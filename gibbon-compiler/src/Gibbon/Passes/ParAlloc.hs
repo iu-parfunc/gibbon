@@ -113,7 +113,7 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
       parent_id <- gensym "parent_id"
       args' <- mapM go args
       bod'  <- parAllocExp ddefs fundefs env2' reg_env' after_env (Just parent_id) pending_binds' spawned' boundlocs region_on_spawn bod
-      pure $ LetE (parent_id, [], IntTy, Ext GetCilkWorkerNum) $
+      pure $ LetE (parent_id, [], (IntTy W64), Ext GetCilkWorkerNum) $
              LetE (v, endlocs, ty', (SpawnE f newlocs args')) bod'
 
     LetE (v, endlocs, ty, SyncE) bod -> do
@@ -257,8 +257,8 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
               -- If we are given the --region_on_spawn flag, we disable the region-on-steal optimization.
               if S.member (fromLocVarToFreeVarsTy loc2) boundlocs && not region_on_spawn
               then
-                pure $ LetE (cont_id, [], IntTy, Ext GetCilkWorkerNum) $
-                       LetE (not_stolen, [], BoolTy, PrimAppE EqIntP [VarE cont_id, VarE parent_id]) $
+                pure $ LetE (cont_id, [], (IntTy W64), Ext GetCilkWorkerNum) $
+                       LetE (not_stolen, [], BoolTy, PrimAppE eqIntP64 [VarE cont_id, VarE parent_id]) $
                        IfE (VarE not_stolen)
                            (Ext $ LetAvail [v] $
                             Ext $ LetLocE loc (AfterVariableLE v loc2 False) bod2) -- don't allocate in a fresh region

@@ -259,7 +259,7 @@ threadRegionsFn ddefs fundefs f@FunDef {funName, funArgs, funTy, funMeta, funBod
                                     regen_region' = Reg (SoARv dcEndReg ends_fields) mode
                                     ends_fields' = map (\(ind, floc) -> (ind, (NewL2.EndOfReg (regionToVar floc) mode (toEndVRegVar (regionToVar floc))))) fieldRegs
                                     new_reg_Inst = [LetRegE regen_region' (GenSoAReg (NewL2.EndOfReg dcreg mode (dcEndReg)) ends_fields')]
-                                    boundsCheckVector = [("_", [], MkTy2 IntTy, Ext $ BoundsCheckVector (boundsCheckDcon ++ boundsCheckFields))]
+                                    boundsCheckVector = [("_", [], MkTy2 (IntTy W64), Ext $ BoundsCheckVector (boundsCheckDcon ++ boundsCheckFields))]
                                     regInst = [LetRegE (dcRegArg) (GetDataConRegSoA (NewL2.EndOfReg (regionToVar reg) mode (toEndVRegVar $ regionToVar reg)))]
                                     regInst' =
                                       concatMap
@@ -314,7 +314,7 @@ threadRegionsFn ddefs fundefs f@FunDef {funName, funArgs, funTy, funMeta, funBod
                                     regarg = NewL2.EndOfReg rv mode end_rv
                                  in -- dbgTrace (minChatLvl) ("boundscheck" ++ sdoc ((locs_tycons M.! loc), bc)) $
                                     -- maintain shadowstack in no eager promotion mode
-                                    (([("_", [], MkTy2 IntTy, Ext $ BoundsCheck bc regarg locarg)], []), [])
+                                    (([("_", [], MkTy2 (IntTy W64), Ext $ BoundsCheck bc regarg locarg)], []), [])
                               else (([], []), [])
                     )
                     (locVars funTy)

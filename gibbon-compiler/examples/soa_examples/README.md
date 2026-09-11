@@ -7,13 +7,46 @@ conference papers.
 > **Design / context / verification documents live outside this repository.**
 > Handoff notes, verification plans, defect and benchmark analyses for the
 > packed fully-factored layout work (loopification, selective buffer sharing,
-> SIMD vectorization, and the `--int32` backend mode) are maintained in
+> SIMD vectorization, and the source-declared integer widths) are maintained in
 > `git@github.com:vidsinghal/llm-notes.git` under `gibbon-soa-layout/`.
-> Start with `gibbon-soa-layout/Context.md`. Only user-facing documentation for
+> Start with
+> `gibbon-soa-layout/current/variable_width_integer_implementation_progress.md`,
+> the canonical living ledger (the older `Context.md` is historical and its
+> `--int32` model is superseded).  Only user-facing documentation for
 > the shipped artifact — this file, `ANNOTATIONS.md`, `GETTING_STARTED.txt` —
 > stays here.
 
 ---
+
+## Integer width is a source property
+
+There is no whole-program width mode.  `--int32`/`--gibbon-int32`/`--32-bit`
+were removed from the compiler and from these drivers; the old spellings are
+recognized only to reject them with an actionable message.
+
+Width is declared by the source program: `Int8`, `Int16`, `Int32`, `Int64`, and
+bare `Int`, which means `Int64`.  A program may mix widths in one datatype, in
+which case it has no single width at all.  To compare widths, write explicit
+width variants as separate source programs.
+
+`programs/{AOS,SOA}/MixedWidthSmoke.hs` is the paired explicit-width driver
+smoke fixture (Int8 + Int16 + Int32 + Int64 in one constructor).
+
+## SSE2 and SSE4.1
+
+* Gibbon's explicit SIMD baseline is **SSE2**.
+* `--sse4.1` adds `-msse4.1` to the generated C translation unit.  It is an ISA
+  permission for the C compiler, independent of `--opt-vectorization`
+  (Gibbon's own SIMD pass) and of `--no-gcc-vectorize`.
+* W32 multiplication is emitted by Gibbon as a verified SSE2 `_mm_mul_epu32`
+  plus shuffle/interleave sequence.  A C compiler *may* recognize and replace
+  that sequence under SSE4.1, but Gibbon does not select `_mm_mullo_epi32`.
+* W64 equality does have an explicit `#ifdef __SSE4_1__` branch using
+  `_mm_cmpeq_epi64`.
+* W64 ordered comparisons need SSE4.2 (`_mm_cmpgt_epi64`) or an emulation, and
+  remain scalar.
+* General packed integer division/modulus does not exist in SSE4 and remains
+  scalar.
 
 ## Quick Start
 
@@ -40,13 +73,15 @@ project/
 ├── gibbon_benchmark.py             # ← main script (Python ≥ 3.8)
 ├── gibbon_benchmark.sh             # ← bash wrapper / convenience shortcuts
 ├── benchmark_layout_versions.py    # ← layout-version comparison driver (wraps
-│                                   #   gibbon_benchmark.py; --32-bit for int32)
+│                                   #   gibbon_benchmark.py)
+├── check_intensity_codegen.py      # ← acceptance check for the arithmetic-
+│                                   #   intensity programs (see below)
 ├── plot_scalar_count_smoke_sweep.py# ← ScalarCountSmoke sweep + SVG plot
 ├── clean.sh                        # ← remove compiled outputs & paper materials
 ├── README.md
 ├── experiments/                    # ← manual C experiments that shaped the
 │   ├── scalar_count_smoke/         #   loopified codegen strategy
-│   ├── simple_test/                #   (chunked-array + 32-bit-width prototypes)
+│   ├── simple_test/                #   (chunked-array prototypes)
 │   └── replot_benchmark_figures.py
 ├── microbench/                     # ← standalone SoA C microbenchmarks
 │   ├── soa/
@@ -86,6 +121,51 @@ project/
 
 ---
 
+## Arithmetic-Intensity Programs — run the acceptance check
+
+`programs/{SOA,AoS}/MapIntensityV2.hs` sweeps arithmetic intensity while holding
+memory traffic fixed. It only measures intensity if the arithmetic it declares
+actually survives into the generated code, and **it repeatedly has not**:
+
+- constant multipliers were strength-reduced to shift+add (zero multiplies emitted);
+- `sum_k (i + c_k) * m` was reassociated to `m * (N*i + sum c_k)` — one multiply
+  at every N;
+- seeding extra chains from affine offsets of `i` collapsed again under CSE.
+
+Every one of these collapses is **silent**. The benchmark still runs, still
+produces a table, and the table means nothing. Before citing any intensity
+number, run:
+
+```bash
+./check_intensity_codegen.py                 # SoA (width read from the source)
+./check_intensity_codegen.py --layout AOS
+./check_intensity_codegen.py --int64
+```
+
+It builds scalar and `--sse4.1` configurations, disassembles each map function's
+innermost multiply-carrying loop, and asserts the multiply counts declared in
+`EXPECTED_MULTIPLIES` — plus no `pslld` (strength reduction), no scalarized
+`imul` inside a vector loop, and a 16-byte pointer stride (real cross-element
+SIMD rather than SLP within a single element). Or fold it into a benchmark run:
+
+```bash
+./benchmark_layout_versions.py --verify-intensity-codegen ...   # verify only
+./benchmark_layout_versions.py --intensity-report ...            # verify + detailed report
+```
+
+The three families in that program are **not** interchangeable:
+
+| Family | Multiplies/element | ILP | What it measures |
+|---|---|---|---|
+| `mapSer<N>` | N | 1 | latency ceiling — one serial Horner chain |
+| `mapChain<D>` | 2D+2 | 2 | effect of added ILP at matched intensity |
+| `mapPar<N>` | **1, at every N** | — | reassociation **control**, not an intensity point |
+
+`mapPar` is retained deliberately, and the checker asserts its collapse. Do not
+cite it as evidence about arithmetic intensity.
+
+---
+
 ## Fold / Map Classification
 
 The script automatically detects whether each pass is a **fold** or **map**
@@ -117,6 +197,62 @@ Detecting fold/map classification from source print statements ...
 
 If a pass cannot be matched it shows `?` in the table — check that your
 print-statement name matches the pass key printed in benchmark output.
+
+### Folds and maps are reported separately
+
+`benchmark_layout_versions.py` emits each program's passes in **separate map and
+fold sections**, because they are not comparable: only map passes are eligible
+for loopification, selective buffer sharing and SIMD vectorization, so only they
+carry the vectorizer columns. A program with only folds gets only a fold section.
+
+### Two report modes
+
+By default the sweep runs and reports **one** vectorized configuration —
+`loop+share both vec (SSE4.1)`: both vectorizers on, `-msse4.1`, i.e. every
+vectorization capability enabled. Splitting that into the full 2x2 (GCC's
+auto-vectorizer and Gibbon's SIMD pass varied independently) plus the SSE4.1
+axis exists to *attribute* a speedup between them, which is the point of the
+arithmetic-intensity experiment and noise on application traversals — measured
+over the suite's 17 map passes, the six configurations differ by ~9% end to end
+and mostly reflect code layout. Five configurations are therefore neither built
+nor reported.
+
+`--intensity-report` switches to **arithmetic-intensity mode** (and implies
+`--verify-intensity-codegen`): the full
+vectorizer matrix, plus a per-map **vectorization vs loop+share scalar** table —
+`(pass, mul/el, ILP, scalar, SSE4.1, speedup)`. Read *that* table for what
+vectorization bought you, not the AoS-baseline tables: those divide by AoS
+recursive, whose cost also grows with arithmetic intensity, so their ratio
+*shrinks* as intensity rises even while vectorization is helping more.
+
+`ILP` comes from an optional `ilp=N` pass annotation (see `ANNOTATIONS.md`);
+`mul/el` is measured from the generated assembly, not declared.
+
+Fold sections carry **only the layout and traversal columns** (AoS/SoA x
+immutable/mutable recursive). The loopification, buffer-sharing and vectorizer
+columns are omitted because those flags fire exclusively on `OPT:MayVectorize`
+passes -- a fold-only program compiles to byte-identical C in all of them
+(verified by diffing the generated code), so any difference in those columns is
+code layout and allocator state, not an optimization.
+
+### Fold-only programs skip the map configurations
+
+For the same reason, a program declaring no map pass is **not built or run** in
+the loopification/sharing/vectorization configurations at all. Half the default
+suite is fold-only (11 of 22), so this removes ~44% of the builds and runs from
+a full sweep.
+
+The three whole-program summary tables (Total Timed Pass Runtime, Speedup, Run
+Status) are split the same way: a **Programs with map passes** table with all
+columns, and a **Fold-only programs** table with just the four layout/traversal
+columns. `missing` in Run Status means a configuration ran but produced no row —
+worth investigating — since configurations that were deliberately skipped are no
+longer shown as columns at all.
+
+Pass `--no-skip-mapless` to run them anyway -- e.g. to measure the
+representation cost that `--store-scalar-field-counts` imposes on folds, which
+is a real effect (it adds scalar-count footers that fold traversals must step
+over) and the one thing the skip hides.
 
 ---
 

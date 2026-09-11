@@ -8,7 +8,7 @@ mkTree d seed =
   then Leaf seed
   else Node (mkTree (d - 1) (seed + d)) (mkTree (d - 1) (seed + d + 1))
 
-{-# ANN scaleLeaves "OPT:CanVectorize" #-}
+{-# ANN scaleLeaves "OPT:MayVectorize" #-}
 scaleLeaves :: Int -> Tree -> Tree
 scaleLeaves k tr =
   case tr of

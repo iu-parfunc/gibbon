@@ -1,16 +1,6 @@
--- CORRECTNESS reproducer (audit finding F1/F2).
---
--- Recursive (no flags)          : prints 1056
--- --store-scalar-field-counts --enable-loopification --auto-loopification
---                              : glibc malloc assertion failure / SIGABRT
---
--- Cause: `dropMost` matches the SoA producer ABI recognised by
--- Gibbon/Passes/ScalarCountPropagation.hs:144-153 (`producerShape`), which
--- performs NO shape-preservation check, so
--- `ScalarCountCopyAll` installs the *input*+ per-chunk element counts on the
--- much shorter output value.  Gibbon/Passes/LoopifyTraversals.hs:1167,1174
--- then uses that count as an unchecked `ForE` trip count with no bounds
--- check, so `add1` writes far past the end of its output chunk.
+-- LoopifyShrinkingProducerRepro: List (Factored).
+-- Functions: mkList, dropMost, add1, sumList.
+-- Annotated: MayVectorize on add1; StoreScalarCounts on mkList.
 data List = Cons Int List | Nil
 {-# ANN type List "Factored" #-}
 
@@ -28,7 +18,7 @@ dropMost lst k = case lst of
                                  then Cons i (dropMost rst 49)
                                  else dropMost rst (k - 1)
 
-{-# ANN add1 "OPT:CanVectorize" #-}
+{-# ANN add1 "OPT:MayVectorize" #-}
 add1 :: List -> List
 add1 lst = case lst of
              Nil -> Nil

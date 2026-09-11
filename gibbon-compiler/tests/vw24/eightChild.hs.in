@@ -1,0 +1,42 @@
+-- VW-24: EIGHT children (matching OctTreeBase.hs's real arity), aggregate
+-- = sum8 of all children's `agg` fields, plus a genuinely THREADED
+-- pass-through parameter (not a constant), matching the real benchmark's
+-- `halfSize`-style field exactly.
+data T = Leaf Int32
+       | Node Int32   -- half: threaded pass-through parameter
+              Int32   -- agg: computed from all 8 children
+              T T T T T T T T
+
+{-# ANN type T "Linear" #-}
+
+sum8 :: Int32 -> Int32 -> Int32 -> Int32 -> Int32 -> Int32 -> Int32 -> Int32 -> Int32
+sum8 a b c d e f g h = a + b + c + d + e + f + g + h
+
+getAgg :: T -> Int32
+getAgg t =
+  case t of
+    Leaf v -> v
+    Node _ agg _ _ _ _ _ _ _ _ -> agg
+
+buildT :: Int -> Int32 -> T
+buildT d half =
+  if d == 0
+  then Leaf 7
+  else
+    let half2 = half + 1
+        c0 = buildT (d - 1) half2
+        c1 = buildT (d - 1) half2
+        c2 = buildT (d - 1) half2
+        c3 = buildT (d - 1) half2
+        c4 = buildT (d - 1) half2
+        c5 = buildT (d - 1) half2
+        c6 = buildT (d - 1) half2
+        c7 = buildT (d - 1) half2
+        agg = sum8 (getAgg c0) (getAgg c1) (getAgg c2) (getAgg c3)
+                   (getAgg c4) (getAgg c5) (getAgg c6) (getAgg c7)
+    in Node half agg c0 c1 c2 c3 c4 c5 c6 c7
+
+gibbon_main =
+  let t = buildT @D@ 0
+      a = getAgg t
+  in a

@@ -109,7 +109,7 @@ findWitnesses p@Prog{fundefs} = mapMExprs fn p
              else go (Map.insert (fromVarToFreeVarsTy v) (DelayVar (v,locs,t,rhs')) mp) bod
 
         VarE v         -> handle' $ VarE v
-        LitE n         -> handle' $ LitE n
+        LitE ann n     -> handle' $ LitE ann n
         CharE c        -> handle' $ CharE c
         FloatE n       -> handle' $ FloatE n
         LitSymE v      -> handle' $ LitSymE v

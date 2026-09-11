@@ -88,7 +88,7 @@ specializeFunc VarDef {varName, varBody} (t0 , t1) varMap =
             case M.lookup x vM of
               Just _  -> go bd
               Nothing -> L loc $ Ext $ LambdaE (x,t) $ go bd
-          LitE _    -> expr
+          LitE{}    -> expr
           LitSymE _ -> expr
           PrimAppE p ls -> L loc $ PrimAppE p $ L.map go ls
           MkProdE ls    -> L loc $ MkProdE $ L.map go ls
@@ -120,7 +120,7 @@ replaceLam (L _ (Ext (LambdaE (var,_) body))) ex = replace var ex body
         case b of
           VarE v2 | v == v2 -> e
           VarE _    -> error $ "unbound variable in lambda"
-          LitE _    -> expr
+          LitE{}    -> expr
           LitSymE _ -> expr
           PrimAppE p ls -> L loc $ PrimAppE p $ L.map go ls
           MkProdE ls    -> L loc $ MkProdE $ L.map go ls

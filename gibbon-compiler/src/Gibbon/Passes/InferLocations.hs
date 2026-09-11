@@ -385,6 +385,13 @@ inferDataConArg ddefs env pair =
   case pair of
     (e, lv) -> inferExp ddefs env e (SingleDest lv)
 
+-- | Serialized size of a scalar integer constructor field: exactly the
+-- width's own byte count, for every width including W64.  Just
+-- 'intWidthBytes'; the 'DynFlags' parameter is kept only so callers do not
+-- need to change.
+intFieldSize :: DynFlags -> IntWidth -> Int
+intFieldSize _dflags w = intWidthBytes w
+
 argSizeForDataCon :: DynFlags -> FullEnv -> Exp2 -> TiM DCArg
 argSizeForDataCon dflags env arg =
   case arg of
@@ -392,7 +399,7 @@ argSizeForDataCon dflags env arg =
       case lookupVEnv v env of
         CursorTy -> return $ ArgFixed 8
         CursorArrayTy sz -> return $ ArgFixed (8 * sz)
-        IntTy -> return $ ArgFixed (fromJust $ sizeOfTyD dflags IntTy)
+        IntTy w -> return $ ArgFixed (intFieldSize dflags w)
         FloatTy -> return $ ArgFixed (fromJust $ sizeOfTyD dflags FloatTy)
         SymTy -> return $ ArgFixed (fromJust $ sizeOfTyD dflags SymTy)
         BoolTy -> return $ ArgFixed (fromJust $ sizeOfTyD dflags BoolTy)
@@ -401,7 +408,7 @@ argSizeForDataCon dflags env arg =
         ListTy elt -> return $ ArgFixed (fromJust $ sizeOfTyD dflags (ListTy elt))
         PackedTy{} -> return $ ArgVar v
         _ -> return $ ArgVar v
-    LitE{} -> return $ ArgFixed (fromJust $ sizeOfTyD dflags IntTy)
+    LitE ann _ -> return $ ArgFixed (intFieldSize dflags (litWidth ann))
     FloatE{} -> return $ ArgFixed (fromJust $ sizeOfTyD dflags FloatTy)
     LitSymE{} -> return $ ArgFixed (fromJust $ sizeOfTyD dflags SymTy)
     PrimAppE MkTrue [] -> return $ ArgFixed (fromJust $ sizeOfTyD dflags BoolTy)
@@ -992,7 +999,7 @@ inferExp ddefs env@FullEnv{dataDefs} ex0 dest =
 
     SyncE -> pure (SyncE, ProdTy [], [])
 
-    LitE n  -> return (LitE n, IntTy, [])
+    LitE ann n -> return (LitE ann n, IntTy (litWidth ann), [])
     CharE n -> return (CharE n, CharTy, [])
     FloatE n-> return (FloatE n, FloatTy, [])
 
@@ -1157,7 +1164,7 @@ inferExp ddefs env@FullEnv{dataDefs} ex0 dest =
                                                   VarE v -> case lookupVEnv v env of 
                                                                 PackedTy tycon loc -> lift $ lift $ freshCommonLoc "new" loc
                                                                 _ -> fresh
-                                                  LitE l -> fresh
+                                                  LitE{} -> fresh
                                                   FloatE f -> fresh
                                                   LitSymE s -> fresh
                                                   _ -> error $ "DataConE: SoA: expected exp, got " ++ (show exp)  
@@ -1186,8 +1193,23 @@ inferExp ddefs env@FullEnv{dataDefs} ex0 dest =
                                                  CursorTy -> return $ ArgFixed 8
                                                  CursorArrayTy sz -> return $ ArgFixed (8 * sz)
                                                --CursorTy -> return $ ArgFixed 8
-                                                 IntTy -> return $ ArgFixed 0
-                                               --IntTy -> return $ ArgFixed (fromJust $ sizeOfTyD dflags IntTy)
+                                                 -- Every integer width, not just W64: an SoA scalar
+                                                 -- field's ArgFixed payload is always 0 regardless of
+                                                 -- width (see the sibling cases below -- Float/Sym/
+                                                 -- Bool/Char are also always 0 here), because SoA gives
+                                                 -- each field its own buffer, so there is no byte offset
+                                                 -- for this constraint to carry: the actual per-write
+                                                 -- cursor advance happens downstream, sized from the
+                                                 -- field's real type at that point, not from this
+                                                 -- constraint.  Before this fix, only IntTy W64 matched
+                                                 -- here; IntTy W8/W16/W32 fell through to the ArgVar
+                                                 -- catch-all far below, misclassifying a statically
+                                                 -- sized field as variable-length and routing it into
+                                                 -- AfterVariableL/AfterVariableLE -- the "TODO"/silent-
+                                                 -- corruption path in Cursorize.cursorizeLocExp -- for
+                                                 -- narrow widths only.  This is the actual root cause
+                                                 -- of that limitation, not a Cursorize bug.
+                                                 (IntTy _) -> return $ ArgFixed 0
                                                  FloatTy -> return $ ArgFixed 0
                                                --FloatTy -> return $ ArgFixed (fromJust $ sizeOfTyD dflags FloatTy)
                                                  SymTy -> return $ ArgFixed 0
@@ -1203,7 +1225,7 @@ inferExp ddefs env@FullEnv{dataDefs} ex0 dest =
                                                                        else return $ ArgFixed 0
                                                  _ -> return $ ArgVar v --error $  "inferExp: DataConE SoA: offset for type not implemented! var: " ++ (show v)
                           -- TODO: fix these to get the correct offset for an SoA loc.
-                          (LitE _) -> return $ ArgFixed 0 --(fromJust $ sizeOfTyD dflags IntTy)
+                          (LitE{}) -> return $ ArgFixed 0 --(fromJust $ sizeOfTyD dflags (IntTy W64))
                           (FloatE _) -> return $ ArgFixed 0 --(fromJust $ sizeOfTyD dflags FloatTy)
                           (LitSymE _) -> return $ ArgFixed 0 --(fromJust $ sizeOfTyD dflags SymTy)
                           (PrimAppE MkTrue []) -> return $ ArgFixed 0 -- (fromJust $ sizeOfTyD dflags BoolTy)
@@ -1531,7 +1553,7 @@ inferExp ddefs env@FullEnv{dataDefs} ex0 dest =
         SingleDest d -> err $ "Cannot unify primop " ++ sdoc pr ++ " with destination " ++ sdoc dest ++ "in " ++ sdoc ex0
         TupleDest  d ->
           case pr of
-            PrintInt -> inferExp ddefs env ex0 NoDest
+            PrintInt{} -> inferExp ddefs env ex0 NoDest
             PrintFloat -> inferExp ddefs env ex0 NoDest
             PrintBool -> inferExp ddefs env ex0 NoDest
             PrintSym -> inferExp ddefs env ex0 NoDest
@@ -1596,7 +1618,7 @@ inferExp ddefs env@FullEnv{dataDefs} ex0 dest =
           let args2 = map (\e -> case e of
                                    (VarE v) -> VarE v
                                    (LitSymE v) -> LitSymE v
-                                   (LitE n) -> LitE n
+                                   (LitE ann n) -> LitE ann n
                                    (FloatE n) -> FloatE n
                                    oth -> error $ "inferExp: spawne, arg not simple: " ++ sdoc oth)
                           args
@@ -1621,11 +1643,11 @@ inferExp ddefs env@FullEnv{dataDefs} ex0 dest =
 
         LetE{} -> err $ "Expected let spine, encountered nested lets: " ++ sdoc ex0
 
-        LitE i -> do
-          (bod',ty',cs') <- inferExp ddefs (extendVEnv vr IntTy env) bod dest
+        LitE annI i -> do
+          (bod',ty',cs') <- inferExp ddefs (extendVEnv vr (IntTy (litWidth annI)) env) bod dest
           (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', cs')
           fcs <- tryInRegion cs''
-          tryBindReg (L2.LetE (vr,[],IntTy,L2.LitE i) bod'', ty'', fcs)
+          tryBindReg (L2.LetE (vr,[],IntTy (litWidth annI),L2.LitE annI i) bod'', ty'', fcs)
 
         CharE i -> do
           (bod',ty',cs') <- inferExp ddefs (extendVEnv vr CharTy env) bod dest
@@ -1677,7 +1699,7 @@ inferExp ddefs env@FullEnv{dataDefs} ex0 dest =
         -- Don't process the StartOf or SizeOf operation at all, just recur through it
         PrimAppE RequestSizeOf [(VarE v)] -> do
           (bod',ty',cs') <- inferExp ddefs (extendVEnv vr CursorTy env) bod dest
-          return (L2.LetE (vr,[],IntTy, L2.PrimAppE RequestSizeOf [(L2.VarE v)]) bod', ty', cs')
+          return (L2.LetE (vr,[],(IntTy W64), L2.PrimAppE RequestSizeOf [(L2.VarE v)]) bod', ty', cs')
 
         PrimAppE (DictInsertP dty) ls -> do
           (e,ty,cs) <- inferExp ddefs env (PrimAppE (DictInsertP dty) ls) NoDest
@@ -1761,7 +1783,7 @@ inferExp ddefs env@FullEnv{dataDefs} ex0 dest =
           dbgTrace minChatLvl "Print constratints for Let DataConE: " dbgTrace minChatLvl (sdoc (rty, rhs, rhs', locTy, fcs, bindegRegion)) dbgTrace minChatLvl "End constraints let DataConE.\n" return $ bindegRegion
 
         LitSymE x       -> do
-          (bod',ty',cs') <- inferExp ddefs (extendVEnv vr IntTy env) bod dest
+          (bod',ty',cs') <- inferExp ddefs (extendVEnv vr (IntTy W64) env) bod dest
           (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', cs')
           fcs <- tryInRegion cs''
           tryBindReg (L2.LetE (vr,[],SymTy,L2.LitSymE x) bod'', ty'', fcs)
@@ -1888,7 +1910,7 @@ finishExp :: Exp2 -> TiM (Exp2)
 finishExp e = 
     case e of
       VarE v -> return $ VarE v
-      LitE i -> return $ LitE i
+      LitE ann i -> return $ LitE ann i
       CharE i -> return $ CharE i
       FloatE i  -> return $ FloatE i
       LitSymE v -> return $ LitSymE v
@@ -2034,7 +2056,7 @@ cleanExp :: Exp2 -> (Exp2, S.Set LocVar)
 cleanExp e =
     case e of
       VarE v -> (VarE v, S.empty)
-      LitE v -> (LitE v, S.empty)
+      LitE ann v -> (LitE ann v, S.empty)
       CharE v -> (CharE v, S.empty)
       FloatE v -> (FloatE v, S.empty)
       LitSymE v -> (LitSymE v, S.empty)
@@ -2181,7 +2203,7 @@ fixProj renam pvar proj e =
       VarE v -> case M.lookup v renam of
                   Nothing -> VarE v
                   Just v' -> VarE v'
-      LitE v -> LitE v
+      LitE ann v -> LitE ann v
       CharE v -> CharE v
       FloatE v -> FloatE v
       LitSymE v -> LitSymE v
@@ -2623,12 +2645,12 @@ assumeEq a1 a2 =
 -- | Convert a prim from L1 to L2
 prim :: DDefs1 -> Prim Ty1 -> PassM (Prim Ty2)
 prim ddefs p = case p of
-           AddP -> return AddP
-           SubP -> return SubP
-           MulP -> return MulP
-           DivP -> return DivP
-           ModP -> return ModP
-           ExpP -> return ExpP
+           AddP a -> return (AddP a)
+           SubP a -> return (SubP a)
+           MulP a -> return (MulP a)
+           DivP a -> return (DivP a)
+           ModP a -> return (ModP a)
+           ExpP a -> return (ExpP a)
            FAddP -> return FAddP
            FSubP -> return FSubP
            FMulP -> return FMulP
@@ -2639,11 +2661,12 @@ prim ddefs p = case p of
            RandP-> return RandP
            FRandP->return FRandP
            FloatToIntP->return FloatToIntP
-           IntToFloatP->return IntToFloatP
-           LtP  -> return LtP
-           GtP  -> return GtP
-           LtEqP-> return LtEqP
-           GtEqP-> return GtEqP
+           IntToFloatP a->return (IntToFloatP a)
+           IntConvertP a dst->return (IntConvertP a dst)
+           LtP a  -> return (LtP a)
+           GtP a  -> return (GtP a)
+           LtEqP a-> return (LtEqP a)
+           GtEqP a-> return (GtEqP a)
            FLtP  -> return FLtP
            FGtP  -> return FGtP
            FLtEqP-> return FLtEqP
@@ -2652,7 +2675,7 @@ prim ddefs p = case p of
            AndP -> return AndP
            EqSymP -> return EqSymP
            EqBenchProgP str -> return (EqBenchProgP str)
-           EqIntP -> return EqIntP
+           EqIntP a -> return (EqIntP a)
            EqFloatP -> return EqFloatP
            EqCharP  -> return EqCharP
            MkTrue -> return MkTrue
@@ -2660,12 +2683,15 @@ prim ddefs p = case p of
            Gensym  -> return Gensym
            SizeParam -> return SizeParam
            IsBig    -> return IsBig
-           PrintInt -> return PrintInt
+           PrintInt a -> return (PrintInt a)
            PrintChar -> return PrintChar
            PrintFloat -> return PrintFloat
            PrintBool -> return PrintBool
            PrintSym -> return PrintSym
-           ReadInt  -> return PrintInt
+           -- NOTE: this said `return PrintInt` before widths were added to
+           -- PrintInt, which was plainly a copy-paste bug (ReadInt and PrintInt
+           -- differ in arity and meaning).
+           ReadInt  -> return ReadInt
            RequestSizeOf -> return RequestSizeOf
            ErrorP sty ty -> convertTy ddefs ty >>= \ty -> return (ErrorP sty ty)
            DictEmptyP dty  -> convertTy ddefs dty >>= return . DictEmptyP
@@ -3170,21 +3196,21 @@ tester1 e = case fst $ fst $ runPassM 0 $ St.runStateT (runExceptT (inferExp emp
               Left a -> err $ show a
 
 t1 :: Exp2
-t1 = tester1 (LitE 3)
+t1 = tester1 (mkLitE64 3)
 
 --  id  :: Tree -> Tree
 --  id' :: forall l1 in r1, l2 in r2 . Tree l1 -> Tree l2
 
 t2 :: Exp2
 t2 = tester1 $
-     LetE ("x",[],IntTy,LitE 1) $
-     LetE ("y",[],IntTy,LitE 2) $
-     LetE ("z",[],IntTy,PrimAppE L1.AddP [VarE "x", VarE "y"]) $
+     LetE ("x",[],(IntTy W64),mkLitE64 1) $
+     LetE ("y",[],(IntTy W64),mkLitE64 2) $
+     LetE ("z",[],(IntTy W64),PrimAppE L1.addP64 [VarE "x", VarE "y"]) $
      VarE "z"
 
 ddtree :: DDefs Ty2
 ddtree = fromListDD [DDef (toVar "Tree")
-                      [ ("Leaf",[(False,IntTy)])
+                      [ ("Leaf",[(False,(IntTy W64))])
                       , ("Node",[ (False,PackedTy "Tree" "l")
                                 , (False,PackedTy "Tree" "l")])
                       ]]
@@ -3202,50 +3228,50 @@ tester2 e = case fst $ fst $ runPassM 0 $ St.runStateT (runExceptT (inferExp' tr
 
 t3 :: Exp2
 t3 = tester2 $
-     LetE ("x",[],IntTy,LitE 1) $
-     LetE ("y",[],IntTy,LitE 2) $
+     LetE ("x",[],(IntTy W64),mkLitE64 1) $
+     LetE ("y",[],(IntTy W64),mkLitE64 2) $
      LetE ("z",[],PackedTy "Tree" (), DataConE () "Leaf" [VarE "x", VarE "y"]) $
-     LitE 0
+     mkLitE64 0
 
 t4 :: Exp2
 t4 = tester2 $
-     LetE ("x1",[],IntTy,LitE 1) $
-     LetE ("y1",[],IntTy,LitE 2) $
+     LetE ("x1",[],(IntTy W64),mkLitE64 1) $
+     LetE ("y1",[],(IntTy W64),mkLitE64 2) $
      LetE ("z1",[],PackedTy "Tree" (), DataConE () "Leaf" [VarE "x1", VarE "y1"]) $
-     LetE ("x2",[],IntTy,LitE 3) $
-     LetE ("y2",[],IntTy,LitE 4) $
+     LetE ("x2",[],(IntTy W64),mkLitE64 3) $
+     LetE ("y2",[],(IntTy W64),mkLitE64 4) $
      LetE ("z2",[],PackedTy "Tree" (), DataConE () "Leaf" [VarE "x2", VarE "y2"]) $
-     LitE 0
+     mkLitE64 0
 
 t5 :: Exp2
 t5 = tester2 $
-     LetE ("x1",[],IntTy,LitE 1) $
-     LetE ("y1",[],IntTy,LitE 2) $
+     LetE ("x1",[],(IntTy W64),mkLitE64 1) $
+     LetE ("y1",[],(IntTy W64),mkLitE64 2) $
      LetE ("z1",[],PackedTy "Tree" (), DataConE () "Leaf" [VarE "x1", VarE "y1"]) $
-     LetE ("x2",[],IntTy,LitE 3) $
-     LetE ("y2",[],IntTy,LitE 4) $
+     LetE ("x2",[],(IntTy W64),mkLitE64 3) $
+     LetE ("y2",[],(IntTy W64),mkLitE64 4) $
      LetE ("z2",[],PackedTy "Tree" (), DataConE () "Leaf" [VarE "x2", VarE "y2"]) $
      LetE ("z3",[],PackedTy "Tree" (), DataConE () "Node" [VarE "z1", VarE "z2"]) $
-     LitE 0
+     mkLitE64 0
 
 t6 :: Exp2
 t6 = tester2 $
-     LetE ("x1",[],IntTy,LitE 1) $
-     LetE ("y1",[],IntTy,LitE 2) $
+     LetE ("x1",[],(IntTy W64),mkLitE64 1) $
+     LetE ("y1",[],(IntTy W64),mkLitE64 2) $
      LetE ("z1",[],PackedTy "Tree" (), DataConE () "Leaf" [VarE "x1", VarE "y1"]) $
-     LetE ("x2",[],IntTy,LitE 3) $
-     LetE ("y2",[],IntTy,LitE 4) $
+     LetE ("x2",[],(IntTy W64),mkLitE64 3) $
+     LetE ("y2",[],(IntTy W64),mkLitE64 4) $
      LetE ("z2",[],PackedTy "Tree" (), DataConE () "Leaf" [VarE "x2", VarE "y2"]) $
      LetE ("z3",[],PackedTy "Tree" (), DataConE () "Node" [VarE "z1", VarE "z2"]) $
      CaseE (VarE "z3") [("Leaf", [("x",())], VarE "x"),
-                              ("Node", [("x",()),("y",())], LitE 1)]
+                              ("Node", [("x",()),("y",())], mkLitE64 1)]
 
 
 exadd1Bod :: L L1.Exp1
 exadd1Bod = l$
     CaseE (VarE "tr") $
       [ ("Leaf", [("n",())],
-         LetE ("leaf1",[],L1.Packed "Tree", PrimAppE L1.AddP [VarE "n", LitE 1])
+         LetE ("leaf1",[],L1.Packed "Tree", PrimAppE L1.addP64 [VarE "n", mkLitE64 1])
            (DataConE () "Leaf"
              [VarE "leaf1"]))
       , ("Node", [("x",()),("y",())],
@@ -3261,7 +3287,7 @@ treeTy = L1.Packed "Tree"
 
 treeDD :: DDefs (UrTy ())
 treeDD = (fromListDD [L1.DDef "Tree"
-                      [ ("Leaf",[(False,IntTy)])
+                      [ ("Leaf",[(False,(IntTy W64))])
                       , ("Node",[(False,L1.Packed "Tree")
                                 ,(False,L1.Packed "Tree")])]])
 
@@ -3304,7 +3330,7 @@ deleteMany (x:xs) = deleteMany xs . deleteOne x -- Delete one, then the rest.
 orderOfVarsOutputDataConE :: Exp1 -> [Var]
 orderOfVarsOutputDataConE exp = case exp of
   VarE v    -> []
-  LitE _    -> []
+  LitE{}    -> []
   CharE _   -> []
   FloatE{}  -> []
   LitSymE _ -> []

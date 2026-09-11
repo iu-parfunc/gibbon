@@ -485,19 +485,63 @@ collectBinds collect loc ex0 =
               else
                 let (acc1,bod') = go mode acc bod
                 in ((v,locs,ty,rhs) : acc1, bod')
+        -- Note [A hoisted write must be control-independent]
+        -- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        -- 'collectBinds' LIFTS what it collects: the caller re-emits the
+        -- returned binds at the 'AllocateTagHere' / 'AllocateScalarsHere'
+        -- marker, which sits on the straight-line path, and drops them from
+        -- where they were.  A bind may therefore only be collected if it
+        -- executes on every path through that marker.  A write inside one arm
+        -- of a conditional does not.
+        --
+        -- This case used to descend into both arms and return @acc2 ++ acc3@.
+        -- Two mutually exclusive constructor writes then became two
+        -- UNCONDITIONAL writes to the same cursor, in sequence, and the second
+        -- one won.  For
+        --
+        --     let rst = mkT (n-1)
+        --      in if n < 3 then A n rst else B (n+200) rst
+        --
+        -- the emitted C was
+        --
+        --     *(GibPackedTag *) loc_390 = 0;   /* A, hoisted out of the arm */
+        --     *(GibPackedTag *) loc_390 = 1;   /* B, hoisted out, clobbers A */
+        --     mkT(..., loc_471, n-1);
+        --     if (n < 3) { *(GibInt64 *) (loc_390+1) = n; } else { ... }
+        --
+        -- so every node came back tagged B carrying the A arm's field, and
+        -- deeper inputs walked off the end.  It reproduced at plain --packed,
+        -- in both Linear and Factored layouts, with no optimization flags.
+        --
+        -- The same reasoning applies to 'CaseE': its arms are mutually
+        -- exclusive too, and the old fold threaded one accumulator through all
+        -- of them, lifting every arm's writes to a single point.
+        --
+        -- What is safe, and is what happens now: the scrutinee is on the
+        -- straight-line path, so binds found there are still lifted; each arm
+        -- collects into its OWN accumulator, which is re-emitted at the head of
+        -- that arm.  Writes still move earlier -- ahead of any packed field
+        -- written later in the same arm, which is the reordering this pass
+        -- exists to perform -- but they never cross the join, so they can never
+        -- execute on a path that did not select them.  A one-constructor
+        -- producer has nothing between its marker and its write, so it is
+        -- unaffected.
+        --
+        -- Lifting only from the scrutinee also fixes a latent duplication in
+        -- the old code: @acc2@ and @acc3@ each already contained @acc1@, so any
+        -- bind collected before the conditional was emitted twice.
         IfE a b c  ->
           let (acc1,a') = go mode acc a
-              (acc2,b') = go mode acc1 b
-              (acc3,c') = go mode acc1 c
-          in (acc2++acc3, IfE a' b' c')
+              (accB,b') = go mode [] b
+              (accC,c') = go mode [] c
+          in (acc1, IfE a' (mkLets accB b') (mkLets accC c'))
         CaseE scrt brs ->
-          let (acc0,brs') =
-                foldr (\(a,b,c) (acc',es) ->
-                         let (acc'',c') = go mode acc' c
-                         in (acc'', (a,b,c'):es))
-                      (acc,[])
-                      brs
-          in (acc0, CaseE scrt brs')
+          let (acc1,scrt') = go mode acc scrt
+              brs' = map (\(a,b,c) ->
+                            let (accBr,c') = go mode [] c
+                            in (a,b,mkLets accBr c'))
+                         brs
+          in (acc1, CaseE scrt' brs')
         WithArenaE ar bod ->
           let (acc',bod') = go mode acc bod
           in (acc', WithArenaE ar bod')

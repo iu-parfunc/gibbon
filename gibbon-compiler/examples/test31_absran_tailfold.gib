@@ -1,0 +1,35 @@
+#lang gibbon
+
+;; VW-23 regression (second root cause).  Correctness-only, NOT a benchmark.
+;;
+;; The list element `W` holds a packed field, so `addRAN` gives `ConsW` a
+;; random-access node and the tail `ys` is reached through it.  Under
+;; --use-mutable-cursors the pass used to claim the mutable cursor pointed at
+;; that RAN-reached tail without ever moving it, so the tail call re-read the
+;; element and the fold stopped after one step: this printed 1 instead of 2.
+;;
+;; The data is asymmetric on purpose -- match, miss, match -- so "stopped after
+;; the first element" (1), "dropped the last" (1), "dropped the first" (1) and
+;; "counted everything" (3) are all distinguishable from the correct 2.
+
+(data HS [NilH] [ConsH Int HS])
+(data W  [MkW Int HS])
+(data WL [NilW] [ConsW W WL])
+
+(define (elemh [x : Int] [hs : HS]) : Bool
+  (case hs
+    [(NilH) False]
+    [(ConsH y ys) (if (= x y) True (elemh x ys))]))
+
+(define (hasit [w : W]) : Bool
+  (case w [(MkW i hs) (elemh 7 hs)]))
+
+(define (cnt [acc : Int] [xs : WL]) : Int
+  (case xs
+    [(NilW) acc]
+    [(ConsW y ys) (if (hasit y) (cnt (+ acc 1) ys) (cnt acc ys))]))
+
+(let ([l : WL (ConsW (MkW 0 (ConsH 7 (NilH)))
+                     (ConsW (MkW 1 (ConsH 3 (NilH)))
+                            (ConsW (MkW 2 (ConsH 7 (NilH))) (NilW))))])
+  (cnt 0 l))

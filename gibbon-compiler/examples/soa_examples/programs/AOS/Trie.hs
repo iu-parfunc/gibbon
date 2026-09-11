@@ -1,14 +1,17 @@
--- @BENCH adt_fields=10
+-- Trie: Trie (Linear).
+-- Functions: absI, mixSeed, buildTrie, sumPrefixFreq, countTerminals,
+-- sumSubtreeHints, autocompleteTopKProxy, countLazyNodes. ...
+-- Annotated: MayVectorize on decayTrieStats, resetTraversalState.
 data Trie
-  = TNode Int  -- character code
-          Int  -- prefix frequency
-          Int  -- subtree hint count
-          Int  -- node flags
+  = TNode Int64  -- character code
+          Int64  -- prefix frequency
+          Int64  -- subtree hint count
+          Int64  -- node flags
           Trie Trie
-  | TLeaf Int  -- terminal count
-          Int  -- word id
-          Int  -- leaf score
-          Int  -- leaf metadata
+  | TLeaf Int64  -- terminal count
+          Int64  -- word id
+          Int64  -- leaf score
+          Int64  -- leaf metadata
   | TEmpty
 
 {-# ANN type Trie "Linear" #-}
@@ -76,7 +79,7 @@ autocompleteTopKProxy :: Trie -> Int -> Int
 autocompleteTopKProxy t minScore =
   case t of
     TLeaf term _ score _ ->
-      if score >= minScore then term * score else 0
+      if score >= minScore then (term * score) else 0
     TNode _ freq _ _ l r ->
       freq + autocompleteTopKProxy l minScore + autocompleteTopKProxy r minScore
     TEmpty ->
@@ -94,8 +97,10 @@ countLazyNodes t metaCut =
     TEmpty ->
       0
 
--- Map 1: decay prefix frequencies and leaf scores to emulate time-window refresh.
-{-# ANN decayTrieStats "OPT:CanVectorize" #-}
+-- Map 1: decay prefix frequencies and leaf scores to emulate time-window
+-- refresh.  `k` is Int, matching the fields it multiplies, so this
+-- MayVectorize loop needs no width-changing conversion in its body.
+{-# ANN decayTrieStats "OPT:MayVectorize" #-}
 decayTrieStats :: Trie -> Int -> Trie
 decayTrieStats t k =
   case t of
@@ -112,7 +117,7 @@ decayTrieStats t k =
       TEmpty
 
 -- Map 2: clear traversal flags and transient leaf metadata for next query batch.
-{-# ANN resetTraversalState "OPT:CanVectorize" #-}
+{-# ANN resetTraversalState "OPT:MayVectorize" #-}
 resetTraversalState :: Trie -> Trie
 resetTraversalState t =
   case t of
@@ -155,12 +160,12 @@ gibbon_main =
        lazyN = iterate (countLazyNodes trie 4)
        _ = printsym (quote "End")
        _ = printsym (quote "NEWLINE")
-       _ = printsym (quote "Running pass decayTrieStats (map, uses=10): ")
+       _ = printsym (quote "Running pass decayTrieStats (map, uses=10, shared=5): ")
        _ = printsym (quote "NEWLINE")
        trie' = iterate (decayTrieStats trie 9)
        _ = printsym (quote "End")
        _ = printsym (quote "NEWLINE")
-       _ = printsym (quote "Running pass resetTraversalState (map, uses=10): ")
+       _ = printsym (quote "Running pass resetTraversalState (map, uses=10, shared=6): ")
        _ = printsym (quote "NEWLINE")
        trie'' = iterate (resetTraversalState trie')
        _ = printsym (quote "End")

@@ -1,17 +1,20 @@
+-- OctTreeBase: Octree (Linear).
+-- Functions: absI, maxI, sum8, mixSeed, massOf, weightedPos, countOf,
+-- momentumOf. ...
+-- Annotated: MayVectorize on scaleEnergy, clearFlags.
 module OctTreeBase where
 
--- @BENCH adt_fields=16
 data Octree
-  = Cell Int  -- aggregate mass of the cell
-         Int  -- center-of-mass position (1D proxy)
-         Int  -- number of contained particles
-         Int  -- half-size of the cell
-         Int  -- aggregate momentum
+  = Cell Int64  -- aggregate mass of the cell
+         Int64  -- center-of-mass position (1D proxy)
+         Int64  -- number of contained particles
+         Int64  -- half-size of the cell
+         Int64  -- aggregate momentum
          Octree Octree Octree Octree
          Octree Octree Octree Octree
-  | Particle Int  -- mass
-             Int  -- position
-             Int  -- velocity
+  | Particle Int64  -- mass
+             Int64  -- position
+             Int64  -- velocity
   | EmptyOct
 
 {-# ANN type Octree "Linear" #-}
@@ -28,7 +31,7 @@ sum8 a b c d e f g h = a + b + c + d + e + f + g + h
 mixSeed :: Int -> Int -> Int
 mixSeed s salt = s * 1103 + salt * 97 + 13
 
-massOf :: Octree -> Int
+massOf :: Octree -> Int64
 massOf t =
   case t of
     Cell m _ _ _ _ _ _ _ _ _ _ _ _ ->
@@ -38,7 +41,7 @@ massOf t =
     EmptyOct ->
       0
 
-weightedPos :: Octree -> Int
+weightedPos :: Octree -> Int64
 weightedPos t =
   case t of
     Cell m c _ _ _ _ _ _ _ _ _ _ _ ->
@@ -48,7 +51,7 @@ weightedPos t =
     EmptyOct ->
       0
 
-countOf :: Octree -> Int
+countOf :: Octree -> Int64
 countOf t =
   case t of
     Cell _ _ n _ _ _ _ _ _ _ _ _ _ ->
@@ -58,7 +61,7 @@ countOf t =
     EmptyOct ->
       0
 
-momentumOf :: Octree -> Int
+momentumOf :: Octree -> Int64
 momentumOf t =
   case t of
     Cell _ _ _ _ mom _ _ _ _ _ _ _ _ ->
@@ -115,7 +118,7 @@ buildOctree d seed center half =
     in Cell mTot com nTot half pTot c0 c1 c2 c3 c4 c5 c6 c7
 
 -- Reduction 1: total mass.
-sumMass :: Octree -> Int
+sumMass :: Octree -> Int64
 sumMass t =
   case t of
     Cell _ _ _ _ _ a b c d e f g h ->
@@ -127,8 +130,9 @@ sumMass t =
     EmptyOct ->
       0
 
--- Reduction 2: kinetic energy plus coarse potential using cached cell aggregates.
-sumEnergy :: Octree -> Int
+-- Reduction 2: kinetic energy plus coarse potential using cached cell
+-- aggregates, native Int64 throughout.
+sumEnergy :: Octree -> Int64
 sumEnergy t =
   case t of
     Cell m c _ s mom a b c1 d e f g h ->
@@ -144,7 +148,7 @@ sumEnergy t =
       0
 
 -- Reduction 3: count cells that fail Barnes-Hut opening criterion and need refinement.
-countActive :: Octree -> Int -> Int
+countActive :: Octree -> Int64 -> Int64
 countActive t theta =
   case t of
     Cell _ c _ s _ a b c1 d e f g h ->
@@ -162,7 +166,7 @@ countActive t theta =
       0
 
 -- Reduction 4: particle count.
-countParticles :: Octree -> Int
+countParticles :: Octree -> Int64
 countParticles t =
   case t of
     Particle _ _ _ ->
@@ -175,7 +179,8 @@ countParticles t =
       0
 
 -- Barnes-Hut pass: uses cell aggregate when far, descends when near.
-barnesHutPotential :: Octree -> Int -> Int -> Int
+-- Native Int64 throughout.
+barnesHutPotential :: Octree -> Int64 -> Int64 -> Int64
 barnesHutPotential t probe theta =
   case t of
     Cell m c n s _ a b c1 d e f g h ->
@@ -199,8 +204,9 @@ barnesHutPotential t probe theta =
     EmptyOct ->
       0
 
--- Upward multipole truncation using only mass and dipole proxy.
-fmmUpSeries :: Int -> Int -> Int -> Int
+-- Upward multipole truncation using only mass and dipole proxy. Native
+-- Int64 throughout.
+fmmUpSeries :: Int64 -> Int64 -> Int64 -> Int64
 fmmUpSeries m dip order =
   if order <= 0
   then m * 100
@@ -210,7 +216,8 @@ fmmUpSeries m dip order =
     in prev + corr
 
 -- Downward/local evaluation truncation using cell size and momentum proxy.
-fmmDownSeries :: Int -> Int -> Int -> Int -> Int -> Int
+-- Native Int64 throughout, same rationale as `fmmUpSeries`.
+fmmDownSeries :: Int64 -> Int64 -> Int64 -> Int64 -> Int64 -> Int64
 fmmDownSeries m mom s dist order =
   if order <= 0
   then (m * 100) / dist
@@ -221,8 +228,9 @@ fmmDownSeries m mom s dist order =
     in prev + corr
 
 -- Single-pass FMM approximation:
--- combines upward-style multipole accumulation with downward-style far/near evaluation.
-fmmPotential :: Octree -> Int -> Int -> Int -> Int
+-- combines upward-style multipole accumulation with downward-style far/near
+-- evaluation. Native Int64 throughout.
+fmmPotential :: Octree -> Int64 -> Int64 -> Int64 -> Int64
 fmmPotential t probe order eta =
   case t of
     Cell m c _ s mom a b c1 d e f g h ->
@@ -250,8 +258,8 @@ fmmPotential t probe order eta =
       0
 
 -- Map 1: damp momentum and scale velocities (models global timestep update).
-{-# ANN scaleEnergy "OPT:CanVectorize" #-}
-scaleEnergy :: Octree -> Int -> Octree
+{-# ANN scaleEnergy "OPT:MayVectorize" #-}
+scaleEnergy :: Octree -> Int64 -> Octree
 scaleEnergy t k =
   case t of
     Cell m c n s mom a b c1 d e f g h ->
@@ -266,7 +274,7 @@ scaleEnergy t k =
       EmptyOct
 
 -- Map 2: clear per-node particle-count cache for a fresh accumulation phase.
-{-# ANN clearFlags "OPT:CanVectorize" #-}
+{-# ANN clearFlags "OPT:MayVectorize" #-}
 clearFlags :: Octree -> Octree
 clearFlags t =
   case t of
@@ -278,4 +286,3 @@ clearFlags t =
       Particle m p v
     EmptyOct ->
       EmptyOct
-

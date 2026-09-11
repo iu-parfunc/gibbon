@@ -41,7 +41,7 @@ directL3 prg@(Prog ddfs fndefs mnExp) = do
     go env2 ex =
       case ex of
         VarE v    -> VarE v
-        LitE n    -> LitE n
+        LitE ann n -> LitE ann n
         CharE c   -> CharE c
         FloatE n  -> FloatE n
         LitSymE v -> LitSymE v
@@ -78,7 +78,8 @@ directL3 prg@(Prog ddfs fndefs mnExp) = do
     goTy :: Ty1 -> Ty3
     goTy ty =
       case ty of
-        IntTy  -> IntTy
+        -- Keep the exact width (the non-packed L1 -> L3 path).
+        IntTy w  -> IntTy w
         CharTy -> CharTy
         FloatTy-> FloatTy
         SymTy -> SymTy

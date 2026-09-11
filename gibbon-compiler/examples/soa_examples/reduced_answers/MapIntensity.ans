@@ -1,0 +1,26 @@
+Running program MapIntensity: 
+Running pass mapAI0 (map, uses=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapAI1 (map, uses=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapAI2 (map, uses=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapAI4 (map, uses=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapAI8 (map, uses=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass mapAI16 (map, uses=1): 
+ITERS: 1
+SIZE: 1
+End
+'#(2080 8384 25472 1968512 348410813312 6906862201810515840 64)

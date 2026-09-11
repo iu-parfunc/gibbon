@@ -7,7 +7,7 @@ mkList n =
   then Nil
   else Cons n (mkList (n - 1))
 
-{-# ANN add3 "OPT:CanVectorize" #-}
+{-# ANN add3 "OPT:MayVectorize" #-}
 add3 :: List -> List
 add3 xs =
   case xs of

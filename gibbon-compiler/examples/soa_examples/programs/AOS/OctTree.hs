@@ -248,7 +248,7 @@ fmmPotential t probe order eta =
       0
 
 -- Map 1: damp momentum and scale velocities (models global timestep update).
-{-# ANN scaleEnergy "OPT:CanVectorize" #-}
+{-# ANN scaleEnergy "OPT:MayVectorize" #-}
 scaleEnergy :: Octree -> Int -> Octree
 scaleEnergy t k =
   case t of
@@ -264,7 +264,7 @@ scaleEnergy t k =
       EmptyOct
 
 -- Map 2: clear per-node particle-count cache for a fresh accumulation phase.
-{-# ANN clearFlags "OPT:CanVectorize" #-}
+{-# ANN clearFlags "OPT:MayVectorize" #-}
 clearFlags :: Octree -> Octree
 clearFlags t =
   case t of
@@ -312,12 +312,12 @@ gibbon_main =
                 fmmPot = iterate (fmmPotential octTree 21 4 70)
                 _ = printsym (quote "End")
                 _ = printsym (quote "NEWLINE")
-                _ = printsym (quote "Running pass scaleEnergy (map, uses=16): ")
+                _ = printsym (quote "Running pass scaleEnergy (map, uses=16, shared=6): ")
                 _ = printsym (quote "NEWLINE")
                 octTree' = iterate (scaleEnergy octTree 9)
                 _ = printsym (quote "End")
                 _ = printsym (quote "NEWLINE")
-                _ = printsym (quote "Running pass clearFlags (map, uses=15): ")
+                _ = printsym (quote "Running pass clearFlags (map, uses=15, shared=7): ")
                 _ = printsym (quote "NEWLINE")
                 octTree'' = iterate (clearFlags octTree)
                 _  = printsym (quote "End")

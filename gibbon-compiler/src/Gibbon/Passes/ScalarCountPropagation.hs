@@ -202,17 +202,19 @@ countPropagatedProducers Prog{ddefs, fundefs, mainExp} =
     shapes = producerShapesFor ddefs fundefs
 
     -- (enclosing function, is the enclosing context rewritten by this pass,
-    --  call expression)
+    --  is this call the direct RHS of a LetE, call expression)
     callSites =
       concat
-        [ [ (Just (funName fd), funRec (funMeta fd) == NotRec, app)
-          | app <- collectCalls (funBody fd)
+        [ [ (Just (funName fd), funRec (funMeta fd) == NotRec, direct, app)
+          | (direct, app) <- collectDirectCalls (funBody fd)
           ]
         | fd <- M.elems fundefs
         ]
-        ++ [ (Nothing, True, app) | (m, _) <- maybe [] (:[]) mainExp, app <- collectCalls m ]
+        ++ [ (Nothing, True, direct, app)
+           | (m, _) <- maybe [] (:[]) mainExp, (direct, app) <- collectDirectCalls m
+           ]
 
-    callSiteCovered fnName ProducerShape{psInput, psOutput} (enclosing, rewritten, (callee, args))
+    callSiteCovered fnName ProducerShape{psInput, psOutput} (enclosing, rewritten, direct, (callee, args))
       | callee /= fnName = True
       -- A producer's own recursive self-calls build into the same output
       -- buffers as the outermost call, so the single copy emitted at the
@@ -220,6 +222,13 @@ countPropagatedProducers Prog{ddefs, fundefs, mainExp} =
       -- never rewrites recursive bodies.
       | enclosing == Just fnName = True
       | not rewritten = False
+      -- `copyBindsForRhs` only ever attaches a copy to a call that is the
+      -- immediate RHS of a LetE (see Note [Coverage must mirror emission]).
+      -- Any other position -- a bare IfE/CaseE branch value, a MkProdE
+      -- element, a SpawnE, a PrimAppE argument, anything `rewriteExp`'s `go`
+      -- does not open up -- gets no copy no matter how its arguments look, so
+      -- it must never be reported as covered.
+      | not direct = False
       | otherwise =
           cpsLen psInput == cpsLen psOutput
             && argIsVar (cpsEndArgIx psInput) args
@@ -229,6 +238,83 @@ countPropagatedProducers Prog{ddefs, fundefs, mainExp} =
       case drop ix args of
         L3.VarE _ : _ -> True
         _ -> False
+
+-- Note [Coverage must mirror emission]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- `countPropagatedProducers` decides, for each shape-preserving producer,
+-- whether every call to it will actually receive a `ScalarCountCopyAll`.
+-- `LoopifyTraversals.countGuaranteedTyCons` treats that decision as a
+-- guarantee about the VALUES a loopified consumer will see, so it must be
+-- exactly as narrow as what `rewriteExp` (`copyBindsForRhs`) really does --
+-- not a structural approximation of it.  `rewriteExp`'s `go` recurses through
+-- `LetE`/`IfE`/`CaseE`/`MkProdE`/`ProjE`/`PrimAppE`/`TimeIt`/`WithArenaE`/
+-- `SpawnE`/`MapE`/`FoldE`/`DataConE`/`Ext`, and calls `copyBindsForRhs` only
+-- from the `LetE` case, on the already-rewritten RHS; a bare `AppE` reached
+-- any other way (an `IfE`/`CaseE` branch value, a `MkProdE` element, a
+-- `SpawnE`, ...) falls through `go`'s wildcard and is returned untouched, so
+-- it never gets a copy.  `collectDirectCalls` below mirrors that exact
+-- traversal shape and tags each call site with whether it is the immediate
+-- RHS of a `LetE`; `callSiteCovered` refuses every non-direct site outright,
+-- so "covered" and "copied" cannot diverge.  Before this, `callSiteCovered`
+-- asked only whether a call's arguments were plain variables, which a
+-- non-let-bound call satisfies just as easily as a let-bound one -- so a
+-- producer called from, say, an `IfE` branch was wrongly certified
+-- "count-guaranteed" while its output's footers were never actually copied.
+-- A loopified consumer fed that value reads its footers as pristine zero (an
+-- untouched chunk reads back the same as a genuine zero-count one), which
+-- silently looks like an empty chunk
+-- rather than a wrong one.  Proven at the IR level in
+-- tests/ScalarCountPropagation.hs
+-- (`case_vw09_step82_coverage_gate_must_not_claim_if_branch_call_is_covered`).
+
+-- | Every direct call in an expression, each tagged with whether it is the
+-- immediate RHS of a `LetE` -- the only position `copyBindsForRhs` can attach
+-- a copy to.  See Note [Coverage must mirror emission].  Unlike `go`, this
+-- traversal still recurses into every position (including inside a bare
+-- `AppE`'s own arguments) so that a producer call buried anywhere is still
+-- found and correctly tagged `False`, rather than silently missed.
+collectDirectCalls :: L3.Exp3 -> [(Bool, (Var, [L3.Exp3]))]
+collectDirectCalls ex =
+  case ex of
+    L3.AppE f _ _ args -> (False, (f, args)) : concatMap collectDirectCalls args
+    L3.SpawnE f _ args -> (False, (f, args)) : concatMap collectDirectCalls args
+    L3.LetE (_, _, _, rhs) bod ->
+      case rhs of
+        L3.AppE f _ _ args -> (True, (f, args)) : concatMap collectDirectCalls args ++ collectDirectCalls bod
+        _ -> collectDirectCalls rhs ++ collectDirectCalls bod
+    L3.IfE a b c -> concatMap collectDirectCalls [a, b, c]
+    L3.CaseE scrt brs -> collectDirectCalls scrt ++ concatMap (\(_, _, r) -> collectDirectCalls r) brs
+    L3.MkProdE ls -> concatMap collectDirectCalls ls
+    L3.ProjE _ e -> collectDirectCalls e
+    L3.PrimAppE _ args -> concatMap collectDirectCalls args
+    L3.TimeIt e _ _ -> collectDirectCalls e
+    L3.WithArenaE _ e -> collectDirectCalls e
+    L3.MapE (_, _, rhs) bod -> collectDirectCalls rhs ++ collectDirectCalls bod
+    L3.FoldE (_, _, r1) (_, _, r2) bod -> concatMap collectDirectCalls [r1, r2, bod]
+    L3.DataConE _ _ args -> concatMap collectDirectCalls args
+    L3.Ext ext -> collectDirectCallsExt ext
+    _ -> []
+
+collectDirectCallsExt :: L3.E3Ext () L3.Ty3 -> [(Bool, (Var, [L3.Exp3]))]
+collectDirectCallsExt ext =
+  case ext of
+    L3.ForE _ bound bod -> collectDirectCalls bound ++ collectDirectCalls bod
+    L3.WhileCursor _ bod -> collectDirectCalls bod
+    L3.WhileCursorEnd _ _ bod -> collectDirectCalls bod
+    L3.WriteScalar _ _ rhs -> collectDirectCalls rhs
+    L3.WriteTagPacked _ rhs -> collectDirectCalls rhs
+    L3.WriteTaggedCursor _ rhs -> collectDirectCalls rhs
+    L3.WriteCursorMutable _ rhs -> collectDirectCalls rhs
+    L3.WriteList _ rhs _ -> collectDirectCalls rhs
+    L3.WriteVector _ rhs _ -> collectDirectCalls rhs
+    L3.AddCursor _ rhs -> collectDirectCalls rhs
+    L3.BumpCursorMutable _ rhs -> collectDirectCalls rhs
+    L3.AddrOfCursor rhs -> collectDirectCalls rhs
+    L3.LetAvail _ bod -> collectDirectCalls bod
+    L3.Assert rhs -> collectDirectCalls rhs
+    L3.RetE ls -> concatMap collectDirectCalls ls
+    L3.WriteCursorSelectiveIndirection _ _ _ mask -> collectDirectCalls mask
+    _ -> []
 
 -- | Every function that can (transitively) write a constructor tag.  Calling
 -- one of these from a producer body means the callee may contribute output

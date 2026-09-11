@@ -1,5 +1,5 @@
 -- Variant reproducer: Int and Float scalar fields mutated by the same
--- CanVectorize map (2 int groups at 64-bit / 1 at int32, vs 1 float group).
+-- MayVectorize map (2 int groups at 64-bit / 1 at int32, vs 1 float group).
 data MF = MFCons Int Float Int Float MF | MFNil
 {-# ANN type MF "Factored" #-}
 
@@ -12,7 +12,7 @@ mkMF n =
            fn = intToFloat n
        in MFCons n (fn .+. 0.5) (n * 3) (fn .*. 2.0) rst
 
-{-# ANN mapMF "OPT:CanVectorize" #-}
+{-# ANN mapMF "OPT:MayVectorize" #-}
 mapMF :: MF -> Int -> MF
 mapMF xs k =
   case xs of

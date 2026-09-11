@@ -1,7 +1,10 @@
 -- | Selectively share unchanged SoA buffers.
 --
 -- The public `selectiveBufferSharing` pass is the current post-loopification
--- L3 nano-pass.  It operates only on loopified `OPT:CanVectorize` traversals:
+-- L3 nano-pass.  It operates only on functions loopification actually
+-- rewrote (the internal `Loopified` marker, not the `OPT:MayVectorize`
+-- source annotation -- an annotated function loopification declined to
+-- rewrite is left alone here too):
 -- the dcon stream can be shared because loopified maps no longer traverse it,
 -- and scalar buffers whose loop body is a pure copy can be replaced by one
 -- buffer-level indirection.
@@ -49,9 +52,17 @@ import qualified Gibbon.L3.Syntax as L3
 selectiveBufferSharing :: L3.Prog3 -> PassM L3.Prog3
 selectiveBufferSharing prog@Prog{fundefs, mainExp} = do
   dflags <- getDynFlags
-  let enabled =
-        gopt Opt_EnableSelectiveBufferSharing dflags
-  if not enabled
+  let enabled = gopt Opt_EnableSelectiveBufferSharing dflags
+      loopificationOn = gopt Opt_EnableLoopification dflags || gopt Opt_AutoLoopification dflags
+  if enabled && not loopificationOn
+    then error $
+      "selectiveBufferSharing: --opt-selective-buffer-sharing is enabled, " ++
+      "but neither --opt-loopification nor --auto-loopification is.\n" ++
+      "Selective buffer sharing only ever rewrites functions loopification " ++
+      "already rewrote, so it has nothing to do without it.\n" ++
+      "Add --opt-loopification (with --store-scalar-field-counts) or " ++
+      "--auto-loopification to the compile command."
+  else if not enabled
     then pure prog
     else do
       rewritten <- mapM rewriteSelectiveFun (M.elems fundefs)
@@ -161,7 +172,7 @@ soaOutputCursorShape args tys =
 
 rewriteLoopifiedFun :: L3.FunDef3 -> PassM (L3.FunDef3, Bool)
 rewriteLoopifiedFun fn@FunDef{funMeta, funBody}
-  | CanVectorize `notElem` funOpt funMeta = pure (fn, False)
+  | Loopified `notElem` funOpt funMeta = pure (fn, False)
   | otherwise = do
       (body', shared) <- rewriteLoopifiedBody funBody
       pure (fn { funBody = body' }, shared)
@@ -248,7 +259,7 @@ rewriteLoopifiedBody ex = do
       pure
         [ (dst, [], L3.CursorTy, L3.Ext $ L3.DerefMutCursor siOutLoc)
         , (src, [], L3.CursorTy, L3.Ext $ L3.DerefMutCursor siInLoc)
-        , (written, [], L3.CursorTy, L3.Ext $ L3.WriteCursorSelectiveIndirection dst src siInputEnd (L3.LitE mask))
+        , (written, [], L3.CursorTy, L3.Ext $ L3.WriteCursorSelectiveIndirection dst src siInputEnd (L3.mkLitE64 mask))
         , (update, [], L3.ProdTy [], L3.Ext $ L3.WriteCursorMutable siOutLoc (L3.VarE written))
         ]
 

@@ -9,6 +9,50 @@
 --
 -- The pass is conservative.  If the generated loop body no longer has the
 -- expected chunk-loop shape, it leaves the loops alone.
+--
+-- Note [What makes fusing two chunk loops sound]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- 'fuseGroup' below keeps ONE representative loop's while condition, for-bound
+-- and chunk branch, and runs every participating loop's body underneath them.
+-- The representative's per-chunk trip count therefore drives every buffer in
+-- the group.  The invariant that has to hold:
+--
+--   A fused loop may use one representative trip count only if every
+--   participating buffer has the same logical element count in that physical
+--   chunk.
+--
+-- Matching datatype, scalar type, total input length or cursor-array length is
+-- NOT sufficient, and neither is "the loops were next to each other".
+--
+-- The equivalence relation this pass actually uses is: same constructor key
+-- parsed out of the generated loop variable's name, and adjacency.  Same
+-- constructor is the right relation, and it is sound for two reasons that both
+-- have to stay true:
+--
+--   (1) Every occurrence of constructor K writes exactly one element to each of
+--       K's scalar buffers, so K's buffers agree on the logical count for any
+--       set of nodes.
+--   (2) Chunk boundaries stay aligned across peer buffers.  'BoundsCheckVector'
+--       lowers to one disjunction over all the checked buffers followed by a
+--       'gib_grow_region' for EVERY one of them
+--       (@Gibbon.Passes.Codegen@, @BoundsCheckVector@ case), so when any buffer
+--       would overflow they all take a redirection together.  Two buffers of
+--       the same constructor therefore split the same nodes into the same
+--       chunks even when their element widths differ, which is why fusing an
+--       Int8 buffer with an Int32 buffer of the same constructor is fine.
+--
+-- Different constructors have unrelated per-chunk counts and must never be
+-- fused.  That makes the /injectivity/ of the name key a correctness
+-- requirement, not a cosmetic one -- see
+-- Note [The loop-name constructor key must be injective] in
+-- "Gibbon.Passes.LoopifyTraversals", which records the miscompilation that a
+-- non-injective key produced.
+--
+-- The dcon (tag) stream loop is deliberately outside this relation: its footer
+-- count is the total number of tags in the chunk, not any one constructor's
+-- count.  It is excluded structurally rather than by a check -- the loopifier
+-- names it without a @_dcon_<key>_loop@ segment, so 'scalarLoopDCon' returns
+-- 'Nothing' for it and it can never join a group.
 module Gibbon.Passes.LoopifiedTraversalFusion
   ( fuseLoopifiedTraversals
   ) where
@@ -39,15 +83,25 @@ fuseLoopifiedTraversals :: L3.Prog3 -> PassM L3.Prog3
 fuseLoopifiedTraversals prog@Prog{fundefs} = do
   dflags <- getDynFlags
   let enabled = gopt Opt_EnableLoopFusion dflags
-  fds' <-
-    if enabled
-    then mapM fuseFun (M.elems fundefs)
-    else pure (M.elems fundefs)
-  pure $ prog { fundefs = M.fromList [ (funName f, f) | f <- fds' ] }
+      loopificationOn = gopt Opt_EnableLoopification dflags || gopt Opt_AutoLoopification dflags
+  if enabled && not loopificationOn
+    then error $
+      "fuseLoopifiedTraversals: --opt-loop-fusion is enabled, but neither " ++
+      "--opt-loopification nor --auto-loopification is.\n" ++
+      "Loop fusion only ever fuses functions loopification already rewrote, " ++
+      "so it has nothing to do without it.\n" ++
+      "Add --opt-loopification (with --store-scalar-field-counts) or " ++
+      "--auto-loopification to the compile command."
+    else do
+      fds' <-
+        if enabled
+        then mapM fuseFun (M.elems fundefs)
+        else pure (M.elems fundefs)
+      pure $ prog { fundefs = M.fromList [ (funName f, f) | f <- fds' ] }
 
 fuseFun :: L3.FunDef3 -> PassM L3.FunDef3
 fuseFun fn@FunDef{funMeta, funBody}
-  | CanVectorize `notElem` funOpt funMeta = pure fn
+  | Loopified `notElem` funOpt funMeta = pure fn
   | otherwise = do
       body' <- fuseBody funBody
       pure $ fn { funBody = body' }
@@ -162,6 +216,15 @@ scalarLoopDCon (v, _, _, L3.Ext L3.WhileCursor{}) =
   parseDConLoopName (fromVar v)
 scalarLoopDCon _ = Nothing
 
+-- | Recover the constructor key from a generated scalar chunk-loop name of the
+-- form @<seed>_buf<N>_dcon_<key>_loop@.
+--
+-- @<key>@ is produced by 'Gibbon.Passes.LoopifyTraversals.sanitizeLoopName' and
+-- is injective in the constructor name, so equal keys here mean equal
+-- constructors -- which is exactly the precondition
+-- Note [What makes fusing two chunk loops sound] needs.  The earliest
+-- @_dcon_@ in the name is the separator: an escaped @_dcon_@ inside a key is
+-- spelled @__dcon__@ and so cannot appear earlier than the real one.
 parseDConLoopName :: String -> Maybe String
 parseDConLoopName s = do
   rest <- firstJust [ L.stripPrefix "_dcon_" suffix | suffix <- L.tails s ]

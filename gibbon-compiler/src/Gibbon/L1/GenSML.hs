@@ -25,7 +25,7 @@ ppExt ext0 = case ext0 of
 ppE :: Exp1 -> Doc
 ppE e0 = case e0 of
   VarE var -> ppVar var
-  LitE n -> int n
+  LitE _ n -> integer n
   CharE c -> char c
   FloatE x -> double x
   LitSymE var -> doubleQuotes $ ppVar var
@@ -137,20 +137,42 @@ ppFail s = hsep
   , parens $ hsep ["Fail", doubleQuotes $ text s]
   ]
 
+-- | Guard a width-sensitive integer primitive: only W64 has an SML rendering
+-- that agrees with the rest of the compiler.
+narrowOnly :: String -> IntPrimAnn -> Doc -> Doc
+narrowOnly opName ann doc = case intPrimWidth ann of
+  W64 -> doc
+  w -> error $ "GenSML: " ++ show w ++ " integer arithmetic (" ++ opName
+               ++ ") is not supported by the SML backend; SML's Int is not a "
+               ++ "fixed-width type, so the two's-complement wraparound the "
+               ++ "rest of the compiler guarantees cannot be reproduced here."
+
 ppPrim :: Prim Ty1 -> [Exp1] -> Doc
 ppPrim pr pes = case pr of
-  AddP -> binary "+" pes
-  SubP -> binary "-" pes
-  MulP -> binary "*" pes
-  DivP -> binary "div" pes
-  ModP -> binary "mod" pes
-  ExpP -> binary "**" pes
+  -- SML's `Int` is not a fixed-width type here, so narrow-width arithmetic
+  -- cannot be expressed faithfully: there is nothing to wrap at.  Reject it
+  -- loudly, exactly as 'IntConvertP' below already does, rather than emit
+  -- something that silently disagrees with C and the interpreters.  W64 is
+  -- grandfathered: it is what this backend has always emitted.
+  AddP a -> narrowOnly "+" a  $ binary "+" pes
+  SubP a -> narrowOnly "-" a  $ binary "-" pes
+  MulP a -> narrowOnly "*" a  $ binary "*" pes
+  -- `quot`/`rem`, NOT `div`/`mod`.  SML's `div`/`mod` floor toward negative
+  -- infinity, so `~7 div 3` is ~3 and `~7 mod 3` is 2, while C's `/` and `%`
+  -- (and therefore Gibbon's) truncate toward zero and give ~2 and ~1.  This
+  -- backend used `div`/`mod` and so disagreed with every other one on every
+  -- negative division.
+  DivP a -> narrowOnly "/" a  $ binary "quot" pes
+  ModP a -> narrowOnly "%" a  $ binary "rem" pes
+  -- SML has no `**` on `Int` at all (`**` is Real-only), so the old emission
+  -- did not even typecheck downstream.
+  ExpP a -> narrowOnly "^" a  $ ppAp "IntInf.pow" pes
   RandP -> ppCurried "MltonRandom.rand()" pes
-  EqIntP -> binary "=" pes
-  LtP -> binary "<" pes
-  GtP -> binary ">" pes
-  LtEqP -> binary "<=" pes
-  GtEqP -> binary ">=" pes
+  EqIntP{} -> binary "=" pes
+  LtP{} -> binary "<" pes
+  GtP{} -> binary ">" pes
+  LtEqP{} -> binary "<=" pes
+  GtEqP{} -> binary ">=" pes
   FAddP -> binary "+" pes
   FSubP -> binary "-" pes
   FMulP -> binary "*" pes
@@ -170,8 +192,14 @@ ppPrim pr pes = case pr of
   FLtEqP -> binary "<=" pes
   FGtEqP -> binary ">=" pes
   FSqrtP -> ppAp "Math.sqrt" pes
-  IntToFloatP -> ppAp "Real.fromInt" pes
+  IntToFloatP _ -> ppAp "Real.fromInt" pes
   FloatToIntP -> ppAp "Int.fromReal" pes
+  -- SML's Int is not a fixed-width type here, so a faithful truncating
+  -- two's-complement conversion is not available by construction.  Reject
+  -- loudly rather than emit something that disagrees with C and the L1
+  -- interpreter.
+  IntConvertP{} -> error "GenSML: explicit integer-width conversion (toInt8/16/32/64) is not supported by the SML backend"
+
   FTanP -> ppAp "Math.tan" pes
   EqSymP -> binary "=" pes
   EqBenchProgP _ -> error "GenSML: EqBenchProgP"
@@ -183,7 +211,7 @@ ppPrim pr pes = case pr of
   SizeParam -> int 1  -- ?
   IsBig -> error "IsBig"
   GetNumProcessors -> error "GetNumProcessors"
-  PrintInt -> printer "Int" $ ppE $ Sf.headErr pes
+  PrintInt{} -> printer "Int" $ ppE $ Sf.headErr pes
   PrintChar -> printer "Char" $ ppE $ Sf.headErr pes
   PrintFloat -> printer "Float" $ ppE $ Sf.headErr pes
   PrintBool -> ppAp "(fn true => \"True\" | false => \"False\")" pes
@@ -351,7 +379,7 @@ ppTyVar tyVar = case tyVar of
 
 ppTy1 :: Ty1 -> Doc
 ppTy1 ty1 = case ty1 of
-  IntTy -> "int"
+  IntTy{} -> "int"
   CharTy -> "char"
   FloatTy -> "real"
   BoolTy -> "bool"
@@ -373,7 +401,7 @@ ppTy1 ty1 = case ty1 of
 
 printerTy1 :: Ty1 -> Doc -> Doc
 printerTy1 ty1 d = case ty1 of
-  IntTy -> printer "Int" d
+  IntTy{} -> printer "Int" d
   CharTy -> printer "Char" d
   FloatTy -> printer "Float" d
   SymTy -> _

@@ -9,7 +9,7 @@ gibbon_main =
       _ = printsym (quote "NEWLINE")
       octTree = buildOctree (8) 17 0 64
 
-      _ = printsym (quote "Running pass scaleEnergy (map, uses=16): ")
+      _ = printsym (quote "Running pass scaleEnergy (map, uses=16, shared=6): ")
       _ = printsym (quote "NEWLINE")
       octTree' = iterate (scaleEnergy octTree 9)
       scaledEnergy = sumEnergy octTree'

@@ -1,8 +1,6 @@
--- VARIANT of the S1 defect, stressing `isOwnLoopCursor`'s exact-match claim at
--- buffer indices >= 10.  W has 13 Int fields, so loop buffers run 0..13 and the
--- cross-buffer dependency cursor names include `_buf1_dep11_read_cur` and
--- `_buf11_dep1_read_cur`.  A prefix/suffix mismatch (`_buf1_` matching inside
--- `_buf11_`) would misclassify one of the cross-field writes as a pure copy.
+-- VerifyS1ManyBufferCrossField: W (Factored).
+-- Functions: mkW, swap1and11, sumF1, sumF11, sumF12.
+-- Annotated: MayVectorize on swap1and11; StoreScalarCounts on mkW.
 data W = WC Int Int Int Int Int Int Int Int Int Int Int Int Int W | WN
 {-# ANN type W "Factored" #-}
 
@@ -17,7 +15,7 @@ mkW n =
 -- f1  <- f11 (dep on a two-digit buffer index)
 -- f11 <- f1  (dep on a one-digit buffer index)
 -- everything else is a genuine self copy and MAY be shared.
-{-# ANN swap1and11 "OPT:CanVectorize" #-}
+{-# ANN swap1and11 "OPT:MayVectorize" #-}
 swap1and11 :: W -> W
 swap1and11 xs =
   case xs of

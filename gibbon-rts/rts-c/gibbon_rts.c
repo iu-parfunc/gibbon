@@ -14,6 +14,7 @@
 #include <time.h>
 #include <alloca.h>
 #include <sys/mman.h>
+#include <malloc.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -589,6 +590,26 @@ GibBool gib_vector_is_empty(GibVector *vec)
 
 GibVector *gib_vector_slice(int64_t i, int64_t n, GibVector *vec)
 {
+#ifdef _GIBBON_BOUNDSCHECK
+    // See Note [GibVector range and indexing contract].  `i` is relative and
+    // the range is half-open, so a negative offset or length places `lower`
+    // before `data` (or `upper` before `lower`), and every later
+    // gib_vector_nth on the result computes an address outside the allocation.
+    // The two checks below only ever tested the upper direction.
+    //
+    // This is deliberately INSIDE the opt-in check rather than unconditional.
+    // `VfyAbiNegSlice.hs` and `VfyAbiNegSliceUpper.hs` pass negative arguments
+    // here on purpose: they are ABI probes that assert a negative index still
+    // arrives as int64 (-1, not 4294967295), and they read back the resulting
+    // nonsensical length (2 and -2).  Rejecting negative slices in the default
+    // build would break those probes, and whether Gibbon should reject them at
+    // all is a separate decision from the vector indexing contract below.
+    if (i < 0 || n < 0) {
+        fprintf(stderr, "gib_vector_slice: negative offset or length, i=%" PRId64
+                " n=%" PRId64 "\n", i, n);
+        exit(1);
+    }
+#endif
     int64_t lower = vec->lower + i;
     int64_t upper = vec->lower + i + n;
     if ((lower > vec->upper)) {
@@ -613,13 +634,52 @@ GibVector *gib_vector_slice(int64_t i, int64_t n, GibVector *vec)
     return vec2;
 }
 
+/*
+ * Note [GibVector range and indexing contract]
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * Established by direct probe, not by reading code:
+ *
+ *   - `lower` and `upper` are ABSOLUTE element indices into `data`, and the
+ *     range is HALF-OPEN: [lower, upper).  Hence
+ *     gib_vector_length(v) == v->upper - v->lower, and gib_vector_alloc(n)
+ *     yields lower = 0, upper = n.
+ *   - The `i` passed to gib_vector_nth is RELATIVE to the vector/slice, not
+ *     absolute.  For `s = gib_vector_slice(3, 3, v)` (lower=3, upper=6),
+ *     `gib_vector_nth(s, 0)` returns v's element 3.  Measured, not assumed.
+ *   - Therefore the valid indices are exactly 0 .. length-1, for a slice
+ *     exactly as for an unsliced vector, and the backing address is
+ *     data + elt_size * (lower + i).
+ *   - A zero-length vector has no valid index.  gib_vector_alloc(0) and an
+ *     empty slice at the end (lower == upper) are both legal.
+ *
+ * The bounds check below was previously dead code AND wrong twice over.  It
+ * could never be compiled (`stdderr`), and its predicate
+ * `i < vec->lower || i > vec->upper` compared a RELATIVE index against
+ * ABSOLUTE bounds.  On the slice above it REJECTED the valid indices 0,1,2 and
+ * ACCEPTED the invalid 3,4,5,6; even on an unsliced vector it accepted
+ * `i == upper`, one past the end.  Changing `>` to `>=` would not have fixed
+ * it -- the relative/absolute confusion had to be resolved first.
+ *
+ * Enabling this check is opt-in (`make ... BOUNDSCHECK=1`, i.e.
+ * -D_GIBBON_BOUNDSCHECK) because it costs a branch on every element access.
+ * Without it, an out-of-range index is silent memory corruption: the returned
+ * pointer is outside the allocation, and gib_vector_inplace_update writes
+ * through it, so the failure surfaces later and elsewhere -- typically as
+ * `malloc(): corrupted top size` at an unrelated allocation.
+ */
 // The callers must cast the return value.
 void *gib_vector_nth(GibVector *vec, int64_t i)
 {
 #ifdef _GIBBON_BOUNDSCHECK
-    if (i < vec->lower || i > vec->upper) {
-        fprintf(stdderr, "gib_vector_nth index out of bounds: %lld (%lld,%lld)\n",
-                i, vec->lower, vec->upper);
+    // Half-open, relative.  Checked BEFORE the address arithmetic below, so
+    // `vec->lower + i` cannot overflow on a rejected index.
+    int64_t gib_vec_len = vec->upper - vec->lower;
+    if (i < 0 || i >= gib_vec_len) {
+        fprintf(stderr,
+                "gib_vector_nth: index out of bounds: %" PRId64
+                " not in [0, %" PRId64 ") "
+                "(slice [%" PRId64 ", %" PRId64 "), elt_size %zu)\n",
+                i, gib_vec_len, vec->lower, vec->upper, vec->elt_size);
         exit(1);
     }
 #endif
@@ -1156,7 +1216,6 @@ STATIC_INLINE GibChunk gib_alloc_region_in_nursery_fast(size_t size, bool collec
         GibNurseryChunkFooter *nursery_footer = (GibNurseryChunkFooter *) footer;
         nursery_footer->size = size;
         gib_scalar_count_footer_init(&nursery_footer->scalar_counts);
-        gib_scalar_count_register_chunk(bump, footer);
 
 #if defined _GIBBON_VERBOSITY && _GIBBON_VERBOSITY >= 3
         fprintf(stderr, "Allocated a nursery chunk of size %ld, (%p, %p).\n",
@@ -1226,7 +1285,6 @@ GibChunk gib_alloc_region_on_heap(size_t size)
 
     // IMPORTANT: pass size_aligned consistently.
     char *footer_start = gib_init_footer_at(heap_end, size_aligned, 1);
-    gib_scalar_count_register_chunk(heap_start, footer_start);
 
     return (GibChunk) {heap_start, footer_start};
 }
@@ -1305,6 +1363,195 @@ void gib_free_region(char *footer_ptr)
     }
 }
 
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * Region chunk log
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ *
+ * Reclaims the chunks a benchmark iteration grew.  See the declarations in
+ * gibbon_rts.h for why they leak without this.
+ *
+ * Shape deliberately mirrors gib_list_bumpalloc_save_state/_restore_state: a
+ * no-argument checkpoint/rollback pair over a saved stack, called from the same
+ * two guarded blocks of the generated `iterate` loop.
+ *
+ * Two properties this file must not lose:
+ *
+ *   1. Logging happens ONLY while a bracket is open (depth > 0).  Chunks grown
+ *      before the loop -- notably the whole input value, which for List.hs is a
+ *      100M-element list -- are therefore never logged and can never be freed.
+ *      This is what makes the scheme safe without any per-region bookkeeping.
+ *
+ *   2. `restore_state` frees in BULK, at the end of an iteration.  That is not
+ *      an optimisation, it is a correctness property OF THE MEASUREMENT.
+ *      Measured: freeing each stale chunk just before allocating its
+ *      replacement leaves the pages resident and the next iteration takes 0
+ *      page faults, silently making iterations 2..n warm and the reported
+ *      times optimistic.  Freeing in bulk lets the allocator return the pages,
+ *      so the next iteration re-faults exactly as it does today (7966 faults in
+ *      the same test).  Per-iteration timings must be UNCHANGED by this
+ *      feature; a speedup means fidelity was lost.
+ *
+ * Thread-local, matching the bump-allocator globals above.  A chunk grown on a
+ * worker thread is logged in that thread's log and simply not reclaimed, rather
+ * than being freed from a thread that does not own it.
+ */
+
+#if _GIBBON_REGIONRESET
+
+// The log holds the chunk BASES, exactly as gib_alloc returned them, so
+// nothing has to reconstruct a base from a footer address later.
+// Defined with the scalar-count machinery further down.  Freeing a chunk
+// invalidates any cached pointer INTO that chunk, and the scalar-count layer
+// keeps two of them (`current_footer` and `write_footer`, see
+// GibScalarCountRegionState).  Those are per-iteration derived state and have
+// to be rewound along with the write cursors, or the next iteration writes
+// through a dangling pointer -- a heap-use-after-free inside
+// gib_scalar_count_footer_set, reachable from any loopified SoA map.
+static void gib_scalar_count_forget_region_states(void);
+
+static char **gib_global_chunk_log = (char **) NULL;
+static size_t gib_global_chunk_log_len = 0;
+static size_t gib_global_chunk_log_cap = 0;
+static size_t gib_global_chunk_log_marks[GIB_CHUNK_LOG_MAX_DEPTH];
+static int gib_global_chunk_log_depth = 0;
+
+static void gib_region_chunk_log(char *chunk_start)
+{
+    // Inert unless an iteration bracket is open.  Every non-benchmark program,
+    // and every allocation outside the timed loop, takes this branch.
+    if (gib_global_chunk_log_depth <= 0) {
+        return;
+    }
+    if (gib_global_chunk_log_len == gib_global_chunk_log_cap) {
+        size_t newcap = (gib_global_chunk_log_cap == 0)
+                        ? GIB_CHUNK_LOG_INIT_CAP
+                        : (gib_global_chunk_log_cap * 2);
+        char **grown = (char **) realloc(gib_global_chunk_log,
+                                         newcap * sizeof(char *));
+        // Best effort: a failure here costs us the reclaim of this one chunk,
+        // which is the pre-existing behaviour.  It must never fail the program.
+        if (grown == NULL) {
+            return;
+        }
+        gib_global_chunk_log = grown;
+        gib_global_chunk_log_cap = newcap;
+    }
+    gib_global_chunk_log[gib_global_chunk_log_len] = chunk_start;
+    gib_global_chunk_log_len++;
+}
+
+// noinline in BOTH configurations, deliberately.  The program is built with
+// -flto (Common.hs: optc = " -O3  -flto "), so without this the linker inlines
+// the trivial feature-off wrapper but not the logging one, and whole-program
+// optimisation then differs by build flag.  Measured on a 10M-element SoA list:
+// identical instruction counts and FEWER cache misses, yet IPC fell 3.70 -> 2.99
+// and folds over the map's output went 0.0048s -> 0.0135s.  An opaque call in
+// both cases keeps the generated code independent of the setting.
+GIB_NOINLINE __attribute__((malloc))
+void *gib_region_chunk_alloc(size_t size)
+{
+    void *p = gib_alloc(size);
+    if (p != NULL) {
+        gib_region_chunk_log((char *) p);
+    }
+    return p;
+}
+
+GIB_NOINLINE
+void gib_region_chunk_save_state(void)
+{
+    if (gib_global_chunk_log_depth >= GIB_CHUNK_LOG_MAX_DEPTH) {
+        fprintf(stderr,
+                "Bad call to gib_region_chunk_save_state! Saved stack full!\n");
+        exit(1);
+    }
+    gib_global_chunk_log_marks[gib_global_chunk_log_depth] =
+        gib_global_chunk_log_len;
+    gib_global_chunk_log_depth++;
+}
+
+GIB_NOINLINE
+void gib_region_chunk_restore_state(void)
+{
+    if (gib_global_chunk_log_depth <= 0) {
+        fprintf(stderr,
+                "Bad call to gib_region_chunk_restore_state! Saved stack empty!\n");
+        exit(1);
+    }
+    gib_global_chunk_log_depth--;
+    size_t mark = gib_global_chunk_log_marks[gib_global_chunk_log_depth];
+    // Plain free, in bulk.  Deliberately nothing more: the allocator handing
+    // these pages straight back to the next iteration is what a real program
+    // doing n back-to-back maps also experiences, so forcing them out (with
+    // madvise, say) would model nothing and would only make the benchmark
+    // artificially slow.
+    //
+    // What must NOT happen is chunks being reused WITHOUT a free cycle --
+    // rewinding and overwriting them in place leaves the data resident and
+    // skips work a cold run genuinely pays.  That is why growth still
+    // allocates normally and this only releases.
+    bool freed_any = gib_global_chunk_log_len > mark;
+    // Freed in REVERSE allocation order, which is load-bearing for the SPEED
+    // of whatever traverses the result next, not just for tidiness.
+    //
+    // The allocator hands freed blocks back most-recently-freed-first.  Freeing
+    // ascending therefore makes the next iteration re-allocate DESCENDING, so
+    // the rebuilt value runs backwards through memory and every traversal of it
+    // walks against the prefetcher.  Measured on a 10M-element SoA list, folds
+    // over the map's output went 0.0047s -> 0.0142s, a 3x regression, while the
+    // map itself got faster -- the sort of asymmetry that looks like a layout
+    // win/loss in the tables and is really an allocator artifact.
+    for (size_t i = gib_global_chunk_log_len; i > mark; i--) {
+        gib_free(gib_global_chunk_log[i - 1]);
+    }
+    if (freed_any) {
+        // MUST accompany the frees.  The scalar-count states are keyed by
+        // GibRegionInfo, which outlives the chunks, so a stale entry is found
+        // again on the next iteration and written through -- into memory we
+        // just released.  They are rebuilt lazily from live footers, and
+        // losing `first_counts` is correct: the next iteration rewrites the
+        // region from its first chunk and footer_set/bump repopulate both the
+        // state and the footer.
+        gib_scalar_count_forget_region_states();
+    }
+    // Length is rewound but CAPACITY is retained, so iteration 1 sizes the log
+    // for the whole run and no later iteration reallocs.  Measured: 7 reallocs
+    // total over 200 iterations x 14000 chunks, all 7 in iteration 1.
+    gib_global_chunk_log_len = mark;
+
+    // Return the freed pages to the OS.
+    //
+    // Without this the allocator decides, per allocation pattern, whether the
+    // next iteration re-faults its pages or reuses them warm -- and it decides
+    // DIFFERENTLY for different layouts.  Measured on List at 100M elements:
+    // reclaim cut AoS's page faults 1,319,915 -> 795,797 (warm reuse, 1.63x
+    // faster) while leaving SoA's at 1,210,087 -> 1,209,999 (still cold, no
+    // change).  That is not a layout result, it is an allocator artifact, and
+    // it reversed the AoS/SoA ordering in the benchmark tables.
+    //
+    // Forcing the pages back makes every configuration pay the same
+    // first-touch cost the un-fixed compiler paid, so what the tables compare
+    // is the layouts rather than glibc's free-list heuristics.
+#if defined(__GLIBC__)
+    if (freed_any) {
+        malloc_trim(0);
+    }
+#endif
+}
+
+#else // _GIBBON_REGIONRESET
+
+// Feature compiled out: the generated code still emits the calls (exactly as it
+// unconditionally emits the bumpalloc pair), and they do nothing.
+// Feature compiled out: allocation is exactly gib_alloc, so the generated
+// program's machine code is the same either way, and the brackets are no-ops.
+GIB_NOINLINE __attribute__((malloc))
+void *gib_region_chunk_alloc(size_t size) { return gib_alloc(size); }
+GIB_NOINLINE void gib_region_chunk_save_state(void) {}
+GIB_NOINLINE void gib_region_chunk_restore_state(void) {}
+
+#endif // _GIBBON_REGIONRESET
+
 void gib_perform_GC(bool force_major)
 {
     gib_perform_GC_(force_major);
@@ -1358,12 +1605,6 @@ typedef struct gib_scalar_count_debug_state {
 #endif
 } GibScalarCountDebugState;
 
-typedef struct gib_scalar_count_region_state {
-    GibRegionInfo *reg_info;
-    GibOldgenChunkFooter *current_footer;
-    GibOldgenChunkFooter *write_footer;
-    GibScalarCountFooter first_counts;
-} GibScalarCountRegionState;
 
 static GibScalarCountDebugState gib_global_scalar_count_debug_state = {
     .depth = 0,
@@ -1374,15 +1615,14 @@ static GibScalarCountDebugState gib_global_scalar_count_debug_state = {
 #endif
 };
 
-static GibScalarCountRegionState *gib_global_scalar_count_region_states = NULL;
-static size_t gib_global_scalar_count_region_states_length = 0;
+// Not static: the per-element bump's fast path is inlined into the generated
+// program (see gib_scalar_count_footer_bump in gibbon_rts.h), so it needs to
+// read the table directly.  `capacity` stays private -- only the out-of-line
+// append path grows the table.
+GibScalarCountRegionState *gib_global_scalar_count_region_states = NULL;
+size_t gib_global_scalar_count_region_states_length = 0;
 static size_t gib_global_scalar_count_region_states_capacity = 0;
 
-void gib_scalar_count_register_chunk(char *chunk_start, char *footer_ptr)
-{
-    (void) chunk_start;
-    (void) footer_ptr;
-}
 
 static GibScalarCountFooter *gib_scalar_count_footer_for_addr(char *footer_ptr)
 {
@@ -1429,17 +1669,6 @@ static void gib_scalar_count_footer_copy_fixed(
     dst->count = src->count;
     dst->is_touched = src->is_touched;
     memcpy(dst->_padding, src->_padding, sizeof(dst->_padding));
-}
-
-static void gib_scalar_count_footer_bump_fixed(GibScalarCountFooter *footer)
-{
-    if (!footer->is_touched) {
-        footer->count = 0;
-        footer->is_touched = 1;
-        memset(footer->_padding, 0, sizeof(footer->_padding));
-    }
-
-    footer->count++;
 }
 
 static void gib_scalar_count_footer_set_fixed(GibScalarCountFooter *footer, uint64_t count)
@@ -1502,6 +1731,339 @@ static GibScalarCountRegionState *gib_scalar_count_region_state_for_footer(
     return state;
 }
 
+// Drop every cached region state.  `gib_scalar_count_footer_begin` does the
+// same at depth 0; this is the entry point for the region-chunk log, which has
+// to invalidate them whenever it frees the chunks they point into.
+#if _GIBBON_REGIONRESET
+static void gib_scalar_count_forget_region_states(void)
+{
+    gib_global_scalar_count_region_states_length = 0;
+    gib_scalar_count_forget_slots();
+}
+#endif
+
+// Deferred scalar counts.  See the block comment in gibbon_rts.h.
+
+// The counter the generated per-element code increments.  Cache-line aligned.
+_Alignas(64) uint64_t gib_scalar_count_pending[GIB_SCALAR_COUNT_MAX_SLOTS] = {0};
+
+// A slot's region.  Each SoA buffer is its own region, so this is 1:1 and
+// `on_grow` can find the slot from `reg_info` alone.  NULL = unbound.
+static GibRegionInfo *gib_scalar_count_slot_reg[GIB_SCALAR_COUNT_MAX_SLOTS] = {NULL};
+
+// Nursery fallback: a slot bound to a nursery footer writes it directly,
+// mirroring the nursery branch of gib_scalar_count_footer_bump_slow.
+static char *gib_scalar_count_slot_nursery[GIB_SCALAR_COUNT_MAX_SLOTS] = {NULL};
+
+// One past the highest slot ever bound, so `on_grow` scans only what is used.
+static size_t gib_scalar_count_slots_high_water = 0;
+
+#ifdef _GIBBON_SCALAR_COUNT_DIFF
+// Differential mode: the per-element bump is emitted TOO, so the footers hold
+// the authoritative counts and a flush verifies instead of applying.
+static uint64_t gib_scalar_count_diff_snapshot[GIB_SCALAR_COUNT_MAX_SLOTS] = {0};
+static uint64_t gib_scalar_count_diff_checks = 0;
+#endif
+
+// Unused in differential mode, where a flush verifies rather than applies.
+#ifndef _GIBBON_SCALAR_COUNT_DIFF
+static void gib_scalar_count_footer_add_fixed(GibScalarCountFooter *footer, uint64_t n)
+{
+    if (!footer->is_touched) {
+        footer->count = 0;
+        footer->is_touched = 1;
+    }
+
+    footer->count += n;
+}
+#endif
+
+static GibScalarCountRegionState *gib_scalar_count_region_state_lookup(
+    GibRegionInfo *reg_info
+) {
+    for (size_t i = 0; i < gib_global_scalar_count_region_states_length; i++) {
+        GibScalarCountRegionState *state = &gib_global_scalar_count_region_states[i];
+        if (state->reg_info == reg_info) {
+            return state;
+        }
+    }
+
+    return NULL;
+}
+
+#ifdef _GIBBON_SCALAR_COUNT_DIFF
+// Where a flush lands, given the cyclic convention: before the region has grown
+// there is no previous chunk, so the count accumulates in `first_counts` (plus
+// the current footer, which the final chunk's reader consults); afterwards it
+// belongs to the previous chunk's footer.  This is exactly the routing
+// `gib_scalar_count_footer_bump_slow` performs per element.  Only differential
+// mode needs the target as a value; the applying path writes through the two
+// branches directly because the un-grown case touches `first_counts` too.
+static GibScalarCountFooter *gib_scalar_count_flush_target(
+    GibScalarCountRegionState *state
+) {
+    if (state->write_footer == NULL) {
+        return &state->current_footer->scalar_counts;
+    }
+
+    return &state->write_footer->scalar_counts;
+}
+
+static void gib_scalar_count_diff_check(
+    size_t slot,
+    const GibScalarCountFooter *target,
+    uint64_t pending
+) {
+    uint64_t observed = target->is_touched ? target->count : 0;
+    uint64_t expected = gib_scalar_count_diff_snapshot[slot] + pending;
+
+    if (observed != expected) {
+        fprintf(stderr,
+                "gibbon: DEFERRED SCALAR COUNT MISMATCH on slot %zu: "
+                "the per-element bumps produced %" PRIu64 " since the last flush, "
+                "the deferred counter produced %" PRIu64 ".\n"
+                "This means a flush was missed or double-applied; a loopified "
+                "consumer would read the wrong trip count.\n",
+                slot,
+                observed - gib_scalar_count_diff_snapshot[slot],
+                pending);
+        exit(1);
+    }
+
+    gib_scalar_count_diff_checks++;
+}
+#endif
+
+// Deliver `gib_scalar_count_pending[slot]` into its footer and reset it.
+// Called O(chunks) times per buffer, never per element.
+static void gib_scalar_count_flush_slot(size_t slot)
+{
+    uint64_t pending = gib_scalar_count_pending[slot];
+
+    // No bumps means no touch -- preserving the distinction `footer_get` makes
+    // between "counted zero elements" and "never written".
+    if (pending == 0) {
+        return;
+    }
+
+    if (gib_scalar_count_slot_nursery[slot] != NULL) {
+        GibScalarCountFooter *footer =
+            gib_scalar_count_footer_for_addr(gib_scalar_count_slot_nursery[slot]);
+#ifdef _GIBBON_SCALAR_COUNT_DIFF
+        gib_scalar_count_diff_check(slot, footer, pending);
+        gib_scalar_count_diff_snapshot[slot] = footer->is_touched ? footer->count : 0;
+#else
+        gib_scalar_count_footer_add_fixed(footer, pending);
+        gib_scalar_count_debug_touch(gib_scalar_count_slot_nursery[slot]);
+#endif
+        gib_scalar_count_pending[slot] = 0;
+        return;
+    }
+
+    GibRegionInfo *reg_info = gib_scalar_count_slot_reg[slot];
+    if (reg_info == NULL) {
+        // Unbound slot with a non-zero count: the producer wrote elements that
+        // no finalize claimed.  Dropping them silently is the one thing this
+        // scheme must not do quietly.
+        fprintf(stderr,
+                "gibbon: scalar-count slot %zu accumulated %" PRIu64
+                " elements but was never bound to a region.\n",
+                slot, pending);
+        exit(1);
+    }
+
+    GibScalarCountRegionState *state = gib_scalar_count_region_state_lookup(reg_info);
+    if (state == NULL) {
+        // The region-state table was reset underneath this slot (region reset).
+        gib_scalar_count_pending[slot] = 0;
+        return;
+    }
+
+#ifdef _GIBBON_SCALAR_COUNT_DIFF
+    GibScalarCountFooter *target = gib_scalar_count_flush_target(state);
+    gib_scalar_count_diff_check(slot, target, pending);
+    gib_scalar_count_diff_snapshot[slot] = target->is_touched ? target->count : 0;
+#else
+    if (state->write_footer == NULL) {
+        gib_scalar_count_footer_add_fixed(&state->first_counts, pending);
+        gib_scalar_count_footer_add_fixed(&state->current_footer->scalar_counts, pending);
+        gib_scalar_count_debug_touch((char *) state->current_footer);
+    } else {
+        gib_scalar_count_footer_add_fixed(&state->write_footer->scalar_counts, pending);
+        gib_scalar_count_debug_touch((char *) state->write_footer);
+    }
+#endif
+
+    gib_scalar_count_pending[slot] = 0;
+}
+
+// Flush every slot bound to `reg_info`.  Called from `gib_scalar_count_on_grow`
+// before its state transition, while the routing still names the chunk being
+// abandoned.
+static void gib_scalar_count_flush_region(GibRegionInfo *reg_info)
+{
+    for (size_t slot = 0; slot < gib_scalar_count_slots_high_water; slot++) {
+        if (gib_scalar_count_slot_reg[slot] == reg_info) {
+            gib_scalar_count_flush_slot(slot);
+#ifdef _GIBBON_SCALAR_COUNT_DIFF
+            // The target footer is about to change, and the one the bumps will
+            // write next was just zeroed by the caller's transition.
+            gib_scalar_count_diff_snapshot[slot] = 0;
+#endif
+        }
+    }
+}
+
+// Point a slot at a region, without disturbing what it has already counted.
+static void gib_scalar_count_bind_slot_to_footer(size_t slot, char *footer_ptr)
+{
+    gib_scalar_count_slot_reg[slot] = NULL;
+    gib_scalar_count_slot_nursery[slot] = NULL;
+
+    if (footer_ptr == NULL) {
+        return;
+    }
+
+    if (gib_addr_in_nursery(footer_ptr)) {
+        gib_scalar_count_slot_nursery[slot] = footer_ptr;
+#ifdef _GIBBON_SCALAR_COUNT_DIFF
+        {
+            GibScalarCountFooter *f = gib_scalar_count_footer_for_addr(footer_ptr);
+            gib_scalar_count_diff_snapshot[slot] = f->is_touched ? f->count : 0;
+        }
+#endif
+        return;
+    }
+
+    GibOldgenChunkFooter *footer = (GibOldgenChunkFooter *) footer_ptr;
+    // Creates the state if absent, with current_footer = this chunk and
+    // write_footer = NULL -- the same initial state a first bump would have
+    // produced.
+    GibScalarCountRegionState *state =
+        gib_scalar_count_region_state_for_footer(footer);
+    gib_scalar_count_slot_reg[slot] = state->reg_info;
+#ifdef _GIBBON_SCALAR_COUNT_DIFF
+    {
+        // Seed from what the target already holds: a second production into
+        // the same region must not be compared against the running total of
+        // every earlier one.
+        GibScalarCountFooter *tgt = gib_scalar_count_flush_target(state);
+        gib_scalar_count_diff_snapshot[slot] = tgt->is_touched ? tgt->count : 0;
+    }
+#endif
+}
+
+static void gib_scalar_count_bind_slot(size_t slot, char *footer_ptr)
+{
+#ifdef _GIBBON_SCALAR_COUNT_DIFF
+    // Registered here rather than in main so generated programs need no change.
+    static bool diff_report_registered = false;
+    if (!diff_report_registered) {
+        diff_report_registered = true;
+        atexit(gib_scalar_count_diff_report);
+    }
+#endif
+
+    if (slot >= GIB_SCALAR_COUNT_MAX_SLOTS) {
+        fprintf(stderr,
+                "gibbon: scalar-count slot %zu exceeds GIB_SCALAR_COUNT_MAX_SLOTS (%d).\n",
+                slot, GIB_SCALAR_COUNT_MAX_SLOTS);
+        exit(1);
+    }
+
+    gib_scalar_count_pending[slot] = 0;
+
+    if (slot + 1 > gib_scalar_count_slots_high_water) {
+        gib_scalar_count_slots_high_water = slot + 1;
+    }
+
+    gib_scalar_count_bind_slot_to_footer(slot, footer_ptr);
+}
+
+void gib_scalar_count_bind(char **final_footers, size_t base, int len)
+{
+    if (final_footers == NULL || len <= 0) {
+        return;
+    }
+
+    for (int i = 0; i < len; i++) {
+        gib_scalar_count_bind_slot(base + (size_t) i, final_footers[i]);
+    }
+}
+
+void gib_scalar_count_finalize(char **final_footers, size_t base, int len)
+{
+    (void) final_footers;
+
+    if (len <= 0) {
+        return;
+    }
+
+    for (int i = 0; i < len; i++) {
+        size_t slot = base + (size_t) i;
+        if (slot >= GIB_SCALAR_COUNT_MAX_SLOTS) {
+            continue;
+        }
+        gib_scalar_count_flush_slot(slot);
+        gib_scalar_count_slot_reg[slot] = NULL;
+        gib_scalar_count_slot_nursery[slot] = NULL;
+    }
+}
+
+void gib_scalar_count_on_promote(char *old_nursery_footer, char *new_oldgen_footer)
+{
+    if (old_nursery_footer == NULL || new_oldgen_footer == NULL) {
+        return;
+    }
+
+    for (size_t slot = 0; slot < gib_scalar_count_slots_high_water; slot++) {
+        if (gib_scalar_count_slot_nursery[slot] != old_nursery_footer) {
+            continue;
+        }
+
+        // Deliver what the nursery chunk actually holds, into the nursery
+        // footer -- which is where the per-element bump put it too.
+        gib_scalar_count_flush_slot(slot);
+
+        // Then re-point the slot at the promoted region.  Promotion allocates
+        // a FRESH reg_info (see gib_init_footer_at at the call site), so this
+        // is a different region, not a new chunk of the same one; everything
+        // written from here on belongs to it.
+        gib_scalar_count_slot_nursery[slot] = NULL;
+        gib_scalar_count_bind_slot_to_footer(slot, new_oldgen_footer);
+    }
+}
+
+void gib_scalar_count_forget_slots(void)
+{
+    for (size_t slot = 0; slot < gib_scalar_count_slots_high_water; slot++) {
+        gib_scalar_count_pending[slot] = 0;
+        gib_scalar_count_slot_reg[slot] = NULL;
+        gib_scalar_count_slot_nursery[slot] = NULL;
+#ifdef _GIBBON_SCALAR_COUNT_DIFF
+        gib_scalar_count_diff_snapshot[slot] = 0;
+#endif
+    }
+    gib_scalar_count_slots_high_water = 0;
+}
+
+#ifdef _GIBBON_SCALAR_COUNT_DIFF
+void gib_scalar_count_diff_report(void)
+{
+    if (gib_scalar_count_diff_checks == 0) {
+        fprintf(stderr,
+                "gibbon: --scalar-counts-diff verified nothing: no flush point "
+                "was reached.\n");
+        return;
+    }
+
+    fprintf(stderr,
+            "gibbon: deferred scalar counts agreed with the per-element bumps "
+            "at %" PRIu64 " flush points.\n",
+            gib_scalar_count_diff_checks);
+}
+#endif
+
 void gib_scalar_count_footer_begin(void)
 {
     GibScalarCountDebugState *state = &gib_global_scalar_count_debug_state;
@@ -1511,6 +2073,7 @@ void gib_scalar_count_footer_begin(void)
         state->length = 0;
 #endif
         gib_global_scalar_count_region_states_length = 0;
+        gib_scalar_count_forget_slots();
     }
     state->depth++;
 }
@@ -1531,6 +2094,11 @@ void gib_scalar_count_on_grow(char *old_footer_ptr, char *new_footer_ptr)
     GibScalarCountRegionState *region_state =
         gib_scalar_count_region_state_for_footer(old_footer);
 
+    // Deliver any deferred count BEFORE the transition, while the routing
+    // still names the chunk being abandoned.  After this the old footer is
+    // zeroed and the counts that follow belong to the next chunk.
+    gib_scalar_count_flush_region(region_state->reg_info);
+
     region_state->write_footer = old_footer;
     region_state->current_footer = new_footer;
     gib_scalar_count_footer_init(&old_footer->scalar_counts);
@@ -1541,7 +2109,12 @@ void gib_scalar_count_on_grow(char *old_footer_ptr, char *new_footer_ptr)
     }
 }
 
-void gib_scalar_count_footer_bump(char *footer_ptr)
+// The SLOW path.  The fast path lives in gibbon_rts.h and handles the common
+// case -- an oldgen footer whose region state is already in the table -- without
+// a call or a stack frame.  Measured: `region_state_for_footer`'s prologue
+// (`sub $0x28,%rsp`) alone was 46% of that function's cycles, for a lookup whose
+// scan body is ~7%; the cost was the call, not the search.
+void gib_scalar_count_footer_bump_slow(char *footer_ptr)
 {
     if (footer_ptr == NULL) {
         return;
@@ -2286,16 +2859,21 @@ int gib_compare_doubles(const void *a, const void *b)
 }
 
 // Exponentiation
+/* Kept only for ABI compatibility: the code generator no longer emits a call
+ * to this.  `ExpP` now emits the width-specific `gib_exp_i{8,16,32,64}`, and
+ * `FExpP` -- which used to call this INTEGER helper on two floats -- emits
+ * `powf`.
+ *
+ * The body is delegated rather than left as it was, so that an out-of-tree
+ * caller gets the specified answer instead of the three bugs this had:
+ * `base == 2` was computed as `1 << pow` where the `1` is an `int`, so
+ * gib_expll(2, 31) returned -2147483648 and gib_expll(2, 40) returned 256
+ * (shift count >= width); every other base looped `pow` times multiplying
+ * signed values, which is undefined on overflow and takes O(pow) time; and a
+ * negative exponent shifted by a negative count. */
 int64_t gib_expll(int64_t base, int64_t pow)
 {
-    if (base == 2) {
-        return (1 << pow);
-    } else {
-        int64_t i, result = 1;
-        for (i = 0; i < pow; i++)
-            result *= base;
-        return result;
-    }
+    return gib_exp_i64(base, pow);
 }
 
 // https://www.cprogramming.com/snippets/source-code/find-the-number-of-cpu-cores-for-windows-mac-or-linux

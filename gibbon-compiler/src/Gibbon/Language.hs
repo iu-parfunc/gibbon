@@ -32,7 +32,7 @@ import           Text.PrettyPrint.GenericPretty
 import           Gibbon.Language.Constants
 import           Gibbon.Language.Syntax
 import           Gibbon.Common
-import           Gibbon.DynFlags (DynFlags, GeneralFlag(..), gopt)
+import           Gibbon.DynFlags (DynFlags)
 import GHC.Stack
 
 --------------------------------------------------------------------------------
@@ -47,7 +47,7 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
       f e =
        case e of
         VarE _     -> True
-        LitE _     -> True
+        LitE{}     -> True
         CharE _    -> True
         FloatE{}   -> True
         LitSymE _  -> True
@@ -79,7 +79,7 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
 instance FreeVars (e l d) => FreeVars (PreExp e l d) where
   gFreeVars ex = case ex of
       VarE v    -> S.singleton v
-      LitE _    -> S.empty
+      LitE{}    -> S.empty
       CharE _   -> S.empty
       FloatE{}  -> S.empty
       LitSymE _ -> S.empty
@@ -119,7 +119,7 @@ instance (Show (), Out (),
   gRecoverType ddfs env2 ex =
     case ex of
       VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) v (vEnv env2)
-      LitE _       -> IntTy
+      LitE ann _   -> IntTy (litWidth ann)
       CharE _      -> CharTy
       FloatE{}     -> FloatTy
       LitSymE _    -> SymTy
@@ -155,7 +155,7 @@ instance (Show (), Out (),
   gRecoverTypeLoc ddfs env2 ex =
     case ex of
       VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) (fromVarToFreeVarsTy v) (vEnv env2)
-      LitE _       -> IntTy
+      LitE ann _   -> IntTy (litWidth ann)
       CharE _      -> CharTy
       FloatE{}     -> FloatTy
       LitSymE _    -> SymTy
@@ -287,7 +287,7 @@ subst old new ex =
   case ex of
     VarE v | v == old  -> new
            | otherwise -> VarE v
-    LitE _             -> ex
+    LitE{}             -> ex
     CharE{}            -> ex
     FloatE{}           -> ex
     LitSymE _          -> ex
@@ -332,7 +332,7 @@ substE old new ex =
     _ | ex == old   -> new
 
     VarE v          -> VarE v
-    LitE _          -> ex
+    LitE{}          -> ex
     CharE _         -> ex
     FloatE{}        -> ex
     LitSymE _       -> ex
@@ -369,7 +369,7 @@ hasTimeIt rhs =
       TimeIt _ _ _ -> True
       DataConE{}   -> False
       VarE _       -> False
-      LitE _       -> False
+      LitE{}       -> False
       CharE _      -> False
       FloatE{}     -> False
       LitSymE _    -> False
@@ -497,7 +497,7 @@ isPackedTy PackedTy{} = True
 isPackedTy _ = False
 
 isScalarTy :: UrTy a -> Bool
-isScalarTy IntTy  = True
+isScalarTy IntTy{} = True
 isScalarTy CharTy = True
 isScalarTy SymTy  = True
 isScalarTy BoolTy = True
@@ -523,7 +523,7 @@ hasPacked t =
     ProdTy ls      -> any hasPacked ls
     SymTy          -> False
     BoolTy         -> False
-    IntTy          -> False
+    IntTy{}        -> False
     CharTy         -> False
     FloatTy        -> False
     SymDictTy _ _  -> False -- hasPacked ty
@@ -549,7 +549,7 @@ getPackedTys t =
     ProdTy ls      -> concatMap getPackedTys ls
     SymTy          -> []
     BoolTy         -> []
-    IntTy          -> []
+    IntTy{}        -> []
     CharTy         -> []
     FloatTy        -> []
     SymDictTy _ _  -> [] -- getPackedTys ty
@@ -568,28 +568,36 @@ getPackedTys t =
 
 -- | Provide a size in bytes, if it is statically known.
 sizeOfTy :: UrTy a -> Maybe Int
-sizeOfTy = sizeOfTyWithIntBytes 8
+sizeOfTy = sizeOfTyWithIntBytes 0  -- width comes from the type
 
--- | Like 'sizeOfTy', but respects backend representation flags that affect
--- serialized scalar layout.  Today only --int32 changes IntTy from 8 bytes to
--- 4 bytes; all pointer-sized values remain 64-bit.
+-- | 'sizeOfTy', with a 'DynFlags' parameter kept for its call sites.
+--
+-- This used to narrow every IntTy to 4 bytes under a whole-program 32-bit
+-- backend switch, back when a bare source `Int` had no width of its own and
+-- the flag alone decided whether generated `GibInt` was 32- or 64-bit.  That
+-- switch is gone: integer width is a source-language type now (bare `Int` is
+-- always W64; write `Int8`/`Int16`/`Int32` for anything narrower), so the IR
+-- type already says exactly how many bytes a field is, and this always
+-- agrees with 'sizeOfTy'.  Kept as a thin alias rather than replaced at every
+-- call site (Cursorize, InferLocations, RouteEnds, ThreadRegions,
+-- LoopifyTraversals, CalculateBounds) to avoid unrelated churn there.
 sizeOfTyD :: DynFlags -> UrTy a -> Maybe Int
-sizeOfTyD dflags = sizeOfTyWithIntBytes (if gopt Opt_Int32 dflags then 4 else 8)
+sizeOfTyD _dflags = sizeOfTy
 
 sizeOfTyWithIntBytes :: Int -> UrTy a -> Maybe Int
-sizeOfTyWithIntBytes intBytes t =
+sizeOfTyWithIntBytes _intBytes t =
   case t of
     PackedTy{}    -> Nothing
-    ProdTy ls     -> sum <$> mapM (sizeOfTyWithIntBytes intBytes) ls
+    ProdTy ls     -> sum <$> mapM (sizeOfTyWithIntBytes _intBytes) ls
     SymDictTy _ _ -> Just 8 -- Always a pointer.
     PDictTy _ _   -> Just 8 -- Always a pointer.
-    IntTy         -> Just intBytes
+    IntTy w       -> Just (intWidthBytes w)
     CharTy        -> Just 1
     FloatTy       -> Just 4
     SymTy         -> Just 8
     BoolTy        -> Just 1
     VectorTy{}    -> Just 8 -- Always a pointer.
-    SimdTy ty lanes -> (* lanes) <$> sizeOfTyWithIntBytes intBytes ty
+    SimdTy ty lanes -> (* lanes) <$> sizeOfTyWithIntBytes _intBytes ty
     ListTy{}      -> Just 8 -- Always a pointer.
     PtrTy{}       -> Just 8 -- Assuming 64 bit
     CursorTy{}    -> Just 8
@@ -604,12 +612,12 @@ sizeOfTyWithIntBytes intBytes t =
 primArgsTy :: Prim (UrTy a) -> [UrTy a]
 primArgsTy p =
   case p of
-    AddP    -> [IntTy, IntTy]
-    SubP    -> [IntTy, IntTy]
-    MulP    -> [IntTy, IntTy]
-    DivP    -> [IntTy, IntTy]
-    ModP    -> [IntTy, IntTy]
-    ExpP    -> [IntTy, IntTy]
+    AddP a    -> let t = IntTy (intPrimWidth a) in [t, t]
+    SubP a    -> let t = IntTy (intPrimWidth a) in [t, t]
+    MulP a    -> let t = IntTy (intPrimWidth a) in [t, t]
+    DivP a    -> let t = IntTy (intPrimWidth a) in [t, t]
+    ModP a    -> let t = IntTy (intPrimWidth a) in [t, t]
+    ExpP a    -> let t = IntTy (intPrimWidth a) in [t, t]
     FRandP  -> []
     FAddP   -> [FloatTy, FloatTy]
     FSubP   -> [FloatTy, FloatTy]
@@ -619,17 +627,21 @@ primArgsTy p =
     FSqrtP  -> [FloatTy]
     FTanP   -> [FloatTy]
     FloatToIntP -> [FloatTy]
-    IntToFloatP -> [IntTy]
+    -- Both conversions take their operand at the annotated SOURCE width.
+    -- 'intPrimWidth' errors on an unresolved annotation rather than falling
+    -- back to W64, so a missing source is a loud bug, not a silent widening.
+    IntToFloatP a -> [IntTy (intPrimWidth a)]
+    IntConvertP a _ -> [IntTy (intPrimWidth a)]
     RandP   -> []
     EqSymP  -> [SymTy, SymTy]
     EqBenchProgP _ -> []
-    EqIntP  -> [IntTy, IntTy]
+    EqIntP a  -> let t = IntTy (intPrimWidth a) in [t, t]
     EqFloatP-> [FloatTy, FloatTy]
     EqCharP -> [CharTy, CharTy]
-    LtP  -> [IntTy, IntTy]
-    GtP  -> [IntTy, IntTy]
-    LtEqP-> [IntTy, IntTy]
-    GtEqP-> [IntTy, IntTy]
+    LtP a  -> let t = IntTy (intPrimWidth a) in [t, t]
+    GtP a  -> let t = IntTy (intPrimWidth a) in [t, t]
+    LtEqP a-> let t = IntTy (intPrimWidth a) in [t, t]
+    GtEqP a-> let t = IntTy (intPrimWidth a) in [t, t]
     FLtP  -> [FloatTy, FloatTy]
     FGtP  -> [FloatTy, FloatTy]
     FLtEqP-> [FloatTy, FloatTy]
@@ -640,18 +652,18 @@ primArgsTy p =
     MkTrue  -> []
     MkFalse -> []
     SizeParam        -> []
-    IsBig            -> [IntTy, PackedTy "HOLE" _error]
+    IsBig            -> [(IntTy W64), PackedTy "HOLE" _error]
     DictEmptyP _ty   -> []
     DictInsertP _ty  -> error "primArgsTy: dicts not handled yet"
     DictLookupP _ty  -> error "primArgsTy: dicts not handled yet"
     DictHasKeyP _ty  -> error "primArgsTy: dicts not handled yet"
-    VAllocP _elty  -> [IntTy]
+    VAllocP _elty  -> [(IntTy W64)]
     VFreeP elty   -> [VectorTy elty]
     VFree2P elty  -> [VectorTy elty]
     VLengthP elty -> [VectorTy elty]
-    VNthP elty    -> [VectorTy elty, IntTy]
-    VSliceP elty  -> [IntTy, IntTy, VectorTy elty]
-    InplaceVUpdateP elty -> [VectorTy elty, IntTy, elty]
+    VNthP elty    -> [VectorTy elty, (IntTy W64)]
+    VSliceP elty  -> [(IntTy W64), (IntTy W64), VectorTy elty]
+    InplaceVUpdateP elty -> [VectorTy elty, (IntTy W64), elty]
     VConcatP elty -> [VectorTy (VectorTy elty)]
     -- The voidTy is just a placeholder.
     -- We don't have a type for function pointers.
@@ -673,7 +685,7 @@ primArgsTy p =
     LLFree2P elty  -> [ListTy elty]
     LLCopyP elty  -> [ListTy elty]
     GetNumProcessors -> []
-    PrintInt -> [IntTy]
+    PrintInt a -> [IntTy (intPrimWidth a)]
     PrintChar -> [CharTy]
     PrintFloat -> [FloatTy]
     PrintBool -> [BoolTy]
@@ -687,7 +699,7 @@ primArgsTy p =
     SymHashLookup -> [SymHashTy,SymTy]
     SymHashContains -> [SymHashTy,SymTy]
     IntHashEmpty -> []
-    IntHashInsert -> [IntHashTy,SymTy,IntTy]
+    IntHashInsert -> [IntHashTy,SymTy,(IntTy W64)]
     IntHashLookup -> [IntHashTy,SymTy]
     ReadPackedFile{} -> []
     WritePackedFile _ ty -> [ty]
@@ -701,12 +713,12 @@ primArgsTy p =
 primRetTy :: Prim (UrTy a) -> (UrTy a)
 primRetTy p =
   case p of
-    AddP -> IntTy
-    SubP -> IntTy
-    MulP -> IntTy
-    DivP -> IntTy
-    ModP -> IntTy
-    ExpP -> IntTy
+    AddP a -> IntTy (intPrimWidth a)
+    SubP a -> IntTy (intPrimWidth a)
+    MulP a -> IntTy (intPrimWidth a)
+    DivP a -> IntTy (intPrimWidth a)
+    ModP a -> IntTy (intPrimWidth a)
+    ExpP a -> IntTy (intPrimWidth a)
     FRandP-> FloatTy
     FAddP -> FloatTy
     FSubP -> FloatTy
@@ -715,19 +727,21 @@ primRetTy p =
     FExpP -> FloatTy
     FSqrtP-> FloatTy
     FTanP -> FloatTy
-    FloatToIntP -> IntTy
-    IntToFloatP -> FloatTy
-    RandP-> IntTy
+    FloatToIntP -> (IntTy W64)
+    IntToFloatP{} -> FloatTy
+    -- The result is exactly the destination width, never the source.
+    IntConvertP _ dst -> IntTy dst
+    RandP-> (IntTy W64)
     Gensym  -> SymTy
     EqSymP  -> BoolTy
     EqBenchProgP _ -> BoolTy
-    EqIntP  -> BoolTy
+    EqIntP{}  -> BoolTy
     EqFloatP-> BoolTy
     EqCharP -> BoolTy
-    LtP  -> BoolTy
-    GtP  -> BoolTy
-    LtEqP-> BoolTy
-    GtEqP-> BoolTy
+    LtP{}  -> BoolTy
+    GtP{}  -> BoolTy
+    LtEqP{}-> BoolTy
+    GtEqP{}-> BoolTy
     FLtP  -> BoolTy
     FGtP  -> BoolTy
     FLtEqP-> BoolTy
@@ -736,7 +750,7 @@ primRetTy p =
     AndP -> BoolTy
     MkTrue  -> BoolTy
     MkFalse -> BoolTy
-    SizeParam      -> IntTy
+    SizeParam      -> (IntTy W64)
     IsBig          -> BoolTy
     DictHasKeyP _  -> BoolTy
     DictEmptyP ty  -> SymDictTy Nothing $ stripTyLocs ty
@@ -745,7 +759,7 @@ primRetTy p =
     VAllocP elty   -> VectorTy elty
     VFreeP _elty   -> ProdTy []
     VFree2P _elty  -> ProdTy []
-    VLengthP _elty -> IntTy
+    VLengthP _elty -> (IntTy W64)
     VNthP elty     -> elty
     VSliceP elty   -> VectorTy elty
     InplaceVUpdateP elty -> VectorTy elty
@@ -767,13 +781,13 @@ primRetTy p =
     LLFreeP _elty  -> ProdTy []
     LLFree2P _elty -> ProdTy []
     LLCopyP elty  -> ListTy elty
-    GetNumProcessors -> IntTy
-    PrintInt   -> ProdTy []
+    GetNumProcessors -> (IntTy W64)
+    PrintInt{}   -> ProdTy []
     PrintChar  -> ProdTy []
     PrintFloat -> ProdTy []
     PrintBool  -> ProdTy []
     PrintSym   -> ProdTy []
-    ReadInt    -> IntTy
+    ReadInt    -> (IntTy W64)
     SymSetEmpty    -> SymSetTy
     SymSetInsert   -> SymSetTy
     SymSetContains -> BoolTy
@@ -783,19 +797,19 @@ primRetTy p =
     SymHashContains  -> BoolTy
     IntHashEmpty   -> IntHashTy
     IntHashInsert  -> IntHashTy
-    IntHashLookup  -> IntTy
+    IntHashLookup  -> (IntTy W64)
     (ErrorP _ ty)  -> ty
     ReadPackedFile _ _ _ ty -> ty
     WritePackedFile{} -> ProdTy []
     ReadArrayFile _ ty      -> ty
     RequestEndOf  -> CursorTy
-    RequestSizeOf -> IntTy
+    RequestSizeOf -> (IntTy W64)
     Write3dPpmFile{} -> error "primRetTy: Write3dPpmFile not handled yet"
 
 stripTyLocs :: UrTy a -> UrTy ()
 stripTyLocs ty =
   case ty of
-    IntTy     -> IntTy
+    IntTy w   -> IntTy w
     CharTy    -> CharTy
     FloatTy   -> FloatTy
     SymTy     -> SymTy

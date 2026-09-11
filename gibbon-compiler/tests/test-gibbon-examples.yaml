@@ -20,7 +20,7 @@
 ##   * SSE vectorization, and
 ##   * 32-bit SSE vectorization.
 
-run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+run-modes: [gibbon2, loopify, selective, vectorize]
 
 ## Specifiying an individual test:
 ##
@@ -83,15 +83,15 @@ tests:
   - name: test11f_funrec.gib
   - name: test11_fundata.gib
   - name: test12b_traverse.gib
-    failing: [gibbon1, gibbon2, gibbon3, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, nocopies, noran, loopify, selective, vectorize]
   - name: test12c_traverse.gib
-    failing: [gibbon1, gibbon2, gibbon3, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, nocopies, noran, loopify, selective, vectorize]
   - name: test13b_build.gib
   - name: test13_build.gib
   - name: Test185.hs
     answer-file: examples/Test185.ans
     # Scalar fields after packed not allowed
-    failing: [gibbon1, gibbon2, gibbon3, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, nocopies, noran, loopify, selective, vectorize]
   - name: SS.hs
     dir: examples/gc
     answer-file: examples/gc/SS.ans
@@ -150,6 +150,41 @@ tests:
   - name: test30_twitter.gib
     # ThreadRegions bug.
     failing: []
+
+  ## VW-23 regressions (Phase 7 step 4).  Correctness-only; not benchmarks.
+  ## Both printed the wrong value in every --use-mutable-cursors mode
+  ## (loopify/selective/vectorize) while plain --packed was correct, and both
+  ## were masked until VW-03 repaired the output oracle.  Answers come from
+  ## Racket via `make answers`, so the expected value is independent of Gibbon.
+  ## test31 covers a tail-recursive fold whose list element carries a packed
+  ## field, so the tail is reached through a random-access node (it printed 1
+  ## instead of 2).  test32 covers a timed packed build whose argument is a
+  ## nullary primitive, which used to erase Cursorize's mutable-location
+  ## environments (it printed 0 instead of 12).
+  - name: test31_absran_tailfold.gib
+  - name: test32_timed_build_sizeparam.gib
+
+  ## VW-04 regression (Phase 7 step 5).  Correctness-only; not a benchmark.
+  ## Reads the first and last element of a generated vector at each of the
+  ## lengths once reported as corrupting the heap (1, 8, 16, 17, 24, 32).  The
+  ## answer 2020 is derived by hand from (n-1)^2, not recorded from Gibbon.
+  ## Deterministic rejection of INVALID indices is covered separately, by
+  ## gibbon-rts/tests/run_vector_bounds_tests.sh, because it needs the RTS
+  ## built with -D_GIBBON_BOUNDSCHECK.
+  - name: test33_vector_index_lengths.hs
+    answer-file: examples/test33_vector_index_lengths.ans
+
+  ## VW-31 regression (Phase 7 step 8.1a).  A let-bound recursive packed tail
+  ## consumed by two constructor alternatives.  Before the fix this compiled
+  ## silently and produced a corrupt value in every mode, at plain --packed,
+  ## in both layouts.  test35 is the one-constructor control, which always
+  ## worked and is registered so the repair cannot be "stop reordering".
+  ## Both answers are derived from the source definition, not recorded from
+  ## Gibbon.
+  - name: test34_vw31_shared_tail.hs
+    answer-file: examples/test34_vw31_shared_tail.ans
+  - name: test35_vw31_shared_tail_onector.hs
+    answer-file: examples/test35_vw31_shared_tail_onector.ans
   - name: test_buildstree.gib
   - name: test_buildtree.gib
   - name: test_buildtreesum.gib
@@ -270,7 +305,7 @@ tests:
   - name: Poly1.hs
     dir: examples/poly
     answer-file: examples/poly/Poly1.ans
-    failing: [gibbon1, gibbon2, gibbon3, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, interp1, nocopies, noran, loopify, selective, vectorize]
 
   # - name: measure_mode.hs
   #   answer-file: examples/measure_mode.ans
@@ -300,7 +335,7 @@ tests:
     dir: examples/poly
     answer-file: examples/poly/CurriedFns.ans
     skip: true
-    failing: [gibbon1, gibbon2, gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, loopify, selective, vectorize]
 
   - name: T127.hs
     dir: examples/poly
@@ -320,19 +355,19 @@ tests:
 
   - name: unariser_bug1.hs
     answer-file: examples/unariser_bug1.ans
-    failing: [gibbon1, gibbon2, gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, loopify, selective, vectorize]
     skip: true
 
   - name: ParseLinearTypes.hs
     test-flags: ["--ghc-tc"]
     dir: examples/lineartypes/
-    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, loopify, selective, vectorize]
 
   - name: EqBench.hs
     answer-file: examples/EqBench.ans
 
   - name: test_parse.hs
-    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, loopify, selective, vectorize]
 
   - name: toplevel_value.hs
     answer-file: examples/toplevel_value.ans
@@ -372,7 +407,7 @@ tests:
     # int32 removed [2c]: this passes under --int32.  The only difference from
     # the 64-bit .ans is spacing inside the printed tree, which `diff -B -w`
     # already ignores; nothing here depends on the width of Int.
-    failing: [interp1, gibbon1, pointer, nocopies, loopify, selective, vectorize, int32-vectorize]
+    failing: [interp1, gibbon1, pointer, nocopies, loopify, selective, vectorize]
 
    ## FAILING: Multiple packed outputs.
   - name: TupleTest.hs
@@ -386,7 +421,7 @@ tests:
 
     ## FAILING: Scalar field after a packed field.
   - name: test12_skip.gib
-    failing: [gibbon1, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, loopify, selective, vectorize]
     skip: true
   - name: test12b_traverse.gib
     skip: true
@@ -416,7 +451,7 @@ tests:
     skip: true
   - name: test29d_list.gib
     skip: true
-    failing: [gibbon1, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, loopify, selective, vectorize]
   - name: test_unpacking.gib
     skip: true
 
@@ -424,46 +459,46 @@ tests:
     ## Shouldn't typecheck
   - name: Fail1.hs
     dir: examples/should_fail
-    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, loopify, selective, vectorize]
   - name: Fail2.hs
     dir: examples/should_fail
-    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, loopify, selective, vectorize]
   - name: Fail3.hs
     dir: examples/should_fail
-    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, loopify, selective, vectorize]
 
 
   ## Fusion2 tests
   - name: test_sumup_seteven.gib
     skip: true
     dir: examples/fusion-benchmarks
-    failing: [gibbon1, gibbon2, gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, loopify, selective, vectorize]
     test-flags: ["--fusion"]
 
   - name: render_tree.hs
     dir: examples/fusion-benchmarks
     skip: true
-    failing: [gibbon1, gibbon2, gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, loopify, selective, vectorize]
     test-flags: ["--fusion"]
     answer-file: examples/fusion-benchmarks/render_tree.ans
 
   - name: render_tree_two_passes.hs
     skip: true
     dir: examples/fusion-benchmarks
-    failing: [gibbon1, gibbon2, gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, loopify, selective, vectorize]
     test-flags: ["--fusion"]
     answer-file: examples/fusion-benchmarks/render_tree_two_passes.ans
 
   - name: render_tree_four_passes.hs
     skip: true
     dir: examples/fusion-benchmarks
-    failing: [gibbon1, gibbon2, gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, loopify, selective, vectorize]
     test-flags: ["--fusion"]
     answer-file: examples/fusion-benchmarks/render_tree_four_passes.ans
 
   - name: render_tree_five_passes.hs
     dir: examples/fusion-benchmarks
-    failing: [gibbon1, gibbon2, gibbon3, pointer, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, pointer, loopify, selective, vectorize]
     ## [2020.05.27]: It never finishes on Travis...
     skip: true
     test-flags: ["--fusion"]
@@ -471,7 +506,7 @@ tests:
 
   - name: LC.hs
     dir: examples/fusion-benchmarks
-    failing: [gibbon1, gibbon2, gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, loopify, selective, vectorize]
     test-flags: ["--fusion"]
     skip: true
     # gibbon2: segfaults in free_region
@@ -509,29 +544,29 @@ tests:
   ## AST benchmarks
   - name: C1.hs
     dir: examples/ast
-    failing: [gibbon1, gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, loopify, selective, vectorize]
     answer-file: examples/ast/C1.ans
     skip: true
 
   ## Tests that only work with some backend:
   - name: test18f_flip.gib
-    failing: [gibbon1, gibbon2, gibbon3, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, nocopies, noran, loopify, selective, vectorize]
   - name: pp_projs.gib
     skip: true
   - name: test12_skip.gib
-    failing: [gibbon1, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, loopify, selective, vectorize]
     skip: true
 
 
   # Tests that actually work but we can't generate answers with Racket
   - name: test08_dict.gib
-    failing: [interp1, pointer, gibbon1, gibbon2, gibbon3, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [interp1, pointer, gibbon1, gibbon2, gibbon3, nocopies, noran, loopify, selective, vectorize]
   - name: test08b_dict.gib
-    failing: [interp1, pointer, gibbon1, gibbon2, gibbon3, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [interp1, pointer, gibbon1, gibbon2, gibbon3, nocopies, noran, loopify, selective, vectorize]
   - name: test08c_dict.gib
-    failing: [interp1, pointer, gibbon1, gibbon2, gibbon3, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [interp1, pointer, gibbon1, gibbon2, gibbon3, nocopies, noran, loopify, selective, vectorize]
   - name: test08d_sharedict.gib
-    failing: [interp1, pointer, gibbon1, gibbon2, gibbon3, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [interp1, pointer, gibbon1, gibbon2, gibbon3, nocopies, noran, loopify, selective, vectorize]
 
   # - name: test08f_dict.gib
   # - name: test08f2_dict.gib
@@ -539,13 +574,13 @@ tests:
 
   # This test depends on real symbols, which we don't support atm.
   - name: test27b_subst.gib
-    failing: [gibbon1, gibbon2, gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, loopify, selective, vectorize]
     skip: true
     # printing symbols is broken atm
 
   # No gensym, or real symbols.
   - name: test28_copyprop.gib
-    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, loopify, selective, vectorize]
 
   # sym-append not implemented in the RTS
   - name: test15b_symappend.gib
@@ -570,15 +605,15 @@ tests:
     failing: [interp1]
 
   - name: test_153.hs
-    failing: [gibbon3, gibbon2, gibbon1, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon3, gibbon2, gibbon1, interp1, nocopies, noran, loopify, selective, vectorize]
     answer-file: examples/test_153.ans
 
   - name: test_164.hs
-    failing: [gibbon3, gibbon2, gibbon1, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon3, gibbon2, gibbon1, interp1, nocopies, noran, loopify, selective, vectorize]
     answer-file: examples/test_164.ans
 
   - name: test_166.hs
-    failing: [gibbon3, gibbon2, gibbon1, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon3, gibbon2, gibbon1, interp1, nocopies, noran, loopify, selective, vectorize]
     answer-file: examples/test_166.ans
 
   - name: test_167.hs
@@ -595,43 +630,51 @@ tests:
   - name: test_power.hs
     answer-file: examples/test_power.ans
     # gib_alloc_region_on_heap: gib_alloc failed
-    failing: [gibbon1, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, loopify, selective, vectorize]
     # Vidush: unskip this, thing hangs because of all the debug print statements
     skip: true
 
   - name: test_191.hs
     answer-file: examples/test_191.ans
     # Gibbon2 and Gibbon3 modes don't pass the L2 typechecker.
-    failing: [pointer, gibbon1, interp1, gibbon3, gibbon2, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [pointer, gibbon1, interp1, gibbon3, gibbon2, nocopies, noran, loopify, selective, vectorize]
     run-modes: ["gibbon2"]
 
   #simple SoA benchmarks
   - name: list.hs
     dir: examples/soa_examples/programs_not_using
-    failing: [gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon3, loopify, selective, vectorize]
     answer-file: examples/soa_examples/test_list.ans
 
   - name: tree.hs
     dir: examples/soa_examples/programs_not_using
-    # int32/int32-vectorize removed [2c]: both are reported as passes.  NOTE:
-    # this program uses `iterate`, so its output carries BATCHTIME/SELFTIMED and
-    # TestRunner's `isBenchOutput` discards any diff -- the pass is real as far
-    # as the harness is concerned, but it is not a value check.
+    # int32/int32-vectorize removed [2c]: both were reported as passes.
+    # NOTE [VW-03, 2026-09-02]: those passes were artifacts of the removed
+    # `isBenchOutput` bypass, which discarded any diff whose text mentioned a
+    # timing token.  With the oracle repaired (tests/OutputCompare.hs) this
+    # program's value output is actually compared, and
+    # examples/soa_examples/test_tree.ans is stale in three independent ways:
+    # it records sum 54604 where the program now computes 3495241, it records
+    # "rightmost: 1" although `rightmost` is commented out in the source (the
+    # program prints an empty field), and it ends with Racket's '#() instead of
+    # the returned value.  Left as-is deliberately: diagnosing the source is
+    # out of scope for the oracle repair, and the answer must not be edited to
+    # manufacture a pass.  Tracked as VW-22.
     failing: [interp1, gibbon3, loopify, selective, vectorize]
     answer-file: examples/soa_examples/test_tree.ans
 
   - name: packedList.hs
     dir: examples/soa_examples/programs_not_using
-    failing: [gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon3, loopify, selective, vectorize]
     answer-file: examples/soa_examples/test_packed_list.ans
 
   - name: packedTree.hs
     dir: examples/soa_examples/programs_not_using
-    failing: [gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon3, loopify, selective, vectorize]
     answer-file: examples/soa_examples/test_packed_tree.ans
     
   - name: test_303.hs
-    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, int32, loopify, selective, vectorize, int32-vectorize]
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1, nocopies, noran, loopify, selective, vectorize]
 
 
   ## Optimization regression tests added for loopification/vectorization work.
@@ -645,14 +688,183 @@ tests:
     answer-file: examples/vectorization/VectorListMap.ans
     compare-with-baseline: true
     baseline-dir: examples/vectorization/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: VectorTreeMap.hs
     dir: examples/vectorization/SOA
     answer-file: examples/vectorization/VectorTreeMap.ans
     compare-with-baseline: true
     baseline-dir: examples/vectorization/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # True four-lane Int32 SIMD over genuinely fully factored (SoA) buffers.
+  # Int32 is 4 bytes, so one 128-bit SSE2 register holds FOUR elements and one
+  # 16-byte load/store moves four of them -- half the bytes per element that
+  # the 2-lane Int64 path moves.  Add/Sub/Select exercise the packed
+  # _mm_add_epi32 / _mm_sub_epi32 / _mm_cmpeq_epi32 + bitwise-select helpers;
+  # element counts are deliberately not multiples of four so the scalar tail
+  # runs too.  MulScalar/DivScalar are CONTROLS: SSE2 has no packed signed
+  # 32-bit multiply (that is SSE4.1), divide or modulus, so those loops must
+  # stay entirely scalar rather than call a helper that spills lanes.
+  # Conversion is a control for the fallback policy: an explicit width
+  # conversion in the loop body keeps the whole loop scalar.
+  - name: VectorInt32Add.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt32Add.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt32Sub.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt32Sub.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt32Select.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt32Select.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt32Boundary.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt32Boundary.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt32MulScalar.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt32MulScalar.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt32DivScalar.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt32DivScalar.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt32Conversion.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt32Conversion.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # True eight-lane Int16 and sixteen-lane Int8 SIMD over genuinely fully
+  # factored (SoA) buffers.  A 128-bit SSE2 register holds 8 Int16s or 16
+  # Int8s, so one 16-byte load/store moves that many elements -- 4x and 8x
+  # fewer bytes per element than the 2-lane Int64 path.  Add/Sub/Select use
+  # _mm_add_epi16/_mm_sub_epi16/_mm_cmpeq_epi16 and the epi8 equivalents;
+  # Int16 multiply additionally uses _mm_mullo_epi16, which IS baseline SSE2
+  # (unlike _mm_mullo_epi32).  Element counts are deliberately not multiples
+  # of the lane count so the scalar tail runs too.
+  #
+  # The *Scalar entries are CONTROLS for operations SSE2 cannot do packed:
+  # Int16 divide/modulus and Int8 multiply must leave their loop scalar
+  # rather than call a helper that spills lanes.
+  - name: VectorInt16Add.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt16Add.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt16Sub.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt16Sub.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt16Mul.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt16Mul.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt16DivScalar.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt16DivScalar.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt8Add.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt8Add.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt8Sub.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt8Sub.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt8Select.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt8Select.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt8MulScalar.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt8MulScalar.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Mixed-width genuine SoA: one traversal over a Factored datatype carrying
+  # all four integer widths.  Loopification emits one loop per field buffer and
+  # each is vectorized at its own optimal stride (W8 16, W16 8, W32 4, W64 4),
+  # so every field cursor advances exactly stride * scalarBytes and no field
+  # runs into a neighbouring buffer.
+  - name: VectorMixedWidths.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorMixedWidths.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Unsupported-operation ISOLATION: an Int32 multiply (no packed SSE2 form)
+  # sits beside an Int8 add, an Int16 multiply and an Int64 add.  Only the
+  # Int32 buffer's loop falls back to scalar; the other three still vectorize.
+  - name: VectorMixedFallback.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorMixedFallback.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # All five SIGNED comparisons (== < > <= >=) plus mask-select, packed at
+  # W8/W16/W32 on baseline SSE2.  _mm_cmpgt_epi{8,16,32} is the only packed
+  # signed compare SSE2 offers, so < swaps operands and <=/>= complement the
+  # mask with an XOR against all-ones (itself produced by comparing a register
+  # with itself).  The data deliberately contains negatives: an unsigned
+  # comparison would give a different total, so these pin SIGNED semantics.
+  - name: VectorInt8Cmp.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt8Cmp.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt16Cmp.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt16Cmp.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt32Cmp.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt32Cmp.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # W8 comparisons over enough elements to cross several packed-region chunks.
+  - name: VectorInt8CmpBig.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt8CmpBig.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Packed multiply at W32 and W8, both emulated on baseline SSE2 and both
+  # measurably faster than the scalar loop, so both are enabled.  W32 uses two
+  # _mm_mul_epu32 plus shuffles (the low 32 bits of a signed product equal
+  # those of the unsigned product); W8 unpacks to 16-bit lanes, uses
+  # _mm_mullo_epi16, masks to the low 8 bits and repacks.  Values stay inside
+  # each width's signed range, so no result depends on overflow policy.
+  - name: VectorInt32Mul.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt32Mul.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: VectorInt8Mul.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorInt8Mul.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Ordered comparisons across all four widths in one Factored structure.
+  # W8/W16/W32 vectorize independently; the W64 field's ordered comparison
+  # stays SCALAR (SSE2 has no packed signed 64-bit compare) and must not
+  # disable the three narrow fields.
+  - name: VectorMixedCmp.hs
+    dir: examples/vectorization/SOA
+    answer-file: examples/vectorization/VectorMixedCmp.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
 
   # Existing fully factored SoA benchmark programs, compared against their
   # matching flat AoS sources when one exists.
@@ -712,7 +924,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: DBQuery.hs
     dir: examples/soa_examples/programs/SOA
@@ -750,6 +962,7 @@ tests:
       - {from: "100000000", to: "64"}
       - {from: "10000000", to: "64"}
       - {from: "1000000", to: "64"}
+      - {from: "250000", to: "64"}
       - {from: "100000", to: "64"}
       - {from: "10000", to: "64"}
       - {from: "mkTree 23", to: "mkTree 6"}
@@ -759,7 +972,8 @@ tests:
       - {from: "mkListA 3000", to: "mkListA 8"}
       - {from: "(sizeParam + 5000000)", to: "(sizeParam + 64)"}
       - {from: "(sizeParam + 75)", to: "(sizeParam + 6)"}
-      - {from: "(sizeParam + 35)", to: "(sizeParam + 6)"}
+      - {from: "(sizeParam + 32)", to: "(sizeParam + 6)"}
+      - {from: "(sizeParam + 14)", to: "(sizeParam + 6)"}
       - {from: "(sizeParam + 23)", to: "(sizeParam + 6)"}
       - {from: "(sizeParam + 22)", to: "(sizeParam + 6)"}
       - {from: "(sizeParam + 8)", to: "(sizeParam + 4)"}
@@ -770,7 +984,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: DomTree.hs
     dir: examples/soa_examples/programs/SOA
@@ -799,7 +1013,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: KDTree.hs
     dir: examples/soa_examples/programs/SOA
@@ -828,7 +1042,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: LinearListReduction.hs
     dir: examples/soa_examples/programs/SOA
@@ -857,7 +1071,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: List.hs
     dir: examples/soa_examples/programs/SOA
@@ -886,7 +1100,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: MonoTree.hs
     dir: examples/soa_examples/programs/SOA
@@ -915,7 +1129,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: ObjectGraph.hs
     dir: examples/soa_examples/programs/SOA
@@ -944,7 +1158,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: OctTree.hs
     dir: examples/soa_examples/programs/SOA
@@ -1002,7 +1216,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: OctTree_barnesHutPotential.hs
     dir: examples/soa_examples/programs/SOA
@@ -1292,7 +1506,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: Trie.hs
     dir: examples/soa_examples/programs/SOA
@@ -1350,7 +1564,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   # SoA-only smoke tests.  These compare each optimization mode against
   # the same source compiled with vanilla packed Gibbon.
@@ -1380,7 +1594,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: ScalarCountSmoke.hs
     dir: examples/soa_examples/programs/SOA
@@ -1408,7 +1622,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: ScalarCountSmokeSingle.hs
     dir: examples/soa_examples/programs/SOA
@@ -1436,7 +1650,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: SelectiveBufferSharingFloatSmoke.hs
     dir: examples/soa_examples/programs/SOA
@@ -1464,7 +1678,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: SelectiveBufferSharingSmoke.hs
     dir: examples/soa_examples/programs/SOA
@@ -1492,7 +1706,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: VectorCrossFieldSmoke.hs
     dir: examples/soa_examples/programs/SOA
@@ -1520,7 +1734,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: VectorExprSmoke.hs
     dir: examples/soa_examples/programs/SOA
@@ -1548,7 +1762,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
 
   # Existing layout-benchmark bug reproducers.  They are listed here so the
@@ -1577,7 +1791,7 @@ tests:
   # part of this phase of the matrix.
   - name: Adts.hs
     # Phase 3: mutable-cursor packed-field/end-cursor issue.
-    failing: [loopify, selective, vectorize, int32-vectorize]
+    failing: [loopify, selective, vectorize]
     dir: examples/layout_benchmarks
     answer-file: examples/layout_benchmarks/reduced_answers/Adts.ans
     source-replacements:
@@ -1593,11 +1807,11 @@ tests:
       - {from: "50", to: "8"}
       - {from: "10", to: "4"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: Contents.hs
     # Phase 3: mutable-cursor packed-field/end-cursor issue.
-    failing: [loopify, selective, vectorize, int32-vectorize]
+    failing: [loopify, selective, vectorize]
     dir: examples/layout_benchmarks
     answer-file: examples/layout_benchmarks/reduced_answers/Contents.ans
     source-replacements:
@@ -1613,7 +1827,7 @@ tests:
       - {from: "50", to: "8"}
       - {from: "10", to: "4"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: eval_bench.hs
     compile-only: true
@@ -1622,7 +1836,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout1ContentSearch.hs
     compile-only: true
@@ -1631,7 +1845,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout1DeleteTag.hs
     compile-only: true
@@ -1640,7 +1854,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout1InsertTag.hs
     compile-only: true
@@ -1649,7 +1863,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout1ListLen.hs
     compile-only: true
@@ -1658,7 +1872,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout1TagSearch.hs
     compile-only: true
@@ -1667,7 +1881,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout2ContentSearch.hs
     compile-only: true
@@ -1676,7 +1890,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout2DeleteTag.hs
     compile-only: true
@@ -1685,7 +1899,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout2InsertTag.hs
     compile-only: true
@@ -1694,7 +1908,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout2ListLen.hs
     compile-only: true
@@ -1703,7 +1917,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout2TagSearch.hs
     compile-only: true
@@ -1712,7 +1926,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout3ContentSearch.hs
     compile-only: true
@@ -1721,7 +1935,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout3DeleteTag.hs
     compile-only: true
@@ -1730,7 +1944,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout3InsertTag.hs
     compile-only: true
@@ -1739,7 +1953,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout3TagSearch.hs
     compile-only: true
@@ -1748,7 +1962,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout4ContentSearch.hs
     compile-only: true
@@ -1757,7 +1971,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout4DeleteTag.hs
     compile-only: true
@@ -1766,7 +1980,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout4InsertTag.hs
     compile-only: true
@@ -1775,7 +1989,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout4TagSearch.hs
     compile-only: true
@@ -1784,7 +1998,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout5ContentSearch.hs
     compile-only: true
@@ -1793,7 +2007,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout5DeleteTag.hs
     compile-only: true
@@ -1802,7 +2016,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout5InsertTag.hs
     compile-only: true
@@ -1811,7 +2025,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout5TagSearch.hs
     compile-only: true
@@ -1820,7 +2034,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout6ContentSearch.hs
     compile-only: true
@@ -1829,7 +2043,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout6DeleteTag.hs
     compile-only: true
@@ -1838,7 +2052,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout6InsertTag.hs
     compile-only: true
@@ -1847,7 +2061,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout6TagSearch.hs
     compile-only: true
@@ -1856,7 +2070,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout7ContentSearch.hs
     compile-only: true
@@ -1865,7 +2079,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout7DeleteTag.hs
     compile-only: true
@@ -1874,7 +2088,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout7InsertTag.hs
     compile-only: true
@@ -1883,7 +2097,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout7TagSearch.hs
     compile-only: true
@@ -1892,7 +2106,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout8ContentSearch.hs
     compile-only: true
@@ -1901,7 +2115,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout8DeleteTag.hs
     compile-only: true
@@ -1910,7 +2124,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout8InsertTag.hs
     compile-only: true
@@ -1919,7 +2133,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: layout8TagSearch.hs
     compile-only: true
@@ -1928,11 +2142,11 @@ tests:
     skip: true
     dir: examples/layout_benchmarks/blog_management/marmoset
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: calcAdtLengthAc.hs
     # Phase 3: mutable-cursor packed-field/end-cursor issue.
-    failing: [loopify, selective, vectorize, int32-vectorize]
+    failing: [loopify, selective, vectorize]
     dir: examples/layout_benchmarks
     answer-file: examples/layout_benchmarks/reduced_answers/calcAdtLengthAc.ans
     source-replacements:
@@ -1948,11 +2162,11 @@ tests:
       - {from: "50", to: "8"}
       - {from: "10", to: "4"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: calcAdtLengthCa.hs
     # Phase 3: mutable-cursor packed-field/end-cursor issue.
-    failing: [loopify, selective, vectorize, int32-vectorize]
+    failing: [loopify, selective, vectorize]
     dir: examples/layout_benchmarks
     answer-file: examples/layout_benchmarks/reduced_answers/calcAdtLengthCa.ans
     source-replacements:
@@ -1968,7 +2182,7 @@ tests:
       - {from: "50", to: "8"}
       - {from: "10", to: "4"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtContentAC.hs
     compile-only: true
@@ -1977,11 +2191,11 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtContentCA.hs
     # Phase 3: mutable-cursor packed-field/end-cursor issue.
-    failing: [loopify, selective, vectorize, int32-vectorize]
+    failing: [loopify, selective, vectorize]
     dir: examples/layout_benchmarks
     answer-file: examples/layout_benchmarks/reduced_answers/processAdtContentCA.ans
     source-replacements:
@@ -1997,7 +2211,7 @@ tests:
       - {from: "50", to: "8"}
       - {from: "10", to: "4"}
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsAct.hs
     compile-only: true
@@ -2006,7 +2220,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsAct2.hs
     compile-only: true
@@ -2015,7 +2229,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsAtc.hs
     compile-only: true
@@ -2024,7 +2238,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsAtc2.hs
     compile-only: true
@@ -2033,7 +2247,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsCat.hs
     compile-only: true
@@ -2042,7 +2256,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsCat2.hs
     compile-only: true
@@ -2051,7 +2265,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsCta.hs
     compile-only: true
@@ -2060,7 +2274,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsCta2.hs
     compile-only: true
@@ -2069,7 +2283,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsTac.hs
     compile-only: true
@@ -2078,7 +2292,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsTac2.hs
     compile-only: true
@@ -2087,7 +2301,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsTca.hs
     compile-only: true
@@ -2096,7 +2310,7 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
   - name: processAdtTagsTca2.hs
     compile-only: true
@@ -2105,22 +2319,24 @@ tests:
     skip: true
     dir: examples/layout_benchmarks
     compare-with-baseline: true
-    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
+    run-modes: [gibbon2, loopify, selective, vectorize]
 
 
 
 
   ## ---------------------------------------------------------------------
-  ## int32 / int32-vectorize reproducers.
+  ## Historical int32 / int32-vectorize reproducers (ARCHIVED).
   ##
-  ## These live in the SoA program directory and were hand-run only until now.
-  ## Registering them is what actually gives `int32-vectorize` coverage of the
-  ## fully-factored SoA path.
+  ## The `--int32` compiler flag and the `int32`/`int32-vectorize` harness
+  ## modes these were written for no longer exist (see the "Explicit-width
+  ## coverage" section near the end of this file for their replacement).  The
+  ## tests below use bare `Int` and now just run as ordinary 64-bit programs
+  ## under `run-modes: [gibbon2, vectorize]`; the `.int32.ans` sibling-answer
+  ## mechanism they were built around is inert (no active mode's name can
+  ## produce that infix anymore).
   ##
   ## Answers were verified against an independent model of each program (not
-  ## merely recorded from a run).  Where the 32-bit answer legitimately differs
-  ## from the 64-bit one it is recorded in a sibling `<name>.int32.ans`, which
-  ## TestRunner prefers over the shared `.ans` when running in an int32 mode.
+  ## merely recorded from a run).
 
   # Vectorized int32 arithmetic: element counts that are not a multiple of the
   # 4-wide stride, so both the vector body and the scalar tail run.
@@ -2129,7 +2345,7 @@ tests:
     answer-file: examples/soa_examples/reduced_answers/Int32VecCounts.ans
     source-replacements:
       - {from: "n0 = sizeParam", to: "n0 = 1003"}
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # MUL / DIV / MOD int32x4 helpers on negative operands.
   - name: Int32VecArith.hs
@@ -2137,7 +2353,7 @@ tests:
     answer-file: examples/soa_examples/reduced_answers/Int32VecArith.ans
     source-replacements:
       - {from: "n0 = sizeParam", to: "n0 = 1003"}
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # VecEq + VecSelect lowering.  The 64-bit digest exceeds 32 bits, so this
   # test is the one that exercises the per-mode answer file.
@@ -2146,7 +2362,7 @@ tests:
     answer-file: examples/soa_examples/reduced_answers/Int32VecSelect.ans
     source-replacements:
       - {from: "n0 = sizeParam", to: "n0 = 1003"}
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # Multiply-dominated map; this is the program the -msse4.1 / _mm_mullo_epi32
   # measurement uses.
@@ -2155,59 +2371,59 @@ tests:
     answer-file: examples/soa_examples/reduced_answers/Int32VecMulHeavy.ans
     source-replacements:
       - {from: "n0 = sizeParam", to: "n0 = 101"}
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # Mixed scalar widths (Int + Float) in an AoS (Linear) layout.
   - name: Int32ProbeAos.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/Int32ProbeAos.ans
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # Same program in a fully factored SoA layout.
   - name: Int32ProbeSoa.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/Int32ProbeSoa.ans
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # `iterate` / TimeIt path: this is where ITERS:/SIZE: are printf'd from the
-  # GibInt-typed RTS getters.  NOTE: the output carries BATCHTIME/SELFTIMED, so
-  # TestRunner's isBenchOutput suppresses the diff; what this checks is that the
-  # program compiles and runs to completion under --int32.
+  # GibInt-typed RTS getters.  Since VW-03 was fixed the output IS value-checked:
+  # only the nondeterministic ITER TIMES/BATCHTIME/SELFTIMED records are ignored,
+  # while ITERS:/SIZE: and the program's value are compared against the answer.
   - name: Int32ProbeIter.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/Int32ProbeIter.ans
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # Sum overflows 32 bits (2015000000000 -> 660338176).  AoS layout.
   - name: Int32ProbeBigAos.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/Int32ProbeBigAos.ans
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # Same, fully factored SoA layout.
   - name: Int32ProbeBigSoa.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/Int32ProbeBigSoa.ans
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # Vector/scalar-tail split for counts that are not multiples of the stride.
   - name: VecProbeCounts.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/VecProbeCounts.ans
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
-  # Int and Float fields mutated by the same CanVectorize map (2 int groups
+  # Int and Float fields mutated by the same MayVectorize map (2 int groups
   # reconciled against 1 float group in one logical stride).
   - name: VecProbeMixedWidth.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/VecProbeMixedWidth.ans
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # One field computed from its own input, the other a loop-invariant constant.
   - name: VecProbeConstField.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/VecProbeConstField.ans
-    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+    run-modes: [gibbon2, vectorize]
 
   # RTS ABI width checks (gib_vector_slice lower bound).  Vectorization is not
   # involved, so these run in the two widths only.
@@ -2219,17 +2435,54 @@ tests:
   # -flto the compiler emits a real call, a 32-bit GibInt is written to %edi and
   # zero-extends into the %rdi the 64-bit RTS reads, and the bug appears.
   # Remove these flags and these tests stop being able to catch a regression.
+  # Arithmetic-intensity sweep: six MayVectorize maps over the SAME list with
+  # identical memory traffic (2 Int fields in, 2 out) and 0/1/2/4/8/16 fused
+  # multiply-adds per element.  Memory traffic is constant by construction, so
+  # the vectorized/scalar ratio across passes isolates arithmetic intensity.
+  # mapAI8/mapAI16 exceed 32 bits, so int32 gets its own answer file; the two
+  # differing fields are exact two's-complement truncations of the 64-bit ones
+  # (trunc32(348410813312)=518462336, trunc32(6906862201810515840)=326956928).
+  # Arithmetic-intensity sweep v2.  Multiplier arrives as a PARAMETER (odd,
+  # runtime-derived) so GCC cannot strength-reduce it -- v1 used compile-time
+  # constants and therefore emitted zero packed multiplies.  mapSer<N> is a
+  # serial chain (latency ceiling), mapPar<N> is N independent products
+  # (throughput ceiling); memory traffic is identical across all ten passes.
+  # Only mapSer16 exceeds 32 bits at n=64: trunc32(322021484374432)=2016389536.
+  - name: MapIntensityV2.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/MapIntensityV2.ans
+    source-replacements:
+      - {from: "10000000", to: "64"}
+    run-modes: [gibbon2, vectorize]
+
+  # Regression test for a fixed vectorizer crash: a loop-invariant that depends
+  # on another loop-invariant used to hoist a dangling reference out of the loop
+  # ("Var loop_mut_<n>_buf1_anf0 not found", L3/Typecheck.hs:1157).  The
+  # dependency bindings are now hoisted alongside it, in ANF, under fresh names.
+  # This must PASS in all four modes; it fails on any compiler predating the fix.
+  - name: VecInvariantChain.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/VecInvariantChain.ans
+    run-modes: [gibbon2, vectorize]
+
+  - name: MapIntensity.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/MapIntensity.ans
+    source-replacements:
+      - {from: "10000000", to: "64"}
+    run-modes: [gibbon2, vectorize]
+
   - name: VfyAbiNegSlice.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/VfyAbiNegSlice.ans
-    run-modes: [gibbon2, int32]
+    run-modes: [gibbon2]
     test-flags: ["--optc", " -O3 "]
 
   # gib_vector_slice upper bounds check with a negative length.
   - name: VfyAbiNegSliceUpper.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/VfyAbiNegSliceUpper.ans
-    run-modes: [gibbon2, int32]
+    run-modes: [gibbon2]
     test-flags: ["--optc", " -O3 "]
 
   # gib_expll with a negative exponent.  Pre-fix, without -flto, this returned
@@ -2237,13 +2490,376 @@ tests:
   - name: VfyAbiExpNegPow.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/VfyAbiExpNegPow.ans
-    run-modes: [gibbon2, int32]
+    run-modes: [gibbon2]
     test-flags: ["--optc", " -O3 "]
 
-  # sizeParam echoed through the LetTimedT / ITERS:/SIZE: printf path.  Same
-  # isBenchOutput caveat as Int32ProbeIter.hs.
+  # sizeParam echoed through the LetTimedT / ITERS:/SIZE: printf path.  Since
+  # VW-03 was fixed the echoed SIZE: is compared against the answer rather than
+  # being discarded, which is the point of this test.
   - name: VfySizeParamPrint.hs
     dir: examples/soa_examples/programs/SOA
     answer-file: examples/soa_examples/reduced_answers/VfySizeParamPrint.ans
-    run-modes: [gibbon2, int32]
+    run-modes: [gibbon2]
     test-flags: ["--optc", " -O3 "]
+
+  ## ---------------------------------------------------------------------
+  ## Explicit-width coverage.  The `--int32` compiler flag has been removed:
+  ## bare `Int` is unconditionally W64, and a 32-bit value requires writing
+  ## `Int32` in the source.  These programs declare Int32 (and, where noted,
+  ## other narrow widths) directly in their data/type declarations, unlike
+  ## the older "Int32*"/"VecProbe*" family above, which uses bare `Int` and
+  ## relied on the now-removed flag to make it 32-bit -- those still run
+  ## (as ordinary 64-bit programs now) but no longer exercise any narrow
+  ## width. Answers were verified against the executed output, not merely
+  ## recorded from one run.
+
+  # Int8/Int16/Int32/Int64 fields in one packed AoS constructor: boundary
+  # literals at both Int8 and Int32, homogeneous per-width arithmetic, an
+  # Int8 comparison, manual per-field printing, and the generated
+  # (printPacked) datatype printer.
+  #
+  # Previously gibbon2-only, because a discarded `printPacked` call was
+  # silently deleted whenever `--use-mutable-cursors` was on (which every
+  # non-base mode sets). That was a Cursorize effect-dropping bug, now fixed
+  # (see 'unitizePackedMutableResult'), so this runs in all four modes.
+  - name: ExplicitMixedWidths.hs
+    dir: examples/soa_examples/programs/AOS
+    answer-file: examples/soa_examples/reduced_answers/ExplicitMixedWidths.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Recursive packed AoS structure (Int8 alongside Int32): packed
+  # constructor copy/traversal, the generated datatype printer, and
+  # homogeneous Int32 arithmetic reduced across the recursion.
+  #
+  # Was gibbon2-only for the same (now fixed) print-dropping reason as
+  # ExplicitMixedWidths.hs above.
+  - name: ExplicitInt8Int32Chain.hs
+    dir: examples/soa_examples/programs/AOS
+    answer-file: examples/soa_examples/reduced_answers/ExplicitInt8Int32Chain.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Effect COUNT and ORDER for discarded printPacked calls: two tree prints
+  # separated by an interleaved printint, plus a third from inside an
+  # ordinary helper, covering both the `_` binder and a named-but-unused
+  # binder. A dropped, duplicated, or reordered effect all change the text.
+  - name: PrintPackedEffects.hs
+    dir: examples/soa_examples/programs/AOS
+    answer-file: examples/soa_examples/reduced_answers/PrintPackedEffects.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Single evaluation of a non-trivial expression whose product fields are
+  # projected during cursorization.  Under --use-mutable-cursors a let-bound
+  # call returning a non-empty tuple was rebuilt as (proj 0 call, .., proj n
+  # call), so the call ran once per field: effects were duplicated and, because
+  # mutable cursors advance in place, the answers were wrong.  Each traversal
+  # here prints one digit per leaf as well as returning a value, and the file
+  # also carries MkProdE / LetE / IfE / VarE control shapes, so a duplicated,
+  # dropped, or reordered evaluation changes the expected text.
+  - name: TupleTraversalEffects.hs
+    dir: examples/soa_examples/programs/AOS
+    answer-file: examples/soa_examples/reduced_answers/TupleTraversalEffects.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Explicit integer-width conversions (toInt8/toInt16/toInt32/toInt64) in a
+  # mixed-width AoS traversal: the specification's named boundary values, a
+  # conversion feeding a comparison and then arithmetic, conversions into
+  # constructor fields and out of a case, and a recursive traversal over narrow
+  # fields.  Conversion is truncating two's-complement, so a saturating or
+  # sign-losing implementation changes the text.
+  - name: ExplicitConversions.hs
+    dir: examples/soa_examples/programs/AOS
+    answer-file: examples/soa_examples/reduced_answers/ExplicitConversions.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # The same conversions inside a genuinely fully factored (SoA) datatype with
+  # narrow Int8 and Int32 fields, verified against the generated C's cursor
+  # array rather than the filename.
+  - name: FactoredConversions.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/FactoredConversions.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Genuinely fully factored (SoA) structure with an explicit Int8 field
+  # alongside an explicit Int32 field: packed constructor copy/traversal,
+  # arithmetic reduced across the recursion, and the generated datatype
+  # printer.  This used to be a minimized reproduction of a real bug (a
+  # narrow SoA scalar field misclassified in InferLocations' SoA argument-
+  # size analysis, routing it into Cursorize's unimplemented
+  # AfterVariableLE narrow-width path instead of the working
+  # AfterConstantLE one -- see InferLocations.hs, the SoA case of
+  # 'argSizeForDataCon'-adjacent classification, and the milestone
+  # handoff), now fixed. gibbon2-only, not the usual four: its printPacked
+  # call is silently dropped under loopification (the known, unrelated,
+  # separately-tracked DCE bug -- see ExplicitMixedWidths.hs above);
+  # Now runs in all four modes: the print-dropping bug that forced
+  # gibbon2-only here has been fixed in Cursorize.
+  - name: ExplicitNarrowFactored.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ExplicitNarrowFactored.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # The same genuine-SoA coverage, across all four active modes: Int16 (a
+  # different narrow width than the one above) alongside an Int64 control
+  # field, negative narrow values, Int16 boundary values (INT16_MIN and
+  # INT16_MAX), and a comparison on a field extracted from the factored
+  # structure.  Correctness is observable through the returned sum and
+  # comparison result, not a printPacked call, so it is unaffected by the
+  # loopification DCE bug and can genuinely exercise all four modes.
+  ## Deterministic integer arithmetic (Phase 6).  Signed two's-complement
+  ## modular semantics for +, -, * and ^; C-style truncating division and
+  ## dividend-signed remainder, with MIN / -1, MIN % -1 and a zero divisor all
+  ## pinned instead of left to C's undefined behaviour.  Every answer below was
+  ## checked against an independently written Integer oracle, not recorded from
+  ## a run, and each was confirmed identical under GCC and Clang at -O0, -O2
+  ## and -O3.
+
+  # Wraparound for +, - and * at all four widths: MAX+1, MIN-1, 1-MIN,
+  # MIN * -1, MAX * 2, MAX*MAX, MIN*MIN and both mixed signs.  Every one of
+  # these was UNDEFINED BEHAVIOUR in the emitted C before this milestone,
+  # while the packed SIMD helper for the same operation wrapped -- so the two
+  # halves of one loop were not specified to agree.
+  - name: ArithWrapWidths.hs
+    dir: examples/soa_examples/programs/AOS
+    answer-file: examples/soa_examples/reduced_answers/ArithWrapWidths.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Division and remainder: the eight-row sign matrix at all four widths
+  # (truncating toward zero, remainder taking the dividend's sign -- NOT
+  # Haskell's flooring div/mod), plus MIN / -1 and MIN % -1, which C leaves
+  # undefined and which raise SIGFPE on x86-64 rather than returning.
+  - name: ArithDivEdge.hs
+    dir: examples/soa_examples/programs/AOS
+    answer-file: examples/soa_examples/reduced_answers/ArithDivEdge.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Exponentiation at all four widths, by modular squaring at the annotated
+  # width.  The helper this replaced carried no width, special-cased base 2 as
+  # an `int` shift (so 2^31 came back as -2147483648 and 2^40 as 256), and
+  # looped `pow` times multiplying signed values.  Covers 0^0, negative
+  # exponents, and bases that wrap repeatedly.
+  - name: ArithExpWidths.hs
+    dir: examples/soa_examples/programs/AOS
+    answer-file: examples/soa_examples/reduced_answers/ArithExpWidths.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Deliberately OVERFLOWING arithmetic inside a vectorized, genuinely
+  # fully-factored (SoA) traversal, one program per narrow width.  The element
+  # count (37) is not a multiple of any lane count, so a vectorized body and a
+  # scalar tail must produce bit-identical results on wrapping values.  The
+  # accumulator is Int64 and values are widened into it, so no second overflow
+  # can mask the one under test.
+  # Constant operands versus runtime operands, all six primitives at all four
+  # widths.  There is no constant folder today, so both halves reach the same
+  # helper; the pairs exist so that the day one is added, evaluating
+  # width-annotated arithmetic in the host's 64-bit Int fails loudly instead of
+  # silently disagreeing with the runtime at every narrow width.
+  - name: ArithConstFold.hs
+    dir: examples/soa_examples/programs/AOS
+    answer-file: examples/soa_examples/reduced_answers/ArithConstFold.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  ## Guarded control flow through SoA loopification (Phase 6 step 2).
+  ##
+  ## `LoopifyTraversals.anfScalarExpr` used to return the condition's, the
+  ## then-arm's and the else-arm's ANF bindings CONCATENATED to a caller that
+  ## spliced them above the `IfE`, so both arms ran unconditionally.  A guarded
+  ## division was therefore evaluated for the very elements its guard excluded:
+  ## gibbon2 printed the right answer while loopify/selective/vectorize divided
+  ## by zero.  Every answer below was checked against an independently written
+  ## Integer oracle, and each program contains an element that makes the
+  ## unselected arm divide by zero -- so a regression aborts rather than
+  ## quietly changing a number.
+
+  # The minimal reproducer at all four widths: `if d == 0 then 7 else 100 / d`
+  # over a fully factored list whose elements include 0.
+  ## Scoped `LetE` in loopifiable scalar computations (Phase 6 step 3).
+  ##
+  ## A conditional arm holding more than one operation is flattened into a
+  ## `let` inside that arm, and the loopifier's scalar-expression grammar used
+  ## to reject `LetE` outright -- so nested guards, multi-operation arms and
+  ## guarded partial operations behind a let were never loopified at all, and
+  ## stayed scalar with no diagnostic.  These programs are the previously
+  ## unreachable shapes; each was confirmed to reach a real loopified loop from
+  ## `chunk_count`/`ForE` markers, not merely to produce the right number.
+  ## Answers come from an independently written Integer oracle.
+
+  # A multi-operation arm: `if p then x + 1 else (x * 3) + 2`.
+  - name: ScalarLetMultiOpArmInt8.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetMultiOpArmInt8.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ScalarLetMultiOpArmInt16.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetMultiOpArmInt16.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ScalarLetMultiOpArmInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetMultiOpArmInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ScalarLetMultiOpArmInt64.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetMultiOpArmInt64.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Naturally written nested guards, where the inner condition becomes a `let`
+  # inside the outer else arm.
+  - name: ScalarLetNestedGuardInt8.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetNestedGuardInt8.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ScalarLetNestedGuardInt16.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetNestedGuardInt16.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ScalarLetNestedGuardInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetNestedGuardInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ScalarLetNestedGuardInt64.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetNestedGuardInt64.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # A guarded PARTIAL operation behind a let inside the arm: the binding and
+  # the division must both stay in the arm, so the element whose divisor is
+  # zero never divides.  Combines Phase 6 step 2's dominance rule with the
+  # newly admitted `LetE`.
+  - name: ScalarLetGuardedPartialInt8.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetGuardedPartialInt8.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ScalarLetGuardedPartialInt16.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetGuardedPartialInt16.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ScalarLetGuardedPartialInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetGuardedPartialInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ScalarLetGuardedPartialInt64.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetGuardedPartialInt64.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # A let-bound temporary SHARED by both arms and by the condition.  This shape
+  # already loopified and vectorized before the milestone; it is kept as the
+  # control that admitting `LetE` did not cost SIMD eligibility.
+  - name: ScalarLetSharedTempInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetSharedTempInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # A PARTIAL value bound on the unconditional spine and shared by two scalar
+  # writes.  Without --opt-loopify-partials the traversal stays scalar (and so
+  # is also denied selective buffer sharing); with it, `xform` loopifies.  The
+  # run-modes below deliberately do NOT include the new flag: the point of this
+  # entry is that the DEFAULT behaviour is unchanged and the answer is the same
+  # either way.  See ScalarLetSharedTempInt32.hs for the total counterpart.
+  - name: ScalarLetSharedPartialInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ScalarLetSharedPartialInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: GuardDivElseInt8.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardDivElseInt8.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: GuardDivElseInt16.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardDivElseInt16.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: GuardDivElseInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardDivElseInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: GuardDivElseInt64.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardDivElseInt64.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Guarded REMAINDER, so the fix is not specific to division.
+  - name: GuardModInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardModInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # NESTED guards, carried as Bool fields so both conditions stay bare
+  # variables and the nested conditional actually reaches the loopifier (a
+  # source-level `else if` puts a `let` in the arm, which the loopifier's
+  # scalar-expression whitelist does not admit, so it would not be loopified at
+  # all).  Each of the two divisions must stay in its own inner arm.
+  - name: GuardNestedBoolInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardNestedBoolInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # The guarded division/remainder EDGE MATRIX at all four widths: divisor 0
+  # (guarded, must not run), 1 and -1, MIN / -1 and MIN % -1 (undefined in C,
+  # SIGFPE on x86-64), MAX / -1, and all four sign combinations.
+  - name: GuardDivEdgeInt8.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardDivEdgeInt8.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: GuardDivEdgeInt16.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardDivEdgeInt16.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: GuardDivEdgeInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardDivEdgeInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: GuardDivEdgeInt64.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardDivEdgeInt64.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # Fallback granularity: W8 add, W16 multiply, a GUARDED W32 division and a
+  # W64 add in one traversal.  The guarded W32 buffer must stay scalar while
+  # the other three still vectorize -- one unsupported buffer must not disable
+  # the whole traversal.
+  - name: GuardMixedIsolation.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/GuardMixedIsolation.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  # The other direction: a TOTAL conditional must keep vectorizing through
+  # VecCmp + VecSelect.  "Stop vectorizing conditionals" would be a wrong fix.
+  - name: TotalCondSelectInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/TotalCondSelectInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ArithOverflowFactoredInt8.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ArithOverflowFactoredInt8.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ArithOverflowFactoredInt16.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ArithOverflowFactoredInt16.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ArithOverflowFactoredInt32.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ArithOverflowFactoredInt32.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]
+
+  - name: ExplicitNarrowFactoredSigned.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/ExplicitNarrowFactoredSigned.ans
+    run-modes: [gibbon2, loopify, selective, vectorize]

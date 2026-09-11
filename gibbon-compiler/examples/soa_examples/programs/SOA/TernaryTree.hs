@@ -1,9 +1,11 @@
+-- TernaryTree: Tree (Factored).
+-- Functions: mkTree, add1Tree, rightmost, sumTree, id.
+-- Annotated: MayVectorize on add1Tree; StoreScalarCounts on mkTree.
 module Tree where
 
 
--- @BENCH adt_fields=5
-data Tree = Leaf Int
-          | Node Int Tree Tree Tree
+data Tree = Leaf Int64
+          | Node Int64 Tree Tree Tree
   deriving Show
 
 {-# ANN type Tree "Factored" #-}
@@ -15,7 +17,7 @@ mkTree d =
   then Leaf d
   else Node 1 (mkTree (d-1)) (mkTree (d-1)) (mkTree (d-1))
 
-{-# ANN add1Tree "OPT:CanVectorize" #-}
+{-# ANN add1Tree "OPT:MayVectorize" #-}
 add1Tree :: Tree -> Tree
 add1Tree t =
   case t of
@@ -41,7 +43,7 @@ gibbon_main =
        _ = printsym (quote "NEWLINE")
        tree = mkTree 15
 
-       _ = printsym (quote "Running pass add 1 tree (map, uses=5): ")
+       _ = printsym (quote "Running pass add 1 tree (map, uses=5, shared=0): ")
        _ = printsym (quote "NEWLINE")
        tree' = iterate(add1Tree tree)
        _ = printsym (quote "End")

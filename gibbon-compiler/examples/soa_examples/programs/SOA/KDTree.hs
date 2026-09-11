@@ -1,21 +1,24 @@
--- @BENCH adt_fields=17
+-- KDTree: KDTree (Factored).
+-- Functions: buildKD, absI, dist3, minI, maxI, axisLowerBound, bboxLowerBound,
+-- bboxUpperBound. ...
+-- Annotated: StoreScalarCounts on buildKD.
 data KDTree
-  = KDNode Int    -- splitDim (0=x, 1=y, 2=z)
-           Int    -- splitVal
-           Int    -- bboxMinX
-           Int    -- bboxMinY
-           Int    -- bboxMinZ
-           Int    -- bboxMaxX
-           Int    -- bboxMaxY
-           Int    -- bboxMaxZ
-           Int    -- objectCount
-           Int    -- flags
+  = KDNode Int64    -- splitDim (0=x, 1=y, 2=z)
+           Int64    -- splitVal
+           Int64    -- bboxMinX
+           Int64    -- bboxMinY
+           Int64    -- bboxMinZ
+           Int64    -- bboxMaxX
+           Int64    -- bboxMaxY
+           Int64    -- bboxMaxZ
+           Int64    -- objectCount
+           Int64    -- flags
            KDTree KDTree
-  | KDLeaf Int    -- pointX
-           Int    -- pointY
-           Int    -- pointZ
-           Int    -- mass / weight
-           Int    -- objectId
+  | KDLeaf Int64    -- pointX
+           Int64    -- pointY
+           Int64    -- pointZ
+           Int64    -- mass / weight
+           Int64    -- objectId
   | KDEmpty
 
 {-# ANN type KDTree "Factored" #-}

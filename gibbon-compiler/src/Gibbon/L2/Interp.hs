@@ -212,7 +212,7 @@ interp szenv rc valenv ddefs fenv e = go valenv szenv e
           go (M.insert v rhs' env) (M.insert v sz sizeEnv) bod
         -- Straightforward recursion (same as the L1 interpreter)
         Ext ext -> interpExt sizeEnv rc env ddefs fenv ext
-        LitE n    -> return (VInt n, SOne (fromJust $ byteSizeOfTy IntTy))
+        LitE ann n -> return (VInt (fromIntegral n), SOne (fromJust $ byteSizeOfTy (IntTy (litWidth ann))))
         CharE n   -> return (VChar n, SOne (fromJust $ byteSizeOfTy CharTy))
         FloatE n  -> return (VFloat n, SOne (fromJust $ byteSizeOfTy FloatTy))
         LitSymE s -> return (VInt (strToInt $ fromVar s),
@@ -353,7 +353,7 @@ interpExt sizeEnv rc env ddefs fenv ext =
     BoundsCheck{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
     AddFixed{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
     IndirectionE{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
-    GetCilkWorkerNum{} -> pure $ (VInt 1, SOne (fromJust $ byteSizeOfTy IntTy))
+    GetCilkWorkerNum{} -> pure $ (VInt 1, SOne (fromJust $ byteSizeOfTy (IntTy W64)))
     LetAvail{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
     SelectiveBufferShareE _ _ bod -> go env sizeEnv bod
     AllocateTagHere{} -> error $ "L2.Interp: TODO: " ++ sdoc ext

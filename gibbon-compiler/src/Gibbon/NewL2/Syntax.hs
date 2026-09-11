@@ -233,7 +233,7 @@ instance Typeable (Old.E2Ext LocArg Ty2) where
       Old.BoundsCheck{}       -> error "Shouldn't enconter BoundsCheck in tail position"
       Old.IndirectionE tycon _ _ (to,_) _ -> MkTy2 $ PackedTy tycon (toLocVar to)
       Old.AddFixed{}          -> error "Shouldn't enconter AddFixed in tail position"
-      Old.GetCilkWorkerNum    -> MkTy2 $ IntTy
+      Old.GetCilkWorkerNum    -> MkTy2 $ (IntTy W64)
       Old.LetAvail _ bod      -> gRecoverType ddfs env2 bod
       Old.SelectiveBufferShareE _ _ bod -> gRecoverType ddfs env2 bod
       Old.AllocateTagHere{}   -> MkTy2 $ ProdTy []
@@ -257,7 +257,7 @@ instance Typeable (Old.E2Ext LocArg Ty2) where
       Old.BoundsCheck{}       -> error "Shouldn't enconter BoundsCheck in tail position"
       Old.IndirectionE tycon _ _ (to,_) _ -> MkTy2 $ PackedTy tycon (toLocVar to)
       Old.AddFixed{}          -> error "Shouldn't enconter AddFixed in tail position"
-      Old.GetCilkWorkerNum    -> MkTy2 $ IntTy
+      Old.GetCilkWorkerNum    -> MkTy2 $ (IntTy W64)
       Old.LetAvail _ bod      -> gRecoverTypeLoc ddfs env2 bod
       Old.SelectiveBufferShareE _ _ bod -> gRecoverTypeLoc ddfs env2 bod
       Old.AllocateTagHere{}   -> MkTy2 $ ProdTy []
@@ -286,7 +286,7 @@ instance Out (Old.E2Ext LocArg Ty2) => Typeable (PreExp Old.E2Ext LocArg Ty2) wh
   gRecoverType ddfs env2 ex =
     case ex of
       VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) v (vEnv env2)
-      LitE _       -> MkTy2 $ IntTy
+      LitE ann _   -> MkTy2 $ IntTy (litWidth ann)
       CharE _      -> MkTy2 $ CharTy
       FloatE{}     -> MkTy2 $ FloatTy
       LitSymE _    -> MkTy2 $ SymTy
@@ -333,7 +333,7 @@ instance Out (Old.E2Ext LocArg Ty2) => Typeable (PreExp Old.E2Ext LocArg Ty2) wh
   gRecoverTypeLoc ddfs env2 ex =
     case ex of
       VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) (fromVarToFreeVarsTy v) (vEnv env2)
-      LitE _       -> MkTy2 $ IntTy
+      LitE ann _   -> MkTy2 $ IntTy (litWidth ann)
       CharE _      -> MkTy2 $ CharTy
       FloatE{}     -> MkTy2 $ FloatTy
       LitSymE _    -> MkTy2 $ SymTy
@@ -471,7 +471,7 @@ revertExp :: Exp2 -> Exp1
 revertExp ex =
   case ex of
     VarE v    -> VarE v
-    LitE n    -> LitE n
+    LitE ann n -> LitE ann n
     CharE n  -> CharE n
     FloatE n  -> FloatE n
     LitSymE v -> LitSymE v
@@ -503,7 +503,7 @@ revertExp ex =
         Old.FromEndE{} -> error "revertExp: TODO FromEndLE"
         Old.BoundsCheck{}   -> error "revertExp: TODO BoundsCheck"
         Old.IndirectionE{}  -> error "revertExp: TODO IndirectionE"
-        Old.GetCilkWorkerNum-> LitE 0
+        Old.GetCilkWorkerNum-> mkLitE64 0
         Old.LetAvail _ bod  -> revertExp bod
         Old.SelectiveBufferShareE _ _ bod -> revertExp bod
         Old.AllocateTagHere{} -> error "revertExp: TODO AddFixed."
@@ -824,7 +824,7 @@ isVariableReadOrWrittenTo v fenv exp b = case exp of
                                                                        checkVPr = isVariableReadOrWrittenTo v' fenv bod False 
                                                                        check_side_effect = case rhs of 
                                                                                                 PrimAppE f _ -> case f of  
-                                                                                                                    PrintInt -> True 
+                                                                                                                    PrintInt{} -> True 
                                                                                                                     PrintBool -> True 
                                                                                                                     PrintChar -> True 
                                                                                                                     PrintSym -> True

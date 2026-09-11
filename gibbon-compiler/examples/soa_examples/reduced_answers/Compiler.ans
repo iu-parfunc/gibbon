@@ -1,4 +1,4 @@
-Running the Compiler IR Program: 
+Running program Compiler IR: 
 Running pass verifyIR (fold, uses=9): 
 ITERS: 1
 SIZE: 1
@@ -34,7 +34,7 @@ End
 Running pass throughputModelPass (fold, uses=3): 
 ITERS: 1
 SIZE: 1
-End: 
+End
 Running pass targetReturnPass (map, uses=9): 
 ITERS: 1
 SIZE: 1
@@ -43,4 +43,4 @@ Running pass stripSideEffectsPass (map, uses=7):
 ITERS: 1
 SIZE: 1
 End
-'#(74 9 8 3 184 #t 131 74 74)
+'#(74 9 8 3 184 #t 131 74 74 0 6)

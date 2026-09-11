@@ -11,7 +11,7 @@ treeTy = PackedTy "Tree" ()
 
 treeDD :: DDefs (UrTy ())
 treeDD = (fromListDD [DDef "Tree" []
-                      [ ("Leaf",[(False,IntTy)])
+                      [ ("Leaf",[(False,(IntTy W64))])
                       , ("Node",[(False,treeTy)
                                 ,(False,treeTy)])] Linear])
 
@@ -34,7 +34,7 @@ exadd1Bod :: Exp1
 exadd1Bod =
     CaseE (VarE "tr") $
       [ ("Leaf", [("n",())],
-         PrimAppE AddP [VarE "n", LitE 1])
+         PrimAppE addP64 [VarE "n", mkLitE64 1])
       , ("Node", [("x",()),("y",())],
          DataConE () "Node"
           [ AppE "add1" UnknownTailType [] [VarE "x"]
@@ -44,7 +44,7 @@ exadd1Bod =
 exadd1BodLetLeft :: Exp1
 exadd1BodLetLeft =
     CaseE (VarE "tr") $
-      [ ("Leaf", [("n",())], PrimAppE AddP [VarE "n", LitE 1])
+      [ ("Leaf", [("n",())], PrimAppE addP64 [VarE "n", mkLitE64 1])
       , ("Node", [("x",()),("y",())],
          LetE ("x2",[], treeTy, AppE "add1" UnknownTailType [] [VarE "x"]) $
          LetE ("y2",[], treeTy, AppE "add1" UnknownTailType [] [VarE "y"]) $
@@ -56,7 +56,7 @@ exadd1BodLetLeft =
 exadd1BodLetRight :: Exp1
 exadd1BodLetRight =
     CaseE (VarE "tr") $
-      [ ("Leaf", [("n",())], PrimAppE AddP [VarE "n", LitE 1])
+      [ ("Leaf", [("n",())], PrimAppE addP64 [VarE "n", mkLitE64 1])
       , ("Node", [("x",()),("y",())],
          LetE ("y2",[], treeTy, AppE "add1" UnknownTailType [] [VarE "y"]) $
          LetE ("x2",[], treeTy, AppE "add1" UnknownTailType [] [VarE "x"]) $
@@ -88,7 +88,7 @@ add1ProgChallenge =
   where
    bod =
     CaseE (VarE "tr") $
-      [ ("Leaf", [("n",())], PrimAppE AddP [VarE "n", LitE 1])
+      [ ("Leaf", [("n",())], PrimAppE addP64 [VarE "n", mkLitE64 1])
       , ("Node", [("x",()),("y",())],
          LetE ("y2",[], treeTy, AppE "add1" UnknownTailType [] [VarE "y"]) $
          LetE ("x2",[], treeTy,
@@ -104,7 +104,7 @@ add1ProgSharing = Prog treeDD (M.fromList [("add1",mkAdd1Fun bod)]) Nothing
   where
    bod =
     CaseE (VarE "tr") $
-      [ ("Leaf", [("n",())], PrimAppE AddP [VarE "n", LitE 1])
+      [ ("Leaf", [("n",())], PrimAppE addP64 [VarE "n", mkLitE64 1])
       , ("Node", [("x",()),("y",())],
          LetE ("x2",[], treeTy, AppE "add1" UnknownTailType [] [VarE "x"]) $
          DataConE () "Node" [ VarE "x2", VarE "x2"])

@@ -48,7 +48,7 @@ tcExp isPacked ddfs env exp = do
         ReadTag v -> do
           vty  <- lookupVar env v exp
           ensureEqualTyModCursor ddfs exp vty CursorTy
-          return $ ProdTy [IntTy, CursorTy]
+          return $ ProdTy [IntTy W64, CursorTy]
 
         -- Write Tag at Cursor, and return a cursor
         WriteTag _dcon v -> do
@@ -60,7 +60,7 @@ tcExp isPacked ddfs env exp = do
           vty <- lookupVar env v exp
           vrhs <- go rhs
           ensureEqualTyModCursor ddfs exp vty CursorTy
-          ensureEqualTyModCursor ddfs exp vrhs IntTy
+          ensureEqualTyModCursor ddfs exp vrhs (IntTy W64)
           return CursorTy
         
         -- VS: the semantics of Tag cursor have changed.
@@ -75,7 +75,7 @@ tcExp isPacked ddfs env exp = do
         ReadTaggedCursor v -> do
           vty <- lookupVar env v exp
           ensureEqualTyModCursor ddfs exp vty CursorTy
-          return $ ProdTy [CursorTy, CursorTy, IntTy]
+          return $ ProdTy [CursorTy, CursorTy, (IntTy W64)]
 
         WriteTaggedCursor v val -> do
           vty <- lookupVar env v exp
@@ -101,7 +101,7 @@ tcExp isPacked ddfs env exp = do
           srcEndTy <- lookupVar env srcEnd exp
           ensureCursorLikeTy ddfs exp srcEndTy
           maskTy <- go mask
-          ensureEqualTyModCursor ddfs exp maskTy IntTy
+          ensureEqualTyModCursor ddfs exp maskTy (IntTy W64)
           return CursorTy
 
         UnwrapSelectiveIndirections len ends curs -> do
@@ -116,16 +116,41 @@ tcExp isPacked ddfs env exp = do
           return $ ProdTy []
 
         ScalarCountBump _ footers -> do
-          forM_ footers $ \footer -> do
+          forM_ footers $ \(footer, _slot) -> do
             footer_ty <- lookupVar env footer exp
             ensureEqualTyModCursor ddfs exp footer_ty CursorTy
           return $ ProdTy []
+
+        ScalarCountBind _ len ends -> do
+          ends_ty <- lookupVar env ends exp
+          case ends_ty of
+            CursorArrayTy n
+              | n == len -> return $ ProdTy []
+              | otherwise ->
+                  throwError $ GenericTC ("ScalarCountBind: len " ++ sdoc len
+                                           ++ " does not match cursor array length "
+                                           ++ sdoc n ++ "; the RTS indexes "
+                                           ++ "final_footers[0..len)") exp
+            _ -> throwError $ GenericTC ("ScalarCountBind: expected a cursor array, got "
+                                          ++ sdoc ends_ty) exp
+
+        ScalarCountFinalize _ len ends -> do
+          ends_ty <- lookupVar env ends exp
+          case ends_ty of
+            CursorArrayTy n
+              | n == len -> return $ ProdTy []
+              | otherwise ->
+                  throwError $ GenericTC ("ScalarCountFinalize: len " ++ sdoc len
+                                           ++ " does not match cursor array length "
+                                           ++ sdoc n) exp
+            _ -> throwError $ GenericTC ("ScalarCountFinalize: expected a cursor array, got "
+                                          ++ sdoc ends_ty) exp
 
         ScalarCountSet footer count -> do
           footer_ty <- lookupVar env footer exp
           ensureEqualTyModCursor ddfs exp footer_ty CursorTy
           count_ty <- lookupVar env count exp
-          ensureEqualTyModCursor ddfs exp count_ty IntTy
+          ensureEqualTyModCursor ddfs exp count_ty (IntTy W64)
           return $ ProdTy []
 
         ScalarCountCopyAll len dstEnds srcEnds -> do
@@ -138,7 +163,7 @@ tcExp isPacked ddfs env exp = do
         ReadScalarCount footer -> do
           footer_ty <- lookupVar env footer exp
           ensureCursorLikeTy ddfs exp footer_ty
-          return IntTy
+          return (IntTy W64)
 
         ReadScalarCountFirstFooter footer -> do
           footer_ty <- lookupVar env footer exp
@@ -152,8 +177,8 @@ tcExp isPacked ddfs env exp = do
 
         ForE idx bound body -> do
           bound_ty <- go bound
-          _ <- ensureEqualTyModCursor ddfs bound bound_ty IntTy
-          body_ty <- tcExp isPacked ddfs (extendVEnv idx IntTy env) body
+          _ <- ensureEqualTyModCursor ddfs bound bound_ty (IntTy W64)
+          body_ty <- tcExp isPacked ddfs (extendVEnv idx (IntTy W64) env) body
           _ <- ensureEqualTy body (ProdTy []) body_ty
           return (ProdTy [])
 
@@ -223,7 +248,12 @@ tcExp isPacked ddfs env exp = do
           ensureEqualTyModCursor ddfs b bty vty
           return vty
 
-        VecEq scalar lanes a b -> do
+        -- Both comparison operands must have the SAME scalar kind and lane
+        -- count, and the resulting mask keeps that same vector shape (all-zero
+        -- or all-one bits per lane).  A select downstream is checked against
+        -- the same shape, so a mask can never be applied to a differently
+        -- shaped value.
+        VecCmp scalar lanes _cmp a b -> do
           aty <- go a
           bty <- go b
           let vty = SimdTy (scalarToTy scalar) lanes
@@ -296,14 +326,14 @@ tcExp isPacked ddfs env exp = do
           vty  <- lookupVar env v exp
           ensureEqualTyModCursor ddfs exp vty CursorTy
           vrhs <- go rhs
-          ensureEqualTyModCursor ddfs exp vrhs IntTy
+          ensureEqualTyModCursor ddfs exp vrhs (IntTy W64)
           return CursorTy
 
         BumpCursorMutable v rhs -> do
           vty <- lookupVar env v exp 
           ensureEqualTyModCursor ddfs exp vty MutCursorTy
           vrhs <- go rhs 
-          ensureEqualTyModCursor ddfs exp vrhs IntTy
+          ensureEqualTyModCursor ddfs exp vrhs (IntTy W64)
           return $ ProdTy []
 
         -- Subtract something from a cursor variable
@@ -312,7 +342,7 @@ tcExp isPacked ddfs env exp = do
           ensureCursorLikeTy ddfs exp vty
           wty  <- lookupVar env w exp
           ensureCursorLikeTy ddfs exp wty
-          return IntTy
+          return (IntTy W64)
 
         -- Create a new buffer, and return a cursor
         NewBuffer{} -> return CursorTy
@@ -326,7 +356,7 @@ tcExp isPacked ddfs env exp = do
                                    then return MutCursorTy
                                    else return CursorTy
 
-        MMapFileSize{} -> return IntTy
+        MMapFileSize{} -> return (IntTy W64)
 
         -- Takes in start and end cursors, and returns an Int
         SizeOfPacked start end -> do
@@ -334,13 +364,13 @@ tcExp isPacked ddfs env exp = do
           ensureEqualTyModCursor ddfs exp sty CursorTy
           ety  <- lookupVar env end exp
           ensureEqualTyModCursor ddfs exp ety CursorTy
-          return IntTy
+          return (IntTy W64)
 
         -- Takes in a variable, and returns an Int
         SizeOfScalar v -> do
           sty <- lookupVar env v exp
-          if sty == IntTy || sty == FloatTy
-          then return IntTy
+          if sty == (IntTy W64) || sty == FloatTy
+          then return (IntTy W64)
           else throwError $ GenericTC ("Unknown scalar type: " ++ sdoc sty) exp
 
         -- The IntTy is just a placeholder. BoundsCheck is a side-effect
@@ -349,7 +379,7 @@ tcExp isPacked ddfs env exp = do
           ensureEqualTyModCursor ddfs exp rty CursorTy
           cty <- lookupVar env cur exp
           ensureEqualTyModCursor ddfs exp cty CursorTy
-          return IntTy
+          return (IntTy W64)
 
         {- VS: Ignoring the types of the arguments to gib grow region -}
         {- Should we check these? -} 
@@ -360,7 +390,7 @@ tcExp isPacked ddfs env exp = do
                                                                    cty <- lookupVar env cur exp
                                                                    ensureEqualTyModCursor ddfs exp cty CursorTy
                                               ) bounds
-                                    return IntTy
+                                    return (IntTy W64)
 
         IndirectionBarrier _tycon (l1, end_r1, l2, end_r2) -> do
           l1_ty  <- lookupVar env l1 exp
@@ -383,7 +413,7 @@ tcExp isPacked ddfs env exp = do
         NullCursor -> return CursorTy
         InitCursor ty -> return ty
 
-        GetCilkWorkerNum -> return IntTy
+        GetCilkWorkerNum -> return (IntTy W64)
 
         LetAvail _ bod -> go bod
 
@@ -463,7 +493,7 @@ tcExp isPacked ddfs env exp = do
     -- All the other cases are exactly same as L1.Typecheck
 
     VarE v    -> lookupVar env v exp
-    LitE _    -> return IntTy
+    LitE ann _ -> return (IntTy (litWidth ann))
     CharE _   -> return CharTy
     FloatE{}  -> return FloatTy
     LitSymE _ -> return SymTy
@@ -531,11 +561,24 @@ tcExp isPacked ddfs env exp = do
             _ <- ensureEqualTyModCursor ddfs (es !! 1) BoolTy (tys !! 1)
             pure BoolTy
 
+          -- The primitive's annotation is authoritative; see the same rule in
+          -- L1/L2.  NB: L3 compares modulo cursors because cursor arithmetic
+          -- reuses AddP/SubP on CursorTy, and those nodes are W64 by
+          -- construction (built with addP64/subP64).
+          annWidth = case intPrimAnnOf pr of
+                       Just (IntPrimWidth w) -> pure w
+                       Just IntPrimUnresolved -> throwError $ GenericTC
+                         ("Width-sensitive integer primitive still has an unresolved width at L3.")
+                         (es !! 0)
+                       Nothing -> throwError $ GenericTC
+                         ("Not a width-sensitive integer primitive.") (es !! 0)
+
           int_ops = do
             len2
-            _ <- ensureEqualTyModCursor ddfs (es !! 0) IntTy (tys !! 0)
-            _ <- ensureEqualTyModCursor ddfs (es !! 1) IntTy (tys !! 1)
-            pure IntTy
+            w <- annWidth
+            _ <- ensureEqualTyModCursor ddfs (es !! 0) (IntTy w) (tys !! 0)
+            _ <- ensureEqualTyModCursor ddfs (es !! 1) (IntTy w) (tys !! 1)
+            pure (IntTy w)
 
           float_ops = do
             len2
@@ -545,8 +588,9 @@ tcExp isPacked ddfs env exp = do
 
           int_cmps = do
             len2
-            _ <- ensureEqualTyModCursor ddfs (es !! 0) IntTy (tys !! 0)
-            _ <- ensureEqualTyModCursor ddfs (es !! 1) IntTy (tys !! 1)
+            w <- annWidth
+            _ <- ensureEqualTyModCursor ddfs (es !! 0) (IntTy w) (tys !! 0)
+            _ <- ensureEqualTyModCursor ddfs (es !! 1) (IntTy w) (tys !! 1)
             pure BoolTy
 
           float_cmps = do
@@ -564,22 +608,22 @@ tcExp isPacked ddfs env exp = do
       case pr of
         MkTrue  -> mk_bools
         MkFalse -> mk_bools
-        AddP    -> int_ops
-        SubP    -> int_ops
-        MulP    -> int_ops
-        DivP    -> int_ops
-        ModP    -> int_ops
-        ExpP    -> int_ops
+        AddP{}    -> int_ops
+        SubP{}    -> int_ops
+        MulP{}    -> int_ops
+        DivP{}    -> int_ops
+        ModP{}    -> int_ops
+        ExpP{}    -> int_ops
         FAddP   -> float_ops
         FSubP   -> float_ops
         FMulP   -> float_ops
         FDivP   -> float_ops
         FExpP   -> float_ops
-        EqIntP  -> int_cmps
-        LtP     -> int_cmps
-        GtP     -> int_cmps
-        LtEqP   -> int_cmps
-        GtEqP   -> int_cmps
+        EqIntP{}  -> int_cmps
+        LtP{}     -> int_cmps
+        GtP{}     -> int_cmps
+        LtEqP{}   -> int_cmps
+        GtEqP{}   -> int_cmps
         EqFloatP -> float_cmps
         EqCharP  -> char_cmps
         FLtP     -> float_cmps
@@ -601,7 +645,7 @@ tcExp isPacked ddfs env exp = do
           len0
           return BoolTy
 
-        RandP -> return IntTy
+        RandP -> return (IntTy W64)
         FRandP-> return FloatTy
         FSqrtP -> do
           len1
@@ -616,27 +660,33 @@ tcExp isPacked ddfs env exp = do
         FloatToIntP -> do
           len1
           _ <- ensureEqualTy exp FloatTy (tys !! 0)
-          return IntTy
+          return (IntTy W64)
 
-        IntToFloatP -> do
+        IntToFloatP a -> do
           len1
-          _ <- ensureEqualTy exp IntTy (tys !! 0)
+          _ <- ensureEqualTy exp (IntTy (intPrimWidth a)) (tys !! 0)
           return FloatTy
+
+        IntConvertP a dst -> do
+          len1
+          _ <- ensureEqualTy exp (IntTy (intPrimWidth a)) (tys !! 0)
+          return (IntTy dst)
 
         SizeParam -> do
           len0
-          return IntTy
+          return (IntTy W64)
 
         IsBig -> do
           len2
           let [ity, ety] = tys
-          ensureEqualTy exp ity IntTy
+          ensureEqualTy exp ity (IntTy W64)
           ensureEqualTy exp ety CursorTy
           pure BoolTy
 
-        PrintInt -> do
+        PrintInt{} -> do
           len1
-          _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
+          w <- annWidth
+          _ <- ensureEqualTy (es !! 0) (IntTy w) (tys !! 0)
           return (ProdTy [])
 
         PrintChar -> do
@@ -661,7 +711,7 @@ tcExp isPacked ddfs env exp = do
 
         ReadInt -> do
           len0
-          return IntTy
+          return (IntTy W64)
 
         SymSetEmpty -> do
           len0
@@ -761,7 +811,7 @@ tcExp isPacked ddfs env exp = do
           len1
           checkListElemTy elty
           let [i] = tys
-          _ <- ensureEqualTy (es !! 0) IntTy i
+          _ <- ensureEqualTy (es !! 0) (IntTy W64) i
           pure (VectorTy elty)
 
         VFreeP elty -> do
@@ -783,22 +833,22 @@ tcExp isPacked ddfs env exp = do
           checkListElemTy elty
           let [ls] = tys
           _ <- ensureEqualTy (es !! 0) (VectorTy elty) ls
-          pure IntTy
+          pure (IntTy W64)
 
         VNthP elty -> do
           len2
           checkListElemTy elty
           let [ls, i] = tys
           _ <- ensureEqualTy (es !! 0) (VectorTy elty) ls
-          _ <- ensureEqualTy (es !! 1) IntTy i
+          _ <- ensureEqualTy (es !! 1) (IntTy W64) i
           pure elty
 
         VSliceP elty -> do
           len3
           checkListElemTy elty
           let [from,to,ls] = tys
-          _ <- ensureEqualTy (es !! 0) IntTy from
-          _ <- ensureEqualTy (es !! 1) IntTy to
+          _ <- ensureEqualTy (es !! 0) (IntTy W64) from
+          _ <- ensureEqualTy (es !! 1) (IntTy W64) to
           _ <- ensureEqualTy (es !! 2) (VectorTy elty) ls
           pure (VectorTy elty)
 
@@ -807,7 +857,7 @@ tcExp isPacked ddfs env exp = do
           checkListElemTy elty
           let [ls,i,x] = tys
           _ <- ensureEqualTy (es !! 0) (VectorTy elty) ls
-          _ <- ensureEqualTy (es !! 1) IntTy i
+          _ <- ensureEqualTy (es !! 1) (IntTy W64) i
           _ <- ensureEqualTy (es !! 2) elty x
           pure (VectorTy elty)
 
@@ -833,7 +883,7 @@ tcExp isPacked ddfs env exp = do
                 [a,b] -> do
                    _ <- ensureEqualTy (es !! 1) a elty
                    _ <- ensureEqualTy (es !! 1) b elty
-                   _ <- ensureEqualTy (es !! 1) ret_ty IntTy
+                   _ <- ensureEqualTy (es !! 1) ret_ty (IntTy W64)
                    pure (VectorTy elty)
                 _ -> err fn_ty
             oth -> throwError $ GenericTC ("vsort: function pointer has to be a variable reference. Got"++ sdoc oth) exp
@@ -956,7 +1006,7 @@ tcExp isPacked ddfs env exp = do
 
         GetNumProcessors -> do
           len0
-          pure IntTy
+          pure (IntTy W64)
 
         IntHashEmpty -> do
           len0
@@ -966,14 +1016,14 @@ tcExp isPacked ddfs env exp = do
           len3
           _ <- ensureEqualTy (es !! 0) IntHashTy (tys !! 0)
           _ <- ensureEqualTy (es !! 1) SymTy (tys !! 1)
-          _ <- ensureEqualTy (es !! 2) IntTy (tys !! 2)
+          _ <- ensureEqualTy (es !! 2) (IntTy W64) (tys !! 2)
           return IntHashTy
 
         IntHashLookup -> do
           len2
           _ <- ensureEqualTy (es !! 0) IntHashTy (tys !! 0)
           _ <- ensureEqualTy (es !! 1) SymTy (tys !! 1)
-          return IntTy
+          return (IntTy W64)
 
         Write3dPpmFile{} -> throwError $ GenericTC "Write3dPpmFile not handled yet" exp
 
@@ -1229,8 +1279,8 @@ ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
 ensureEqualTyModCursor :: DDefs3 -> Exp3 -> Ty3 -> Ty3 -> TcM Ty3 (Exp3)
 ensureEqualTyModCursor _ddefs _exp CursorTy (PackedTy _ _) = return CursorTy
 ensureEqualTyModCursor _ddefs _exp (PackedTy _ _) CursorTy = return CursorTy
-ensureEqualTyModCursor _ddefs _exp IntTy CursorTy = return CursorTy
-ensureEqualTyModCursor _ddefs _exp CursorTy IntTy = return CursorTy
+ensureEqualTyModCursor _ddefs _exp (IntTy W64) CursorTy = return CursorTy
+ensureEqualTyModCursor _ddefs _exp CursorTy (IntTy W64) = return CursorTy
 
 ensureEqualTyModCursor ddefs exp (ProdTy ls1) (ProdTy ls2) =
   sequence_ [ ensureEqualTyModCursor ddefs exp ty1 ty2 | (ty1,ty2) <- zip ls1 ls2] >>= \_ -> return (packedToCursor ddefs (ProdTy ls1))

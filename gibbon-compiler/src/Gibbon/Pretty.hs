@@ -192,7 +192,17 @@ instance Pretty ex => Pretty (DDef ex) where
 instance (Show d, Pretty d, Ord d) => Pretty (Prim d) where
     pprintWithStyle sty pr =
         let renderPrim = M.fromList (map (\(a,b) -> (b,a)) (M.toList primMap))
-        in case M.lookup pr renderPrim of
+            -- 'primMap' holds the *unresolved* source form of each integer
+            -- operator, and the width annotation is part of the constructor.
+            -- Normalise before the lookup, or every primitive whose width L0
+            -- has resolved -- i.e. every one in a real program -- misses the
+            -- map and falls through to the "Unknown primitive" error.  The
+            -- surface syntax is unchanged: all widths render as the same
+            -- operator.
+            prKey = case intPrimAnnOf pr of
+                      Just _  -> setIntPrimAnn IntPrimUnresolved pr
+                      Nothing -> pr
+        in case M.lookup prKey renderPrim of
               Nothing  ->
                   let wty ty = text "<" <> pprintWithStyle sty ty <> text ">"
                   in
@@ -279,7 +289,10 @@ instance Pretty TyVar where
 instance (Pretty l) => Pretty (UrTy l) where
     pprintWithStyle sty ty =
         case ty of
-          IntTy  -> text "Int"
+          IntTy W64 -> text "Int"
+          IntTy W8  -> text "Int8"
+          IntTy W16 -> text "Int16"
+          IntTy W32 -> text "Int32"
           CharTy -> text "Char"
           FloatTy-> text "Float"
           SymTy  -> text "Sym"
@@ -341,7 +354,7 @@ instance HasPrettyToo e l d => Pretty (PreExp e l d) where
     pprintWithStyle sty ex0 =
         case ex0 of
           VarE v -> pprintWithStyle sty v
-          LitE i -> int i
+          LitE _ i -> integer i
           CharE i -> quotes (char i)
           FloatE i  -> double i
           LitSymE v -> text "\"" <> pprintWithStyle sty v <> text "\""
@@ -352,7 +365,7 @@ instance HasPrettyToo e l d => Pretty (PreExp e l d) where
                              (pprintWithStyle sty ls)
           PrimAppE pr es ->
               case pr of
-                  _ | pr `elem` [AddP, SubP, MulP, DivP, ModP, ExpP, EqSymP, EqIntP, LtP, GtP] ->
+                  _ | isInfixPrim pr ->
                       let [a1,a2] = es
                       in pprintWithStyle sty a1 <+> pprintWithStyle sty pr <+> pprintWithStyle sty a2
 
@@ -569,7 +582,10 @@ instance Pretty L4.Prog where
 instance Pretty L0.Ty0 where
   pprintWithStyle sty ty =
       case ty of
-        L0.IntTy      -> text "Int"
+        L0.IntTy L0.W64 -> text "Int"
+        L0.IntTy L0.W8  -> text "Int8"
+        L0.IntTy L0.W16 -> text "Int16"
+        L0.IntTy L0.W32 -> text "Int32"
         L0.CharTy     -> text "Char"
         L0.FloatTy    -> text "Float"
         L0.SymTy0     -> text "Sym"
@@ -700,7 +716,7 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
     ppExp monadic env2 ex0 =
       case ex0 of
           VarE v -> pprintWithStyle sty v
-          LitE i -> int i
+          LitE _ i -> integer i
           CharE i -> char i
           FloatE i -> double i
           LitSymE v -> text "\"" <> pprintWithStyle sty v <> text "\""
@@ -708,7 +724,7 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
                             (hsep $ map (ppExp monadic env2) ls)
           PrimAppE pr es ->
               case pr of
-                  _ | pr `elem` [AddP, SubP, MulP, DivP, ModP, ExpP, EqSymP, EqIntP, LtP, GtP] ->
+                  _ | isInfixPrim pr ->
                       let [a1,a2] = es
                       in ppExp monadic env2 a1 <+> pprintWithStyle sty pr <+> ppExp monadic env2 a2
 
@@ -804,3 +820,14 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
                                                                              else pprintWithStyle sty v <> doublecolon <> pprintWithStyle sty loc)
                                                             vls))
                                <+> text "->" $+$ nest indentLevel (ppExp monadic env21' e)
+
+-- | Primitives rendered in infix position.  Structural rather than an `elem`
+-- over constructors: the integer primitives carry a width annotation, so
+-- equality would only ever match one width and narrow operations would
+-- silently lose their infix rendering.
+isInfixPrim :: Prim ty -> Bool
+isInfixPrim pr =
+  case pr of
+    EqSymP -> True
+    _      -> isIntArithPrim pr ||
+              (case pr of { EqIntP{} -> True ; LtP{} -> True ; GtP{} -> True ; _ -> False })

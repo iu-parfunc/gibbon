@@ -14,7 +14,7 @@ mkDList n =
            dv = if n == 3 then 0 else n
        in DCons (n * 100) dv rst
 
-{-# ANN mapNested "OPT:CanVectorize" #-}
+{-# ANN mapNested "OPT:MayVectorize" #-}
 mapNested :: DList -> Int -> DList
 mapNested xs k =
   case xs of

@@ -28,14 +28,14 @@ case_t1 = expected @=? actual
     test1 = Ext $ LetRegionE (VarR "r1") Undefined RegionImmutable Nothing $
             Ext $ LetLocE (singleLocVar "l1") (StartOfRegionLE (VarR "r1")) $
             LetE ("x1",[],PackedTy "A" (singleLocVar "l1"),
-                     DataConE (singleLocVar "l1") "A" [LitE 1]) $
+                     DataConE (singleLocVar "l1") "A" [mkLitE64 1]) $
             VarE "x1"
 
     expected :: L2.Exp2
     expected = Ext $ LetRegionE (GlobR "r1" Infinite) Undefined RegionImmutable Nothing $
                Ext $ LetLocE (singleLocVar "l1") (StartOfRegionLE (GlobR "r1" Infinite)) $
                LetE ("x1",[],PackedTy "A" (singleLocVar "l1"),
-                        DataConE (singleLocVar "l1") "A" [LitE 1]) $
+                        DataConE (singleLocVar "l1") "A" [mkLitE64 1]) $
                VarE "x1"
 
 
@@ -50,15 +50,15 @@ case_t2 = expected @=? actual
     test1 = Ext $ LetRegionE (VarR "r1") Undefined RegionImmutable Nothing $
             Ext $ LetLocE (singleLocVar "l1") (StartOfRegionLE (VarR "r1")) $
             LetE ("x1",[],PackedTy "A" (singleLocVar "l1"),
-                     DataConE (singleLocVar "l1") "A" [LitE 1]) $
-            LitE 1
+                     DataConE (singleLocVar "l1") "A" [mkLitE64 1]) $
+            mkLitE64 1
 
     expected :: L2.Exp2
     expected = Ext $ LetRegionE (GlobR "r1" Infinite) Undefined RegionImmutable Nothing $
                Ext $ LetLocE (singleLocVar "l1") (StartOfRegionLE (GlobR "r1" Infinite)) $
                LetE ("x1",[],PackedTy "A" (singleLocVar "l1"),
-                        DataConE (singleLocVar "l1") "A" [LitE 1]) $
-               LitE 1
+                        DataConE (singleLocVar "l1") "A" [mkLitE64 1]) $
+               mkLitE64 1
 
 inferRegScopeTests :: TestTree
 inferRegScopeTests = $(testGroupGenerator)

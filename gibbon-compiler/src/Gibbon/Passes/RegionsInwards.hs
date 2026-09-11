@@ -451,7 +451,7 @@ unpackComplexLocs set =
 --   LetE (_,locs, ty,rhs) bod         -> let freeVarsLocalRhs = freeVarsLocal rhs
 --                                            freeVarsLocalBod = freeVarsLocal bod
 --                                          in S.fromList (map fromLocVarToFreeVarsTy locs)  `S.union` S.fromList (map fromLocVarToFreeVarsTy (locsInTy ty)) `S.union` freeVarsLocalRhs `S.union` freeVarsLocalBod
---   LitE _                            -> S.empty
+--   LitE{}                            -> S.empty
 --   LitSymE _                         -> S.empty
 --   VarE v                            -> S.singleton (fromVarToFreeVarsTy v)
 --   AppE v locvarList ls              -> S.unions (L.map freeVarsLocal ls) `S.union` S.singleton (fromVarToFreeVarsTy v) `S.union` S.fromList (map fromLocVarToFreeVarsTy locvarList)

@@ -1,8 +1,4 @@
--- Int32 audit probe: exercises RTS entry points whose C prototypes mention
--- GibInt (gib_vector_alloc / gib_vector_nth / gib_vector_length /
--- gib_vector_inplace_update / gib_vector_slice / gib_expll).  The RTS object is
--- built once WITHOUT -DGIBBON_INT32, so under --int32 the generated TU and the
--- linked RTS disagree on the width of every GibInt in these signatures.
+-- Int32ProbeVec.
 gibbon_main =
   let v0 :: Vector Int
       v0 = valloc 5

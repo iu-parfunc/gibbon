@@ -25,6 +25,7 @@ module Gibbon.Common
 
          -- * Gibbon configuration
        , Config(..), Input(..), Mode(..), Backend(..), defaultConfig
+       , CArithMode(..), parseCArithMode, cArithModeOptionString
        , RunConfig(..), getRunConfig, defaultRunConfig, getGibbonConfig
 
          -- * Misc helpers
@@ -274,6 +275,9 @@ data Config = Config
   , verbosity  :: Int   -- ^ Debugging output, equivalent to DEBUG env var.
   , cc         :: String -- ^ C compiler to use
   , optc       :: String -- ^ Options to the C compiler
+  , cArithMode :: CArithMode -- ^ Global mode for generated scalar integer
+                             --   arithmetic (add\/sub\/mul\/negate); see
+                             --   'CArithMode'.  Default 'ArithPortable'.
   , cfile      :: Maybe FilePath -- ^ Optional override to destination .c file.
   , exefile    :: Maybe FilePath -- ^ Optional override to destination binary file.
   , backend    :: Backend        -- ^ Compilation backend used
@@ -281,6 +285,73 @@ data Config = Config
   , srcFile    :: Maybe FilePath -- ^ The file being compiled by Gibbon.
   }
   deriving (Show, Read, Eq, Ord)
+
+-- | Global mode for generated scalar integer arithmetic (add\/sub\/mul, and
+-- negate -- which is not a separate primitive: source-level @-x@ lowers to
+-- @SubP@ with left operand @0@, so it is covered by the @SubP@ lowering in
+-- every mode).  Selected once, globally, via @--c-arithmetic=MODE@; there is
+-- no per-function or per-expression override.  Division, remainder and
+-- exponentiation are UNAFFECTED by
+-- this mode in every case: they always use the existing guarded RTS helpers
+-- (@gib_div_iW@\/@gib_mod_iW@\/@gib_exp_iW@), which avoid SIGFPE on a zero
+-- divisor and on @MIN \/ -1@\/@MIN % -1@ -- native @\/@\/@%@ are not an
+-- equally safe lowering at any width and are not offered here.
+--
+-- * 'ArithPortable' (the Gibbon default): every add\/sub\/mul is a call to
+--   the deterministic, width-correct @gib_add_iW@\/@gib_sub_iW@\/@gib_mul_iW@
+--   RTS helper (see @gibbon_rts.h@\'s \"Deterministic integer arithmetic\"
+--   block).  Generated behavior does not depend on C signed-overflow
+--   undefined behavior at any width, and no extra C compiler flag is
+--   required.
+--
+-- * 'ArithWrapv': every add\/sub\/mul is a native C expression
+--   (@a + b@\/@a - b@\/@a * b@), and every C compile\/link invocation Gibbon
+--   controls (including RTS build and LTO link) additionally passes
+--   @-fwrapv@.  At W32\/W64 (where the operation itself runs at the
+--   operand's own, unpromoted width) this is exactly what makes signed
+--   overflow defined two's-complement wraparound instead of UB.  At
+--   W8\/W16, C's integer promotions already run the operation at @int@
+--   width (at least 32 bits), so the operation itself cannot overflow at
+--   those magnitudes regardless of @-fwrapv@; what @-fwrapv@ does NOT cover
+--   is the narrowing conversion back down to @int8_t@\/@int16_t@, which
+--   C17 6.3.1.3p3 leaves implementation-defined (not undefined) and which
+--   GCC and Clang both document as truncation to the low N bits on every
+--   target Gibbon builds for -- deterministic on those two toolchains, but
+--   not a portable-C guarantee independent of them.
+--
+-- * 'ArithUnsafe': every add\/sub\/mul is the same native C expression as
+--   'ArithWrapv', but NEITHER @-fwrapv@ NOR any other wrapping-imposing flag
+--   (@-fno-strict-overflow@, etc.) is passed.  At W32\/W64 signed overflow is
+--   then genuine C undefined behavior, and the optimizer's normal
+--   signed-overflow assumptions apply -- no particular result is
+--   guaranteed.  At W8\/W16 the same promotion argument as 'ArithWrapv'
+--   applies (the operation itself does not overflow at @int@ width), so
+--   add\/sub\/mul narrowing stays GCC\/Clang-deterministic even in this
+--   mode; only W32\/W64 genuinely lose a guarantee here.  Never the Gibbon
+--   CLI default; must be requested explicitly.
+data CArithMode = ArithPortable | ArithWrapv | ArithUnsafe
+  deriving (Show, Read, Eq, Ord, Enum, Bounded)
+
+-- | Parse a @--c-arithmetic@ value.  The only accepted spellings are the
+-- three exact strings below (case-sensitive, no abbreviations) -- anything
+-- else is rejected with an actionable message rather than silently falling
+-- back to a default.
+parseCArithMode :: String -> Either String CArithMode
+parseCArithMode s =
+  case s of
+    "portable" -> Right ArithPortable
+    "wrapv"    -> Right ArithWrapv
+    "unsafe"   -> Right ArithUnsafe
+    _ -> Left $ "invalid --c-arithmetic value " ++ show s ++
+                "; must be one of: portable, wrapv, unsafe"
+
+-- | Inverse of 'parseCArithMode', for provenance/report strings.
+cArithModeOptionString :: CArithMode -> String
+cArithModeOptionString mode =
+  case mode of
+    ArithPortable -> "portable"
+    ArithWrapv    -> "wrapv"
+    ArithUnsafe   -> "unsafe"
 
 -- | What input format to expect on disk.
 data Input = Haskell
@@ -315,6 +386,7 @@ defaultConfig =
          , verbosity = 1
          , cc = "gcc"
          , optc = " -O3  -flto "
+         , cArithMode = ArithPortable
          , cfile = Nothing
          , exefile = Nothing
          , backend = C
